@@ -82,6 +82,7 @@ def _(Config, tomllib):
 
     [models.rothc]
     n_years_spinup = 1
+    equilibrium_threshold = 0.0001
 
     [grid]
 
@@ -209,6 +210,7 @@ def _(Config, tomllib):
       "microbial_biomass",
       "humified_organic_matter",
       "soil_organic_carbon",
+      "heterotrophic_respiration",
     ]
     """
 
@@ -309,7 +311,7 @@ def _(dr, get_final_vars, get_outputs, inputs, parsed_config):
     _target_vars = get_final_vars(parsed_config.output_specs)
     _results = dr.execute(_target_vars, inputs=inputs)
     _output_datasets = get_outputs(_results, parsed_config.output_specs)
-    _output_datasets
+    _output_datasets["monthly"].info()
     return
 
 

@@ -1751,7 +1751,7 @@ wheels = [
 [[package]]
 name = "rothc-py"
 version = "1.9.0"
-source = { git = "https://github.com/SatTerC/rothc_py.git#22383beea995b551181be61f806ce10bebd730b5" }
+source = { git = "https://github.com/SatTerC/rothc_py.git#9cd0b2438c4ae03ed2d66d5a86762004d8d55033" }
 
 [[package]]
 name = "ruff"
@@ -1804,7 +1804,7 @@ wheels = [
 
 [[package]]
 name = "satterc"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "netcdf4" },

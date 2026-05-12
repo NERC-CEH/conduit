@@ -6,7 +6,7 @@ import xarray as xr
 from hamilton.function_modifiers import extract_fields
 from numpy.typing import NDArray
 from pandas import DatetimeIndex
-from rothc_py import RothC, percent_modern_c
+from rothc_py import RothC, RothCParams, percent_modern_c
 from rothc_py.containers import InputData
 from xarray import DataArray
 
@@ -25,8 +25,16 @@ def _rothc(
     clay_content: NDArray[np.float64],
     soil_depth: NDArray[np.float64],
     inert_organic_matter: NDArray[np.float64],
-    n_years_spinup: int,
     dates_monthly: DatetimeIndex,
+    *,
+    n_years_spinup: int,
+    dpm_rate: float = 10.0,
+    rpm_rate: float = 0.3,
+    bio_rate: float = 0.66,
+    hum_rate: float = 0.02,
+    evap_factor: float = 0.75,
+    equilibrium_threshold: float = 1e-6,
+    zero_threshold: float = 1e-8,
 ) -> dict[str, NDArray]:
     n_months, n_pixels = temperature_celcius_monthly.shape
     n_spinup_months = n_years_spinup * 12
@@ -40,9 +48,19 @@ def _rothc(
 
     pixel_outputs = []
     for i in range(n_pixels):
-        model = RothC(
-            clay=clay_content[i], depth=soil_depth[i], iom=inert_organic_matter[i]
+        pixel_params = RothCParams(
+            clay=clay_content[i],
+            depth=soil_depth[i],
+            iom=inert_organic_matter[i],
+            dpm_rate=dpm_rate,
+            rpm_rate=rpm_rate,
+            bio_rate=bio_rate,
+            hum_rate=hum_rate,
+            evap_factor=evap_factor,
+            equilibrium_threshold=equilibrium_threshold,
+            zero_threshold=zero_threshold,
         )
+        model = RothC(pixel_params)
         data: InputData = {
             "t_tmp": temperature_celcius_monthly[:, i].tolist(),
             "t_rain": precipitation_mm_monthly[:, i].tolist(),
@@ -84,6 +102,9 @@ def _rothc(
         soil_organic_carbon_monthly=np.column_stack(
             [out["SOC_t_C_ha"] for out in pixel_outputs]
         ),
+        heterotrophic_respiration_monthly=np.column_stack(
+            [out["CO2_t_C_ha"] for out in pixel_outputs]
+        ),
     )
 
 
@@ -94,6 +115,7 @@ def _rothc(
         "microbial_biomass_monthly",
         "humified_organic_matter_monthly",
         "soil_organic_carbon_monthly",
+        "heterotrophic_respiration_monthly",
     ]
 )
 def rothc(
@@ -110,6 +132,13 @@ def rothc(
     dates_monthly: pd.Index,
     *,
     n_years_spinup: int = 1,
+    dpm_rate: float = 10.0,
+    rpm_rate: float = 0.3,
+    bio_rate: float = 0.66,
+    hum_rate: float = 0.02,
+    evap_factor: float = 0.75,
+    equilibrium_threshold: float = 1e-6,
+    zero_threshold: float = 1e-8,
 ) -> dict[str, DataArray]:
     """
     Rothamsted Carbon model.
@@ -140,6 +169,20 @@ def rothc(
         Inert organic matter in tC/ha.
     n_years_spinup
         Number of years to use for model spin-up.
+    dpm_rate
+        Decomposition rate constant for Decomposable Plant Material (yr⁻¹).
+    rpm_rate
+        Decomposition rate constant for Resistant Plant Material (yr⁻¹).
+    bio_rate
+        Decomposition rate constant for Microbial Biomass (yr⁻¹).
+    hum_rate
+        Decomposition rate constant for Humified Organic Matter (yr⁻¹).
+    evap_factor
+        Factor to convert open-pan evaporation to evapotranspiration.
+    equilibrium_threshold
+        Spin-up convergence criterion: maximum annual TOC change (t C/ha).
+    zero_threshold
+        Minimum pool size for numerical stability in radiocarbon age calculations.
 
     Returns
     -------
@@ -150,6 +193,7 @@ def rothc(
         - microbial_biomass_monthly: Microbial biomass pool (tC/ha)
         - humified_organic_matter_monthly: HUM pool (tC/ha)
         - soil_organic_carbon_monthly: Total SOC (tC/ha)
+        - heterotrophic_respiration_monthly: CO₂ from microbial decomposition (tC/ha)
 
     Notes
     -----
@@ -167,8 +211,15 @@ def rothc(
         clay_content=clay_content,
         soil_depth=soil_depth,
         inert_organic_matter=inert_organic_matter,
-        n_years_spinup=n_years_spinup,
         dates_monthly=dates_monthly,
+        n_years_spinup=n_years_spinup,
+        dpm_rate=dpm_rate,
+        rpm_rate=rpm_rate,
+        bio_rate=bio_rate,
+        hum_rate=hum_rate,
+        evap_factor=evap_factor,
+        equilibrium_threshold=equilibrium_threshold,
+        zero_threshold=zero_threshold,
     )
 
 
