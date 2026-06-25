@@ -14,20 +14,26 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
+    "apache-hamilton>=1.90.0",
+    "cf-xarray>=0.11.3",
+    "dask>=2025.1.0",
     "netcdf4>=1.7.4",
     "numpy>=2.4.2",
+    "pint>=0.25.3",
+    "pint-xarray>=0.6.1",
     "pyarrow>=10.0",
     "pyproj>=3.7.2",
-    "pyrealm>=2.0.0",
     "rioxarray>=0.22.0",
-    "rothc-py",
-    "sf-hamilton[visualization]>=1.89.0",
-    "sgam",
     "tomli-w>=1.2.0",
     "typer>=0.24.1",
     "xarray>=2026.2.0",
     "zarr>=3.2.1",
 ]
+
+[project.optional-dependencies]
+viz = ["apache-hamilton[visualization]>=1.90.0"]
+models = ["pyrealm>=2.0.0", "rothc-py", "sgam"]
+all = ["satterc[viz,models]"]
 
 [project.scripts]
 satterc = "satterc.cli:main"
@@ -48,6 +54,7 @@ dev = [
 ]
 docs = [
     {include-group = "examples"},
+    "satterc[all]",  # examples and API docs import the model modules
     "marimo>=0.23.0",
     "marimo-md-export>=0.5.2",
     "mkdocstrings-python>=2.0.3",
@@ -57,10 +64,14 @@ examples = [
     "matplotlib>=3.10.8",
 ]
 test = [
+    "satterc[models]",  # the test suite imports pyrealm/sgam/rothc
     "coverage>=7.13.5",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
 ]
+
+[tool.uv]
+exclude-newer = "1 week"
 
 [tool.uv.sources]
 rothc-py = { git = "https://github.com/SatTerC/rothc_py.git" }

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 _SUFFIX_RULES: list[tuple[list[str], str]] = [
     (["_fraction", "_ratio", "fapar", "sunshine"], "bounded"),
-    (["_mm", "precipitation", "lai", "gpp", "_pa", "ppfd"], "positive"),
+    (["precipitation", "lai", "gpp", "ppfd", "vpd", "pressure"], "positive"),
     (["_type", "_class", "_flag"], "integer"),
 ]
 

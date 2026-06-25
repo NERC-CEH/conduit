@@ -112,7 +112,7 @@ threshold_mm = 30.0
 
 [inputs.daily]
 path = "data/daily.nc"
-vars = ["precipitation_mm", "temperature_celcius"]
+vars = ["precipitation", "temperature"]
 
 [inputs.static]
 path = "data/static.nc"

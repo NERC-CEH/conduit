@@ -10,9 +10,9 @@ n_years_spinup = 1
 [inputs.daily]
 path = "daily.nc"
 vars = [
-  "precipitation_mm",
+  "precipitation",
   "sunshine_fraction",
-  "temperature_celcius",
+  "temperature",
   "lai",
   "gpp",
 ]
@@ -20,11 +20,11 @@ vars = [
 [inputs.weekly]
 path = "weekly.nc"
 vars = [
-  "co2_ppm",
+  "co2",
   "fapar",
-  "ppfd_umol_m2_s1",
-  "pressure_pa",
-  "vpd_pa",
+  "ppfd",
+  "pressure",
+  "vpd",
 ]
 
 [inputs.monthly]

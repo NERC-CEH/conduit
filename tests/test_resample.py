@@ -1,8 +1,8 @@
 """Unit tests for the resample pipeline module.
 
-The resample function is wrapped by @FixedResolve (a Hamilton class-based
-decorator) and cannot be called as a plain Python function. Tests exercise it
-via a minimal Hamilton driver with DataArrays injected directly as inputs.
+The resample function is wrapped by @resolve (a Hamilton class-based decorator)
+and cannot be called as a plain Python function. Tests exercise it via a minimal
+Hamilton driver with DataArrays injected directly as inputs.
 """
 
 import numpy as np

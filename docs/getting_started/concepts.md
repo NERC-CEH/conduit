@@ -19,8 +19,8 @@ In SatTerC:
 
 ```mermaid
 graph LR
-    A["precipitation_mm_daily"] --> B["soil_moisture_daily"]
-    C["temperature_celcius_daily"] --> B
+    A["precipitation_daily"] --> B["soil_moisture_daily"]
+    C["temperature_daily"] --> B
     D["max_soil_moisture"] --> B
     B --> E["actual_evapotranspiration_daily"]
     B --> F["runoff_daily"]
@@ -68,7 +68,7 @@ method_kphio = "sandoval"
 
 [inputs.daily]
 path = "data/daily.nc"
-vars = ["precipitation_mm", "temperature_celcius", "sunshine_fraction"]
+vars = ["precipitation", "temperature", "sunshine_fraction"]
 
 [inputs.static]
 path = "data/static.nc"

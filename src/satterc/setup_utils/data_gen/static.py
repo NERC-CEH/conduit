@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-# Carbon pool defaults (root tC/ha, leaf tC/ha, stem tC/ha) indexed by plant type.
+# Carbon pool defaults (root t ha-1, leaf t ha-1, stem t ha-1) indexed by plant type.
 # 1=grassland, 2=C3 crop, 3=woodland
 _POOL_BY_TYPE: dict[int, tuple[float, float, float]] = {
     1: (5.0, 1.0, 10.0),
@@ -192,7 +192,7 @@ def plant_type(n_lat: int, n_lon: int, pixel_coords: pd.MultiIndex) -> xr.DataAr
         data=data,
         dims=["pixel"],
         coords={"pixel": pixel_coords},
-        attrs={"units": "dimensionless", "long_name": "plant type"},
+        attrs={"units": "1", "long_name": "plant type"},
         name="plant_type",
     )
 
@@ -224,7 +224,10 @@ def max_soil_moisture(elevation: xr.DataArray) -> xr.DataArray:
 
 
 def clay_content(n_lat: int, n_lon: int, pixel_coords: pd.MultiIndex) -> xr.DataArray:
-    """Generate static clay content fraction (0-1).
+    """Generate static clay content as a percentage (0-100).
+
+    RothC consumes clay content in percent, so it is generated in percent here
+    (typical topsoil clay fractions of 10-40%).
 
     Parameters
     ----------
@@ -241,22 +244,22 @@ def clay_content(n_lat: int, n_lon: int, pixel_coords: pd.MultiIndex) -> xr.Data
         Clay content data array with dims=["pixel"].
     """
     n_pixels = n_lat * n_lon
-    data = np.random.uniform(0.1, 0.4, n_pixels)
+    data = np.random.uniform(10.0, 40.0, n_pixels)
 
     return xr.DataArray(
         data=data,
         dims=["pixel"],
         coords={"pixel": pixel_coords},
-        attrs={"units": "fraction", "long_name": "clay content"},
+        attrs={"units": "percent", "long_name": "clay content"},
         name="clay_content",
     )
 
 
 def soil_depth(elevation: xr.DataArray) -> xr.DataArray:
-    """Compute static soil depth in mm.
+    """Compute static soil depth in cm.
 
-    Decreases with elevation: deeper soils in lowland valleys (1200 mm) and
-    shallower on upland terrain (400 mm).
+    Decreases with elevation: deeper soils in lowland valleys (120 cm) and
+    shallower on upland terrain (40 cm).
 
     Parameters
     ----------
@@ -268,19 +271,19 @@ def soil_depth(elevation: xr.DataArray) -> xr.DataArray:
     xr.DataArray
         Soil depth data array with dims=["pixel"].
     """
-    data = np.clip(1200.0 - 0.8 * elevation.values, 400.0, 1200.0)
+    data = np.clip(120.0 - 0.08 * elevation.values, 40.0, 120.0)
 
     return xr.DataArray(
         data=data,
         dims=["pixel"],
         coords={"pixel": elevation.coords["pixel"]},
-        attrs={"units": "mm", "long_name": "soil depth"},
+        attrs={"units": "cm", "long_name": "soil depth"},
         name="soil_depth",
     )
 
 
 def organic_carbon_stocks(elevation: xr.DataArray) -> xr.DataArray:
-    """Compute static soil organic carbon stocks in tC/ha.
+    """Compute static soil organic carbon stocks in t ha-1.
 
     Higher-elevation upland mineral soils carry less SOC than lowland peats.
 
@@ -303,13 +306,13 @@ def organic_carbon_stocks(elevation: xr.DataArray) -> xr.DataArray:
         data=data,
         dims=["pixel"],
         coords={"pixel": elevation.coords["pixel"]},
-        attrs={"units": "tC/ha", "long_name": "soil organic carbon stocks"},
+        attrs={"units": "t ha-1", "long_name": "soil organic carbon stocks"},
         name="organic_carbon_stocks",
     )
 
 
 def root_pool_init(plant_type: xr.DataArray) -> xr.DataArray:
-    """Compute initial root carbon pool in tC/ha, varying by plant type.
+    """Compute initial root carbon pool in t ha-1, varying by plant type.
 
     Parameters
     ----------
@@ -329,13 +332,13 @@ def root_pool_init(plant_type: xr.DataArray) -> xr.DataArray:
         data=data,
         dims=["pixel"],
         coords={"pixel": plant_type.coords["pixel"]},
-        attrs={"units": "tC/ha", "long_name": "initial root carbon pool"},
+        attrs={"units": "t ha-1", "long_name": "initial root carbon pool"},
         name="root_pool_init",
     )
 
 
 def leaf_pool_init(plant_type: xr.DataArray) -> xr.DataArray:
-    """Compute initial leaf carbon pool in tC/ha, varying by plant type.
+    """Compute initial leaf carbon pool in t ha-1, varying by plant type.
 
     Parameters
     ----------
@@ -355,13 +358,13 @@ def leaf_pool_init(plant_type: xr.DataArray) -> xr.DataArray:
         data=data,
         dims=["pixel"],
         coords={"pixel": plant_type.coords["pixel"]},
-        attrs={"units": "tC/ha", "long_name": "initial leaf carbon pool"},
+        attrs={"units": "t ha-1", "long_name": "initial leaf carbon pool"},
         name="leaf_pool_init",
     )
 
 
 def stem_pool_init(plant_type: xr.DataArray) -> xr.DataArray:
-    """Compute initial stem carbon pool in tC/ha, varying by plant type.
+    """Compute initial stem carbon pool in t ha-1, varying by plant type.
 
     Parameters
     ----------
@@ -381,6 +384,6 @@ def stem_pool_init(plant_type: xr.DataArray) -> xr.DataArray:
         data=data,
         dims=["pixel"],
         coords={"pixel": plant_type.coords["pixel"]},
-        attrs={"units": "tC/ha", "long_name": "initial stem carbon pool"},
+        attrs={"units": "t ha-1", "long_name": "initial stem carbon pool"},
         name="stem_pool_init",
     )

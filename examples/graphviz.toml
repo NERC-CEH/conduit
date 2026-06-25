@@ -1,0 +1,36 @@
+# Example styling for `satterc graph --style examples/graphviz.toml`.
+#
+# Every key is optional: omitted values fall back to the built-in defaults
+# (see `satterc.cli.graph_style.GraphvizSpec`). This file styles the DAG only;
+# it is kept separate from the science config so one style can be reused across
+# many pipelines.
+
+# Draw the colour legend (default: true).
+show_legend = true
+
+# Box nodes into daily/weekly/monthly subgraph clusters, in addition to
+# colouring them (default: true). Set false for a flat, un-clustered layout.
+cluster_by_frequency = true
+
+# Override category colours. `static`/`daily`/`weekly`/`monthly` set node fills
+# (and the matching edge colours); `output` is the border drawn around the
+# pipeline's requested output nodes. Any category you omit keeps its default.
+[palette]
+static = "#66c2a5"
+daily = "#fc8d62"
+weekly = "#8da0cb"
+monthly = "#a6d854"
+output = "#e7298a"
+
+# Graphviz graph/node/edge attributes, passed straight through to graphviz.
+# See https://graphviz.org/doc/info/attrs.html for the full list.
+[graph_attr]
+rankdir = "LR"   # "TB" for a top-to-bottom layout
+
+[node_attr]
+fontname = "Helvetica"
+
+# Full control: point at your own Hamilton `custom_style_function` as
+# "module:function". When set it replaces the built-in category styling; unit
+# labels and frequency-coloured edges are still applied on top.
+# style_function = "my_package.styling:my_style"

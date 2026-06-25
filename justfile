@@ -1,6 +1,4 @@
-# Default recipe to display available commands.
-_:
-  @just --list
+_: lint typecheck test
 
 # Format and lint the package using ruff, and lint the examples using marimo.
 lint:

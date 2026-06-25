@@ -3,7 +3,7 @@
 import pytest
 from hamilton import driver
 
-from satterc.config import DeriveSpec, ResampleSpec
+from satterc.config import NodeSpec, ResampleSpec
 from satterc.dag.driver import build_driver
 
 
@@ -29,19 +29,17 @@ class TestBuildDriverReturnType:
             build_driver(["resample"], {"resample_specs": specs}), driver.Driver
         )
 
-    def test_derive_module(self):
+    def test_node_module(self):
         specs = [
-            DeriveSpec(
-                output="y",
+            NodeSpec(
+                name="y",
                 inputs=["x"],
                 expression="x * 2",
                 import_path=None,
                 function=None,
             )
         ]
-        assert isinstance(
-            build_driver(["derive"], {"derive_specs": specs}), driver.Driver
-        )
+        assert isinstance(build_driver(["node"], {"node_specs": specs}), driver.Driver)
 
     def test_allow_module_overrides_flag(self):
         dr = build_driver(["models.splash"], {}, allow_module_overrides=True)
@@ -79,16 +77,16 @@ class TestBuildDriverDAGStructure:
         assert "lue_weekly" in available
         assert "iwue_weekly" in available
 
-    def test_derive_driver_exposes_generated_node(self):
+    def test_node_driver_exposes_generated_node(self):
         specs = [
-            DeriveSpec(
-                output="my_var",
+            NodeSpec(
+                name="my_var",
                 inputs=["a", "b"],
                 expression="a + b",
                 import_path=None,
                 function=None,
             )
         ]
-        dr = build_driver(["derive"], {"derive_specs": specs})
+        dr = build_driver(["node"], {"node_specs": specs})
         available = {v.name for v in dr.list_available_variables()}
         assert "my_var" in available

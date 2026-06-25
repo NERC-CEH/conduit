@@ -3,23 +3,6 @@ from typing import Any
 
 import hamilton.node as node
 from hamilton.function_modifiers.base import NodeTransformer, TargetType
-from hamilton.function_modifiers.delayed import resolve
-
-
-class FixedResolve(resolve):
-    """A fix for @resolve that properly validates the returned decorator.
-
-    Hamilton's @resolve decorator doesn't call validate() on decorators
-    returned from decorate_with. This subclass fixes that.
-
-    Should be fixed upstream at some point - see https://github.com/apache/hamilton/pull/1524
-    """
-
-    def resolve(self, config, fn):
-        decorator = super().resolve(config, fn)
-        if hasattr(decorator, "validate"):
-            decorator.validate(fn)
-        return decorator
 
 
 class NoOpDecorator(NodeTransformer):

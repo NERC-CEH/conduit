@@ -1,5 +1,7 @@
 """RothC soil carbon model interface for the SatTerC pipeline."""
 
+from typing import Annotated, TypedDict, cast
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -10,22 +12,134 @@ from rothc_py import RothC, RothCParams, percent_modern_c
 from rothc_py.containers import InputData
 from xarray import DataArray
 
-from ._utils import xarray_io
+from ._utils import declare_units
 
 
-@xarray_io()
+class RothCOut(TypedDict):
+    """Outputs of the `rothc` node, at monthly resolution.
+
+    All quantities are carbon mass per unit ground area (tonnes of carbon per
+    hectare): the first four are the active soil-carbon pools, the fifth is their
+    total, and the last is the month's respiration flux.
+    """
+
+    decomposable_plant_material_monthly: Annotated[DataArray, "t ha-1"]
+    """Decomposable plant material (DPM) pool (tonnes of carbon per hectare)."""
+    resistant_plant_material_monthly: Annotated[DataArray, "t ha-1"]
+    """Resistant plant material (RPM) pool (tonnes of carbon per hectare)."""
+    microbial_biomass_monthly: Annotated[DataArray, "t ha-1"]
+    """Microbial biomass (BIO) pool (tonnes of carbon per hectare)."""
+    humified_organic_matter_monthly: Annotated[DataArray, "t ha-1"]
+    """Humified organic matter (HUM) pool (tonnes of carbon per hectare)."""
+    soil_organic_carbon_monthly: Annotated[DataArray, "t ha-1"]
+    """Total soil organic carbon: the sum of the DPM, RPM, BIO, HUM and inert
+    organic matter pools (tonnes of carbon per hectare)."""
+    heterotrophic_respiration_monthly: Annotated[DataArray, "t ha-1"]
+    """Carbon released as CO2 by microbial decomposition during the month
+    (tonnes of carbon per hectare)."""
+
+
+# RothC output keys, in the order they are returned by `_rothc_1px` and mapped
+# onto the DAG node names below.
+_ROTHC_OUTPUT_KEYS: tuple[str, ...] = (
+    "DPM_t_C_ha",
+    "RPM_t_C_ha",
+    "BIO_t_C_ha",
+    "HUM_t_C_ha",
+    "SOC_t_C_ha",
+    "CO2_t_C_ha",
+)
+_ROTHC_OUTPUT_NAMES: tuple[str, ...] = (
+    "decomposable_plant_material_monthly",
+    "resistant_plant_material_monthly",
+    "microbial_biomass_monthly",
+    "humified_organic_matter_monthly",
+    "soil_organic_carbon_monthly",
+    "heterotrophic_respiration_monthly",
+)
+
+
+def _rothc_1px(
+    temperature: NDArray[np.float64],
+    precipitation: NDArray[np.float64],
+    evaporation: NDArray[np.float64],
+    plant_cover: NDArray[np.bool_],
+    dpm_rpm_ratio: NDArray[np.float64],
+    soil_carbon_input: NDArray[np.float64],
+    farmyard_manure_input: NDArray[np.float64],
+    clay: float,
+    depth: float,
+    iom: float,
+    *,
+    t_mod: list[float],
+    n_spinup_months: int,
+    dpm_rate: float,
+    rpm_rate: float,
+    bio_rate: float,
+    hum_rate: float,
+    evap_factor: float,
+    equilibrium_threshold: float,
+    zero_threshold: float,
+) -> tuple[NDArray[np.float64], ...]:
+    """Run RothC for a single pixel.
+
+    The climate/driver arguments are 1D ``(time,)`` arrays for one pixel; ``clay``,
+    ``depth`` and ``iom`` are per-pixel scalars. ``t_mod`` (the percent-modern-carbon
+    series) depends only on the date range, so it is computed once in `_rothc`
+    and passed through unchanged. Returns one ``(time,)`` array per output pool/flux,
+    ordered as `_ROTHC_OUTPUT_KEYS`. This is the per-pixel kernel mapped over the
+    ``pixel`` dimension by `_rothc` via `xarray.apply_ufunc`.
+    """
+    params = RothCParams(
+        clay=float(clay),
+        depth=float(depth),
+        iom=float(iom),
+        dpm_rate=dpm_rate,
+        rpm_rate=rpm_rate,
+        bio_rate=bio_rate,
+        hum_rate=hum_rate,
+        evap_factor=evap_factor,
+        equilibrium_threshold=equilibrium_threshold,
+        zero_threshold=zero_threshold,
+    )
+    model = RothC(params)
+    data: InputData = {
+        "t_tmp": temperature.tolist(),
+        "t_rain": precipitation.tolist(),
+        "t_evap": evaporation.tolist(),
+        "t_PC": plant_cover.astype(int).tolist(),
+        "t_DPM_RPM": dpm_rpm_ratio.tolist(),
+        "t_C_Inp": soil_carbon_input.tolist(),
+        "t_FYM_Inp": farmyard_manure_input.tolist(),
+        "t_mod": t_mod,
+    }
+    spinup_data: InputData = {
+        "t_tmp": data["t_tmp"][:n_spinup_months],
+        "t_rain": data["t_rain"][:n_spinup_months],
+        "t_evap": data["t_evap"][:n_spinup_months],
+        "t_PC": data["t_PC"][:n_spinup_months],
+        "t_DPM_RPM": data["t_DPM_RPM"][:n_spinup_months],
+        "t_C_Inp": data["t_C_Inp"][:n_spinup_months],
+        "t_FYM_Inp": data["t_FYM_Inp"][:n_spinup_months],
+        "t_mod": data["t_mod"][:n_spinup_months],
+    }
+
+    _, outputs = model(data, spinup_data)
+    return tuple(np.asarray(outputs[key], dtype=float) for key in _ROTHC_OUTPUT_KEYS)
+
+
 def _rothc(
-    temperature_celcius_monthly: NDArray[np.float64],
-    precipitation_mm_monthly: NDArray[np.float64],
-    evaporation_monthly: NDArray[np.float64],
-    plant_cover_monthly: NDArray[np.bool],
-    dpm_rpm_ratio_monthly: NDArray[np.float64],
-    soil_carbon_input_monthly: NDArray[np.float64],
-    farmyard_manure_input_monthly: NDArray[np.float64],
-    clay_content: NDArray[np.float64],
-    soil_depth: NDArray[np.float64],
-    inert_organic_matter: NDArray[np.float64],
-    dates_monthly: DatetimeIndex,
+    temperature_monthly: DataArray,
+    precipitation_monthly: DataArray,
+    evaporation_monthly: DataArray,
+    plant_cover_monthly: DataArray,
+    dpm_rpm_ratio_monthly: DataArray,
+    soil_carbon_input_monthly: DataArray,
+    farmyard_manure_input_monthly: DataArray,
+    clay_content: DataArray,
+    soil_depth: DataArray,
+    inert_organic_matter: DataArray,
+    dates_monthly: pd.Index,
     *,
     n_years_spinup: int,
     dpm_rate: float = 10.0,
@@ -35,100 +149,83 @@ def _rothc(
     evap_factor: float = 0.75,
     equilibrium_threshold: float = 1e-6,
     zero_threshold: float = 1e-8,
-) -> dict[str, NDArray]:
-    n_months, n_pixels = temperature_celcius_monthly.shape
-    n_spinup_months = n_years_spinup * 12
+) -> RothCOut:
+    """Map `_rothc_1px` over the stacked ``pixel`` dimension.
+
+    The per-pixel RothC kernel is applied via `xarray.apply_ufunc` with ``time``
+    as the input/output core dimension and ``pixel`` as the broadcast (mapped) dim.
+    The 2D ``(time, pixel)`` climate/driver inputs declare ``time`` as their core dim;
+    the 1D ``(pixel,)`` soil inputs declare no core dim (so each call receives a
+    per-pixel scalar). ``t_mod`` and the rate constants are pixel-invariant constants
+    passed through ``kwargs``. ``dask="parallelized"`` is a no-op for eager numpy
+    inputs but keeps the node compatible with a future dask-backed (chunked-``pixel``)
+    execution strategy.
+    """
+    n_months = temperature_monthly.sizes["time"]
 
     # NOTE: need to pass a datetime.datetime object (not a numpy.datetime64)
     # DatetimeIndex.to_pydatetime() exists at runtime but is missing from
     # the pandas type stubs, hence the type: ignore.
     start_date = dates_monthly.to_pydatetime()[0]  # type: ignore[reportAttributeAccessIssue]
 
+    # t_mod depends only on the date range, so compute it once and share across pixels.
     t_mod = percent_modern_c(start_date=start_date, n_months=n_months)
 
-    pixel_outputs = []
-    for i in range(n_pixels):
-        pixel_params = RothCParams(
-            clay=clay_content[i],
-            depth=soil_depth[i],
-            iom=inert_organic_matter[i],
-            dpm_rate=dpm_rate,
-            rpm_rate=rpm_rate,
-            bio_rate=bio_rate,
-            hum_rate=hum_rate,
-            evap_factor=evap_factor,
-            equilibrium_threshold=equilibrium_threshold,
-            zero_threshold=zero_threshold,
-        )
-        model = RothC(pixel_params)
-        data: InputData = {
-            "t_tmp": temperature_celcius_monthly[:, i].tolist(),
-            "t_rain": precipitation_mm_monthly[:, i].tolist(),
-            "t_evap": evaporation_monthly[:, i].tolist(),
-            "t_PC": plant_cover_monthly[:, i].astype(int).tolist(),
-            "t_DPM_RPM": dpm_rpm_ratio_monthly[:, i].tolist(),
-            "t_C_Inp": soil_carbon_input_monthly[:, i].tolist(),
-            "t_FYM_Inp": farmyard_manure_input_monthly[:, i].tolist(),
+    outputs = xr.apply_ufunc(
+        _rothc_1px,
+        temperature_monthly,
+        precipitation_monthly,
+        evaporation_monthly,
+        plant_cover_monthly,
+        dpm_rpm_ratio_monthly,
+        soil_carbon_input_monthly,
+        farmyard_manure_input_monthly,
+        clay_content,
+        soil_depth,
+        inert_organic_matter,
+        input_core_dims=[["time"]] * 7 + [[]] * 3,
+        output_core_dims=[["time"]] * 6,
+        kwargs={
             "t_mod": t_mod,
-        }
+            "n_spinup_months": n_years_spinup * 12,
+            "dpm_rate": dpm_rate,
+            "rpm_rate": rpm_rate,
+            "bio_rate": bio_rate,
+            "hum_rate": hum_rate,
+            "evap_factor": evap_factor,
+            "equilibrium_threshold": equilibrium_threshold,
+            "zero_threshold": zero_threshold,
+        },
+        vectorize=True,
+        dask="parallelized",
+        output_dtypes=[float] * 6,
+    )
 
-        spinup_data: InputData = {
-            "t_tmp": data["t_tmp"][:n_spinup_months],
-            "t_rain": data["t_rain"][:n_spinup_months],
-            "t_evap": data["t_evap"][:n_spinup_months],
-            "t_PC": data["t_PC"][:n_spinup_months],
-            "t_DPM_RPM": data["t_DPM_RPM"][:n_spinup_months],
-            "t_C_Inp": data["t_C_Inp"][:n_spinup_months],
-            "t_FYM_Inp": data["t_FYM_Inp"][:n_spinup_months],
-            "t_mod": t_mod[:n_spinup_months],
-        }
-
-        _, outputs = model(data, spinup_data)
-        pixel_outputs.append(outputs)
-
-    return dict(
-        decomposable_plant_material_monthly=np.column_stack(
-            [out["DPM_t_C_ha"] for out in pixel_outputs]
-        ),
-        resistant_plant_material_monthly=np.column_stack(
-            [out["RPM_t_C_ha"] for out in pixel_outputs]
-        ),
-        microbial_biomass_monthly=np.column_stack(
-            [out["BIO_t_C_ha"] for out in pixel_outputs]
-        ),
-        humified_organic_matter_monthly=np.column_stack(
-            [out["HUM_t_C_ha"] for out in pixel_outputs]
-        ),
-        soil_organic_carbon_monthly=np.column_stack(
-            [out["SOC_t_C_ha"] for out in pixel_outputs]
-        ),
-        heterotrophic_respiration_monthly=np.column_stack(
-            [out["CO2_t_C_ha"] for out in pixel_outputs]
-        ),
+    # apply_ufunc drops the `time` coordinate (a core dim) and orders outputs as
+    # (pixel, time); reattach the coordinate and restore the canonical (time, pixel).
+    time_coord = temperature_monthly.coords["time"]
+    return cast(
+        RothCOut,
+        {
+            name: da.assign_coords(time=time_coord).transpose("time", "pixel")
+            for name, da in zip(_ROTHC_OUTPUT_NAMES, outputs, strict=True)
+        },
     )
 
 
-@extract_fields(
-    [
-        "decomposable_plant_material_monthly",
-        "resistant_plant_material_monthly",
-        "microbial_biomass_monthly",
-        "humified_organic_matter_monthly",
-        "soil_organic_carbon_monthly",
-        "heterotrophic_respiration_monthly",
-    ]
-)
+@extract_fields()
+@declare_units
 def rothc(
-    temperature_celcius_monthly: DataArray,
-    precipitation_mm_monthly: DataArray,
-    evaporation_monthly: DataArray,
+    temperature_monthly: Annotated[DataArray, "degC"],
+    precipitation_monthly: Annotated[DataArray, "mm"],
+    evaporation_monthly: Annotated[DataArray, "mm"],
     plant_cover_monthly: DataArray,
     dpm_rpm_ratio_monthly: DataArray,
-    soil_carbon_input_monthly: DataArray,
-    farmyard_manure_input_monthly: DataArray,
-    clay_content: DataArray,
-    inert_organic_matter: DataArray,
-    soil_depth: DataArray,
+    soil_carbon_input_monthly: Annotated[DataArray, "t ha-1"],
+    farmyard_manure_input_monthly: Annotated[DataArray, "t ha-1"],
+    clay_content: Annotated[DataArray, "percent"],
+    inert_organic_matter: Annotated[DataArray, "t ha-1"],
+    soil_depth: Annotated[DataArray, "cm"],
     dates_monthly: pd.Index,
     *,
     n_years_spinup: int = 1,
@@ -139,7 +236,7 @@ def rothc(
     evap_factor: float = 0.75,
     equilibrium_threshold: float = 1e-6,
     zero_threshold: float = 1e-8,
-) -> dict[str, DataArray]:
+) -> RothCOut:
     """
     Rothamsted Carbon model.
 
@@ -147,62 +244,68 @@ def rothc(
 
     Parameters
     ----------
-    temperature_celcius_monthly
-        Monthly mean temperature in degrees Celsius.
-    precipitation_mm_monthly
-        Monthly precipitation in mm.
+    temperature_monthly
+        Monthly mean air temperature (degrees Celsius).
+    precipitation_monthly
+        Monthly total precipitation (millimetres).
     evaporation_monthly
-        Monthly evaporation in mm.
+        Monthly total open-pan evaporation (millimetres).
     plant_cover_monthly
-        Monthly plant cover as boolean (True = covered).
+        Monthly plant cover as boolean (True = soil covered by vegetation).
     dpm_rpm_ratio_monthly
-        Ratio of decomposable to resistant plant material.
+        Ratio of decomposable to resistant plant material (dimensionless).
     soil_carbon_input_monthly
-        Carbon input in tC/ha/month.
+        Carbon input amount for the month (tonnes of carbon per hectare).
     farmyard_manure_input_monthly
-        Farmyard manure input in tC/ha/month.
+        Farmyard manure carbon input amount for the month (tonnes of carbon per
+        hectare).
     clay_content
-        Clay content percentage.
+        Soil clay content (percent).
     soil_depth
-        Soil depth in cm.
+        Soil depth (centimetres).
     inert_organic_matter
-        Inert organic matter in tC/ha.
+        Inert organic matter (tonnes of carbon per hectare).
     n_years_spinup
         Number of years to use for model spin-up.
     dpm_rate
-        Decomposition rate constant for Decomposable Plant Material (yr⁻¹).
+        Decomposition rate constant for Decomposable Plant Material (per year).
     rpm_rate
-        Decomposition rate constant for Resistant Plant Material (yr⁻¹).
+        Decomposition rate constant for Resistant Plant Material (per year).
     bio_rate
-        Decomposition rate constant for Microbial Biomass (yr⁻¹).
+        Decomposition rate constant for Microbial Biomass (per year).
     hum_rate
-        Decomposition rate constant for Humified Organic Matter (yr⁻¹).
+        Decomposition rate constant for Humified Organic Matter (per year).
     evap_factor
-        Factor to convert open-pan evaporation to evapotranspiration.
+        Factor to convert open-pan evaporation to evapotranspiration
+        (dimensionless).
     equilibrium_threshold
-        Spin-up convergence criterion: maximum annual TOC change (t C/ha).
+        Spin-up convergence criterion: maximum annual change in total organic
+        carbon (tonnes of carbon per hectare).
     zero_threshold
-        Minimum pool size for numerical stability in radiocarbon age calculations.
+        Minimum pool size for numerical stability in radiocarbon age
+        calculations (tonnes of carbon per hectare).
 
     Returns
     -------
-    dict
-        Dictionary containing monthly model outputs:
-        - decomposable_plant_material_monthly: DPM pool (tC/ha)
-        - resistant_plant_material_monthly: RPM pool (tC/ha)
-        - microbial_biomass_monthly: Microbial biomass pool (tC/ha)
-        - humified_organic_matter_monthly: HUM pool (tC/ha)
-        - soil_organic_carbon_monthly: Total SOC (tC/ha)
-        - heterotrophic_respiration_monthly: CO₂ from microbial decomposition (tC/ha)
+    RothCOut
+        Dictionary of monthly outputs (all in tonnes of carbon per hectare):
+
+        - decomposable_plant_material_monthly: DPM pool
+        - resistant_plant_material_monthly: RPM pool
+        - microbial_biomass_monthly: microbial biomass (BIO) pool
+        - humified_organic_matter_monthly: HUM pool
+        - soil_organic_carbon_monthly: total soil organic carbon (sum of pools)
+        - heterotrophic_respiration_monthly: CO2 from microbial decomposition
+
+        See `RothCOut` for per-output detail.
 
     Notes
     -----
-    All outputs have units tC/ha (tonnes of Carbon per hectare).
-    All outputs are at monthly resolution.
+    All outputs are at monthly resolution and in tonnes of carbon per hectare.
     """
     return _rothc(
-        temperature_celcius_monthly=temperature_celcius_monthly,
-        precipitation_mm_monthly=precipitation_mm_monthly,
+        temperature_monthly=temperature_monthly,
+        precipitation_monthly=precipitation_monthly,
         evaporation_monthly=evaporation_monthly,
         plant_cover_monthly=plant_cover_monthly,
         dpm_rpm_ratio_monthly=dpm_rpm_ratio_monthly,
@@ -336,14 +439,34 @@ def dpm_rpm_ratio_monthly(
     )
 
 
+@declare_units
 def farmyard_manure_input_monthly(
     plant_type: DataArray,
     dates_monthly: DatetimeIndex,
-) -> DataArray:
-    """Return array of zeros for farmyard manure input.
+) -> Annotated[DataArray, "t ha-1"]:
+    """Return a zero-filled monthly farmyard manure carbon input.
 
     In a future version, this could be driven by a grazing/manure C flux
     estimated by SGAM for grass-dominated pixels. Such a flux would need
     to be exposed as a monthly SGAM output and wired here.
+
+    Parameters
+    ----------
+    plant_type
+        Plant functional type as integer (0=tree, 1=grass, 2=shrub, 3=crop).
+        Used only for its shape and coordinates. Dims: ["pixel"].
+    dates_monthly
+        Monthly datetime index.
+
+    Returns
+    -------
+    DataArray
+        Monthly farmyard manure carbon input, all zeros, with shape
+        (time, pixel) (tonnes of carbon per hectare).
     """
-    return xr.zeros_like(plant_type.expand_dims(time=dates_monthly))
+    # Built from ``plant_type`` only for its shape/coords; drop its inherited
+    # attrs so the zeros are stamped with this node's declared unit (``t ha-1``)
+    # rather than ``plant_type``'s "dimensionless".
+    zeros = xr.zeros_like(plant_type.expand_dims(time=dates_monthly), dtype=float)
+    zeros.attrs.clear()
+    return zeros

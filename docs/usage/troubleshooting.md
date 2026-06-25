@@ -57,7 +57,7 @@ CSV files must have:
 Example:
 
 ```csv
-time,precipitation_mm,temperature_celcius
+time,precipitation,temperature
 2020-01-01,3.2,8.1
 2020-01-02,0.0,9.3
 ```
@@ -129,7 +129,7 @@ from satterc import build_driver, load_config
 
 parsed = load_config("config.toml")
 dr = build_driver(modules=parsed.modules, config=parsed.driver_config)
-dr.visualize_path_between("precipitation_mm_daily", "soil_moisture_daily")
+dr.visualize_path_between("precipitation_daily", "soil_moisture_daily")
 ```
 
 ### What does each colour in the graph mean?

@@ -107,12 +107,12 @@ The P-model requires the following weekly `DataArray` inputs:
 
 | Variable | Units | Description |
 |----------|-------|-------------|
-| `temperature_celcius_weekly` | °C | Air temperature |
-| `vpd_pa_weekly` | Pa | Vapour pressure deficit |
-| `co2_ppm_weekly` | ppm | Atmospheric CO₂ concentration |
-| `pressure_pa_weekly` | Pa | Atmospheric pressure |
+| `temperature_weekly` | °C | Air temperature |
+| `vpd_weekly` | Pa | Vapour pressure deficit |
+| `co2_weekly` | ppm | Atmospheric CO₂ concentration |
+| `pressure_weekly` | Pa | Atmospheric pressure |
 | `fapar_weekly` | dimensionless (0–1) | Fraction of absorbed PAR |
-| `ppfd_umol_m2_s1_weekly` | μmol m⁻² s⁻¹ | Photosynthetic photon flux density |
+| `ppfd_weekly` | μmol m⁻² s⁻¹ | Photosynthetic photon flux density |
 | `soil_moisture_weekly` | mm | Soil moisture content |
 | `mean_growth_temperature_weekly` | °C | Mean temperature on growing days (T > 0°C) |
 | `aridity_index_weekly` | dimensionless | Aridity index |

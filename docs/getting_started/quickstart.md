@@ -37,9 +37,9 @@ This creates a `config.toml` file that looks like:
 [inputs.daily]
 path = "inputs/daily.nc"
 vars = [
-  "precipitation_mm",
+  "precipitation",
   "sunshine_fraction",
-  "temperature_celcius",
+  "temperature",
 ]
 
 [inputs.static]

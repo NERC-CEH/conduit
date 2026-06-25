@@ -38,8 +38,8 @@ class TestInferFallbackType:
     def test_fapar_keyword_is_bounded(self):
         assert _infer_fallback_type("fapar_weekly") == "bounded"
 
-    def test_mm_keyword_is_positive(self):
-        assert _infer_fallback_type("precipitation_mm") == "positive"
+    def test_precipitation_keyword_is_positive(self):
+        assert _infer_fallback_type("precipitation") == "positive"
 
     def test_lai_keyword_is_positive(self):
         assert _infer_fallback_type("lai_daily") == "positive"
@@ -47,11 +47,14 @@ class TestInferFallbackType:
     def test_gpp_keyword_is_positive(self):
         assert _infer_fallback_type("gpp_monthly") == "positive"
 
-    def test_pa_keyword_is_positive(self):
-        assert _infer_fallback_type("vpd_pa_weekly") == "positive"
+    def test_vpd_keyword_is_positive(self):
+        assert _infer_fallback_type("vpd_weekly") == "positive"
+
+    def test_pressure_keyword_is_positive(self):
+        assert _infer_fallback_type("pressure_daily") == "positive"
 
     def test_ppfd_keyword_is_positive(self):
-        assert _infer_fallback_type("ppfd_umol_m2_s1") == "positive"
+        assert _infer_fallback_type("ppfd") == "positive"
 
     def test_type_suffix_is_integer(self):
         assert _infer_fallback_type("plant_type") == "integer"
@@ -65,7 +68,7 @@ class TestInferFallbackType:
     def test_unknown_name_is_gaussian(self):
         assert _infer_fallback_type("temperature") == "gaussian"
         assert _infer_fallback_type("elevation") == "gaussian"
-        assert _infer_fallback_type("co2_ppm") == "gaussian"
+        assert _infer_fallback_type("co2") == "gaussian"
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +107,7 @@ class TestMakeDailyFallback:
         assert np.all(result.values <= 1.0)
 
     def test_positive_values_non_negative(self):
-        fn = _make_daily_fallback("precipitation_mm")
+        fn = _make_daily_fallback("precipitation")
         result = fn(TIME_COORD, PIXEL_COORDS)
         assert np.all(result.values >= 0.0)
 
@@ -149,7 +152,7 @@ class TestMakeStaticFallback:
         assert np.all(result.values <= 1.0)
 
     def test_positive_static_non_negative(self):
-        fn = _make_static_fallback("precipitation_mm")
+        fn = _make_static_fallback("precipitation")
         result = fn(N_LAT, N_LON, PIXEL_COORDS)
         assert np.all(result.values >= 0.0)
 

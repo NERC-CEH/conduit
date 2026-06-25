@@ -3,20 +3,42 @@
 import warnings
 
 from ._version import __version__
-from .config import IOSpec, ParsedConfig, ResampleSpec, load_config
+from .config import (
+    BlockingSpec,
+    CacheSpec,
+    IOSpec,
+    ParsedConfig,
+    ResampleSpec,
+    SubsetSpec,
+    load_config,
+)
 from .dag.driver import build_driver
-from .io import get_final_vars, get_outputs, load_inputs, save_outputs
+from .io import (
+    create_output_store,
+    get_final_vars,
+    get_outputs,
+    load_inputs,
+    merge_subset_outputs,
+    save_outputs,
+)
+from .units import UnitsWarning
 
 __all__ = [
+    "BlockingSpec",
+    "CacheSpec",
     "IOSpec",
     "ParsedConfig",
     "ResampleSpec",
+    "SubsetSpec",
+    "UnitsWarning",
     "__version__",
     "build_driver",
+    "create_output_store",
     "get_final_vars",
     "get_outputs",
     "load_config",
     "load_inputs",
+    "merge_subset_outputs",
     "save_outputs",
 ]
 

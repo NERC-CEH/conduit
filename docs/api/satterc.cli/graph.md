@@ -19,6 +19,7 @@ satterc graph <CONFIG_FILE> [OPTIONS]
 | Flag | Description |
 |------|-------------|
 | `--output`, `-o` | Name of output file (default: `pipeline`) |
+| `--style`, `-s` | Optional TOML file customising the DAG styling (see `satterc.cli.graph_style`) |
 | `--allow-overrides` | Allow later modules to override earlier ones |
 | `--png` | Convert to PNG format |
 | `--pdf` | Convert to PDF format |

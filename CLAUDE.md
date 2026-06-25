@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project status
+
+SatTerC is in **alpha** with no users outside the core collaboration. Backwards
+compatibility is *not* a constraint: prefer the cleanest design and make breaking
+changes (config schema, public APIs, behaviour) freely rather than adding
+compatibility shims.
+
 ## Commands
 
 All common tasks are managed via `just` (see `justfile`):
@@ -35,7 +42,7 @@ SatTerC is a data-driven terrestrial carbon modelling framework. It uses [Hamilt
 
 ### Core modules
 
-**`src/satterc/config.py`** — parses TOML config files into a `ParsedConfig` dataclass. Recognised top-level sections: `[inputs.*]`, `[outputs.*]`, `[grid]` (silently ignored — grid computation is in `io.py`), `[models.*]`, `[[derive]]`, `[[resample]]`. Any other section is treated as an external module and must include `_import_path`. Key types exported: `Config`, `ParsedConfig`, `IOSpec`, `ResampleSpec`, `DeriveSpec`.
+**`src/satterc/config.py`** — parses TOML config files into a `ParsedConfig` dataclass. Recognised top-level sections: `[inputs.*]`, `[outputs.*]`, `[grid]` (silently ignored — grid computation is in `io.py`), `[models.*]`, `[[node]]`, `[[resample]]`, `[cache]` (Hamilton result caching → `ParsedConfig.cache_spec`). Any other section is treated as an external module and must include `_import_path`. Key types exported: `Config`, `ParsedConfig`, `IOSpec`, `ResampleSpec`, `NodeSpec`, `CacheSpec`.
 
 **`src/satterc/dag/driver.py`** — builds Hamilton `Driver` objects from a `ParsedConfig`. The `MODULES` dict maps config section names (e.g. `"models.pmodel"`) to importable paths (e.g. `"satterc.dag.pmodel"`). External modules are imported directly.
 
@@ -48,7 +55,8 @@ SatTerC is a data-driven terrestrial carbon modelling framework. It uses [Hamilt
 **`src/satterc/dag/`** — the Hamilton DAG modules:
 - `pmodel.py`, `splash.py`, `sgam.py`, `rothc.py` — ecological model wrappers
 - `resample.py` — temporal resampling (daily ↔ weekly ↔ monthly), driven by `resample_specs` in driver config
-- `derive.py` — dynamically generates Hamilton-compatible modules from `[[derive]]` config entries using `exec()`; supports inline expressions or import-path + function name
+- `node.py` — dynamically generates Hamilton-compatible modules from `[[node]]` config entries using `exec()`; supports inline expressions or import-path + function name
+- `caching.py` — registers a content-based fingerprint for `xarray.DataArray` (Hamilton can't hash them by default) and applies `Builder.with_cache()` from a `CacheSpec`; imported lazily by `driver.build_driver` when caching is enabled
 - `_utils.py` — `@xarray_io()` decorator that wraps numpy functions to accept/return xarray objects
 - `_hamilton_fixes.py` — workarounds for Hamilton edge cases
 
@@ -58,7 +66,7 @@ Each module contains plain functions that become DAG nodes. Key patterns:
 
 - `@extract_fields` (from `hamilton.function_modifiers`) — splits a dict return into multiple DAG outputs
 - `@xarray_io()` — wraps numpy-based functions to accept/return xarray objects
-- Variable names carry frequency suffixes: `temperature_celcius_daily`, `gpp_monthly`, etc.
+- Variable names carry frequency suffixes: `temperature_daily`, `gpp_monthly`, etc.
 
 ### Configuration-driven composition
 
@@ -75,3 +83,5 @@ Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF dat
 ### Examples
 
 Marimo interactive notebooks live in `examples/`. Each has `satterc==<version>` pinned in its inline `# dependencies` block — update this when bumping the package version, then re-export with `just export-all`.
+
+`examples/` also holds two plain config files (not notebooks): `config.toml`, a full four-model pipeline mirroring `full_pipeline.py`, and `graphviz.toml`, a commented `satterc graph --style` template. Neither is loaded by any code or tooling (`just export`/`marimo check` only touch `.py`); they are user-facing references that the docs link to.

@@ -8,7 +8,7 @@ from typing import Any, Self
 
 import tomli_w
 
-_RESAMPLE_FREQ_MAP: dict[tuple[str, str], str] = {
+RESAMPLE_FREQ_MAP: dict[tuple[str, str], str] = {
     ("daily", "weekly"): "7D",
     ("daily", "monthly"): "1ME",
     ("weekly", "monthly"): "1ME",
@@ -33,7 +33,7 @@ class ResampleSpec:
     @property
     def freq(self) -> str:
         """Return xarray resample frequency string from source/target freq pair."""
-        return _RESAMPLE_FREQ_MAP[(self.source_freq, self.target_freq)]
+        return RESAMPLE_FREQ_MAP[(self.source_freq, self.target_freq)]
 
     @classmethod
     def from_config(cls, entry: dict) -> "ResampleSpec":
@@ -43,10 +43,10 @@ class ResampleSpec:
         aggfunc = entry.get("aggfunc", "mean")
         vars_ = entry["vars"]
 
-        if (source_freq, target_freq) not in _RESAMPLE_FREQ_MAP:
+        if (source_freq, target_freq) not in RESAMPLE_FREQ_MAP:
             raise ValueError(
                 f"Unsupported resample direction '{source_freq}' → '{target_freq}'. "
-                f"Supported: {sorted(_RESAMPLE_FREQ_MAP)}"
+                f"Supported: {sorted(RESAMPLE_FREQ_MAP)}"
             )
         if aggfunc not in _VALID_AGGFUNCS:
             raise ValueError(
@@ -62,37 +62,137 @@ class ResampleSpec:
 
 
 @dataclass
-class DeriveSpec:
-    """Specification for a single [[derive]] entry."""
+class NodeSpec:
+    """Specification for a single [[node]] entry."""
 
-    output: str
+    name: str
     inputs: list[str]
     expression: str | None
     import_path: str | None
     function: str | None
+    units: str | None = None
 
     @classmethod
-    def from_config(cls, entry: dict) -> "DeriveSpec":
-        """Construct and validate from a raw [[derive]] TOML entry."""
+    def from_config(cls, entry: dict) -> "NodeSpec":
+        """Construct and validate from a raw [[node]] TOML entry."""
         has_expression = "expression" in entry
         has_function = "_import_path" in entry or "function" in entry
         if has_expression and has_function:
             raise ValueError(
-                f"Derive entry for '{entry.get('output')}' must specify either "
+                f"Node entry for '{entry.get('name')}' must specify either "
                 "'expression' or ('_import_path' + 'function'), not both."
             )
         if not has_expression and not has_function:
             raise ValueError(
-                f"Derive entry for '{entry.get('output')}' must specify either "
+                f"Node entry for '{entry.get('name')}' must specify either "
                 "'expression' or ('_import_path' + 'function')."
             )
+        units = entry.get("units")
+        if units is not None:
+            # Fail fast on a malformed/unknown unit, at parse time.
+            from .units import assert_valid_unit
+
+            assert_valid_unit(units, f"node '{entry.get('name')}' units")
         return cls(
-            output=entry["output"],
+            name=entry["name"],
             inputs=entry["inputs"],
             expression=entry.get("expression"),
             import_path=entry.get("_import_path"),
             function=entry.get("function"),
+            units=units,
         )
+
+
+@dataclass
+class CacheSpec:
+    """Specification for the [cache] section.
+
+    ``recompute`` and ``disable`` follow Hamilton's caching API: each is either
+    a boolean (apply to all nodes) or a list of node names.
+    """
+
+    path: str = ".satterc_cache"
+    recompute: bool | list[str] = field(default_factory=list)
+    disable: bool | list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_config(cls, entry: dict) -> "CacheSpec":
+        """Construct and validate from a raw [cache] TOML entry."""
+
+        def _coerce(key: str) -> bool | list[str]:
+            val = entry.get(key, [])
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, list) and all(isinstance(v, str) for v in val):
+                return val
+            raise ValueError(
+                f"[cache] '{key}' must be a boolean or a list of node names, "
+                f"got {val!r}."
+            )
+
+        return cls(
+            path=entry.get("path", ".satterc_cache"),
+            recompute=_coerce("recompute"),
+            disable=_coerce("disable"),
+        )
+
+
+@dataclass
+class BlockingSpec:
+    """Specification for the [blocking] section.
+
+    Controls how the stacked ``pixel`` dimension is partitioned into
+    fixed-size sequential blocks to bound peak memory usage.
+    """
+
+    block_size: int
+
+    @classmethod
+    def from_config(cls, entry: dict) -> "BlockingSpec":
+        """Construct and validate from a raw [blocking] TOML entry."""
+        block_size = entry.get("block_size")
+        if not isinstance(block_size, int) or block_size < 1:
+            raise ValueError(
+                "[blocking] 'block_size' must be a positive integer, "
+                f"got {block_size!r}."
+            )
+        return cls(block_size=block_size)
+
+
+@dataclass
+class SubsetSpec:
+    """Specification for the [subset] section.
+
+    Selects a contiguous slice of the stacked ``pixel`` dimension so that
+    independent ``satterc run`` processes can each handle a different spatial
+    chunk of the same input files.  ``pixel_end`` is exclusive (Python slice
+    convention).
+    """
+
+    pixel_start: int
+    pixel_end: int
+
+    @classmethod
+    def from_config(cls, entry: dict) -> "SubsetSpec":
+        """Construct and validate from a raw [subset] TOML entry."""
+        pixel_start = entry.get("pixel_start")
+        pixel_end = entry.get("pixel_end")
+        if not isinstance(pixel_start, int) or pixel_start < 0:
+            raise ValueError(
+                "[subset] 'pixel_start' must be a non-negative integer, "
+                f"got {pixel_start!r}."
+            )
+        if not isinstance(pixel_end, int) or pixel_end < 0:
+            raise ValueError(
+                "[subset] 'pixel_end' must be a non-negative integer, "
+                f"got {pixel_end!r}."
+            )
+        if pixel_end <= pixel_start:
+            raise ValueError(
+                f"[subset] 'pixel_end' ({pixel_end}) must be greater than "
+                f"'pixel_start' ({pixel_start})."
+            )
+        return cls(pixel_start=pixel_start, pixel_end=pixel_end)
 
 
 @dataclass
@@ -111,6 +211,11 @@ class ParsedConfig:
     driver_config: dict[str, Any]
     input_specs: dict[str, "IOSpec"] = field(default_factory=dict)
     output_specs: dict[str, "IOSpec"] = field(default_factory=dict)
+    cache_spec: "CacheSpec | None" = None
+    blocking_spec: "BlockingSpec | None" = None
+    subset_spec: "SubsetSpec | None" = None
+    units_mode: str | None = None
+    units_exact: bool | None = None
 
 
 class Config:
@@ -159,6 +264,17 @@ class Config:
         Silently accepted; grid computation moved to load_inputs().
         """
         data.pop("grid", None)
+        return []
+
+    def _parse_graphviz(self, data: dict, driver_config: dict) -> list[str]:
+        """Handle a stray [graphviz] section.
+
+        DAG-visualisation styling lives in its own file passed to ``satterc
+        graph --style`` (see ``satterc.cli.graph_style``), not in the science
+        config.  A misplaced [graphviz] section here is silently ignored rather
+        than mistaken for an external module missing ``_import_path``.
+        """
+        data.pop("graphviz", None)
         return []
 
     def _parse_inputs(self, data: dict, driver_config: dict, input_specs: dict) -> None:
@@ -223,22 +339,73 @@ class Config:
             return ["resample"]
         return []
 
-    def _parse_derive(self, data: dict, driver_config: dict) -> list[str]:
-        """Handle [[derive]] section."""
-        seen_outputs: set[str] = set()
-        specs: list[DeriveSpec] = []
-        for entry in data.pop("derive", []):
-            spec = DeriveSpec.from_config(entry)
-            if spec.output in seen_outputs:
-                raise ValueError(
-                    f"Duplicate derive output '{spec.output}' in [[derive]]"
-                )
-            seen_outputs.add(spec.output)
+    def _parse_node(self, data: dict, driver_config: dict) -> list[str]:
+        """Handle [[node]] section."""
+        seen_names: set[str] = set()
+        specs: list[NodeSpec] = []
+        for entry in data.pop("node", []):
+            spec = NodeSpec.from_config(entry)
+            if spec.name in seen_names:
+                raise ValueError(f"Duplicate node name '{spec.name}' in [[node]]")
+            seen_names.add(spec.name)
             specs.append(spec)
         if specs:
-            driver_config["derive_specs"] = specs
-            return ["derive"]
+            driver_config["node_specs"] = specs
+            return ["node"]
         return []
+
+    def _parse_cache(self, data: dict) -> "CacheSpec | None":
+        """Handle the [cache] section.
+
+        Returns None if there is no [cache] section, or if it sets
+        ``enabled = false``.
+        """
+        entry = data.pop("cache", None)
+        if entry is None:
+            return None
+        if not entry.get("enabled", True):
+            return None
+        return CacheSpec.from_config(entry)
+
+    def _parse_blocking(self, data: dict) -> "BlockingSpec | None":
+        """Handle the [blocking] section.
+
+        Returns None if there is no [blocking] section.
+        """
+        entry = data.pop("blocking", None)
+        if entry is None:
+            return None
+        return BlockingSpec.from_config(entry)
+
+    def _parse_subset(self, data: dict) -> "SubsetSpec | None":
+        """Handle the [subset] section.
+
+        Returns None if there is no [subset] section.
+        """
+        entry = data.pop("subset", None)
+        if entry is None:
+            return None
+        return SubsetSpec.from_config(entry)
+
+    def _parse_units(self, data: dict) -> tuple[str | None, bool | None]:
+        """Handle the [units] section.
+
+        Returns ``(mode, exact)``: the validation mode string (or ``None``) and
+        the exact-unit-match flag for the build-time check (or ``None`` when not
+        given). Both are ``None`` if there is no [units] section.
+        """
+        entry = data.pop("units", None)
+        if entry is None:
+            return None, None
+        mode = entry.get("mode")
+        if mode is not None and mode not in ("strict", "warn", "off"):
+            raise ValueError(
+                f"[units] 'mode' must be one of 'strict', 'warn', 'off', got {mode!r}."
+            )
+        exact = entry.get("exact")
+        if exact is not None and not isinstance(exact, bool):
+            raise ValueError(f"[units] 'exact' must be a boolean, got {exact!r}.")
+        return mode, exact
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
         """Handle remaining sections as external modules."""
@@ -268,9 +435,14 @@ class Config:
         - [inputs.*]      — I/O specs; freq derived from subsection key
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [grid]          — silently accepted (grid computation is now in load_inputs())
+        - [graphviz]      — silently ignored (DAG styling is a `graph --style` file)
         - [models.*]      — built-in model modules
-        - [[derive]]      — config-driven derived variable nodes
+        - [[node]]        — config-driven custom nodes
         - [[resample]]    — temporal resampling module
+        - [cache]         — Hamilton result caching (path, recompute, disable)
+        - [blocking]      — pixel-blocked execution (block_size)
+        - [subset]        — spatial pixel slice (pixel_start, pixel_end)
+        - [units]         — unit validation mode ('strict', 'warn', 'off')
 
         All other top-level sections are treated as external modules and must
         include a '_import_path = "pkg.module"' key specifying the importable
@@ -283,17 +455,27 @@ class Config:
         output_specs: dict[str, IOSpec] = {}
         modules: list[str] = []
         self._parse_grid(data, driver_config)
+        self._parse_graphviz(data, driver_config)
         self._parse_inputs(data, driver_config, input_specs)
         self._parse_outputs(data, driver_config, output_specs)
         modules += self._parse_models(data, driver_config)
-        modules += self._parse_derive(data, driver_config)
+        modules += self._parse_node(data, driver_config)
         modules += self._parse_resample(data, driver_config)
+        cache_spec = self._parse_cache(data)
+        blocking_spec = self._parse_blocking(data)
+        subset_spec = self._parse_subset(data)
+        units_mode, units_exact = self._parse_units(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
             modules=modules,
             driver_config=driver_config,
             input_specs=input_specs,
             output_specs=output_specs,
+            cache_spec=cache_spec,
+            blocking_spec=blocking_spec,
+            subset_spec=subset_spec,
+            units_mode=units_mode,
+            units_exact=units_exact,
         )
 
 
@@ -308,6 +490,9 @@ def _resolve_paths(data: dict, base: Path) -> None:
         for params in data.get(section, {}).values():
             if "path" in params and not Path(params["path"]).is_absolute():
                 params["path"] = str(base / params["path"])
+    cache = data.get("cache")
+    if cache and "path" in cache and not Path(cache["path"]).is_absolute():
+        cache["path"] = str(base / cache["path"])
 
 
 def _is_valid_module_path(path: str) -> bool:

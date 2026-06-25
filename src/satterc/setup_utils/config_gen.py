@@ -15,6 +15,7 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 
 from .. import dag as dag_modules
 from ..config import Config
+from ..units import unwrap_annotated
 
 
 def _analyze_model_module(
@@ -45,13 +46,16 @@ def _analyze_model_module(
     non_data_inputs = []
 
     for v in all_vars:
+        # Signature-native unit declarations make some node types
+        # ``Annotated[DataArray, "<unit>"]``; unwrap so they still count as data.
+        v_type = unwrap_annotated(v.type)
         if v.is_external_input:
-            if v.type == xr.DataArray:
+            if v_type == xr.DataArray:
                 data_inputs.append(v.name)
             else:
                 non_data_inputs.append(v.name)
         else:
-            if v.type == xr.DataArray:
+            if v_type == xr.DataArray:
                 data_outputs.append(v.name)
 
     return data_inputs, non_data_inputs, data_outputs
@@ -63,7 +67,7 @@ def _strip_suffix(name: str) -> tuple[str, str | None]:
     Parameters
     ----------
     name : str
-        Variable name (e.g., 'temperature_celcius_daily').
+        Variable name (e.g., 'temperature_daily').
 
     Returns
     -------

@@ -35,8 +35,8 @@ class TestGetModelParams:
         assert get_model_params("satterc.dag.resample") == {}
 
     def test_module_without_matching_function_returns_empty(self):
-        # satterc.dag.derive has no function named "derive" → hits the return {} fallback
-        assert get_model_params("satterc.dag.derive") == {}
+        # satterc.dag.node has no function named "node" → hits the return {} fallback
+        assert get_model_params("satterc.dag.node") == {}
 
 
 class TestGenerateConfigCustomModules:
@@ -79,8 +79,8 @@ class TestStripSuffix:
     """_strip_suffix extracts base name and frequency from variable names."""
 
     def test_daily_suffix(self):
-        base, freq = _strip_suffix("temperature_celcius_daily")
-        assert base == "temperature_celcius"
+        base, freq = _strip_suffix("temperature_daily")
+        assert base == "temperature"
         assert freq == "_daily"
 
     def test_weekly_suffix(self):

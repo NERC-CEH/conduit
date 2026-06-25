@@ -1,13 +1,16 @@
 """Build Hamilton drivers from configured module lists."""
 
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
+if TYPE_CHECKING:
+    from satterc.config import CacheSpec
+
 MODULES: dict[str, str] = {
-    "derive": "satterc.dag.derive",
+    "node": "satterc.dag.node",
     "resample": "satterc.dag.resample",
     "models.splash": "satterc.dag.splash",
     "models.pmodel": "satterc.dag.pmodel",
@@ -20,6 +23,7 @@ def build_driver(
     modules: list[str],
     config: dict[str, Any],
     allow_module_overrides: bool = False,
+    cache: "CacheSpec | None" = None,
 ) -> driver.Driver:
     """Build a Hamilton driver from a list of module names and config.
 
@@ -31,6 +35,8 @@ def build_driver(
         Configuration dict passed to the Hamilton driver.
     allow_module_overrides
         If True, allow later modules to override earlier ones.
+    cache
+        If provided, enable Hamilton result caching according to this spec.
 
     Returns
     -------
@@ -39,12 +45,12 @@ def build_driver(
     """
     config[ENABLE_POWER_USER_MODE] = True
 
-    from satterc.dag.derive import make_derive_module
+    from satterc.dag.node import make_node_module
 
     modules_ = []
     for mod in modules:
-        if mod == "derive":
-            modules_.append(make_derive_module(config.get("derive_specs", [])))
+        if mod == "node":
+            modules_.append(make_node_module(config.get("node_specs", [])))
         elif mod in MODULES:
             modules_.append(import_module(MODULES[mod]))
         else:
@@ -64,4 +70,17 @@ def build_driver(
     if allow_module_overrides:
         dr = dr.allow_module_overrides()
 
-    return dr.build()
+    if cache is not None:
+        from satterc.dag.caching import apply_cache
+
+        dr = apply_cache(dr, cache)
+
+    built = dr.build()
+
+    # Build-time unit-consistency check; a no-op in "off" mode (the conftest
+    # default), so this does not affect builds that opt out of unit handling.
+    from satterc.dag.unit_check import check_dag_units
+
+    check_dag_units(built)
+
+    return built

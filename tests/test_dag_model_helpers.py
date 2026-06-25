@@ -304,12 +304,12 @@ class TestPmodelExecution:
             )
 
         return _pmodel(
-            temperature_celcius_weekly=_da(np.full((n_weeks, n_pixels), 15.0)),
-            vpd_pa_weekly=_da(np.full((n_weeks, n_pixels), 1000.0)),
-            co2_ppm_weekly=_da(np.full((n_weeks, n_pixels), 400.0)),
-            pressure_pa_weekly=_da(np.full((n_weeks, n_pixels), 101325.0)),
+            temperature_weekly=_da(np.full((n_weeks, n_pixels), 15.0)),
+            vpd_weekly=_da(np.full((n_weeks, n_pixels), 1000.0)),
+            co2_weekly=_da(np.full((n_weeks, n_pixels), 400.0)),
+            pressure_weekly=_da(np.full((n_weeks, n_pixels), 101325.0)),
             fapar_weekly=_da(np.full((n_weeks, n_pixels), 0.5)),
-            ppfd_umol_m2_s1_weekly=_da(np.full((n_weeks, n_pixels), 500.0)),
+            ppfd_weekly=_da(np.full((n_weeks, n_pixels), 500.0)),
             mean_growth_temperature_weekly=_da(np.full((n_weeks, n_pixels), 15.0)),
             aridity_index_weekly=_da(np.full((n_weeks, n_pixels), 0.5)),
             soil_moisture_weekly=_da(np.full((n_weeks, n_pixels), 100.0)),
@@ -360,8 +360,8 @@ class TestRothcExecution:
             return xr.DataArray(values, dims=["pixel"], coords={"pixel": pixel})
 
         return _rothc(
-            temperature_celcius_monthly=_da(np.full((n_months, n_pixels), 10.0)),
-            precipitation_mm_monthly=_da(np.full((n_months, n_pixels), 50.0)),
+            temperature_monthly=_da(np.full((n_months, n_pixels), 10.0)),
+            precipitation_monthly=_da(np.full((n_months, n_pixels), 50.0)),
             evaporation_monthly=_da(np.full((n_months, n_pixels), 30.0)),
             plant_cover_monthly=_da(np.ones((n_months, n_pixels), dtype=bool)),
             dpm_rpm_ratio_monthly=_da(np.full((n_months, n_pixels), 1.44)),
@@ -433,17 +433,17 @@ class TestPmodelDriverExecution:
         result = dr.execute(
             ["gpp_weekly", "lue_weekly", "iwue_weekly"],
             inputs={
-                "temperature_celcius_weekly": _wda(15.0),
-                "temperature_celcius_daily": xr.DataArray(
+                "temperature_weekly": _wda(15.0),
+                "temperature_daily": xr.DataArray(
                     np.full((n_days, n_pixels), 15.0),
                     dims=["time", "pixel"],
                     coords={"time": time_daily, "pixel": pixel},
                 ),
-                "vpd_pa_weekly": _wda(1000.0),
-                "co2_ppm_weekly": _wda(400.0),
-                "pressure_pa_weekly": _wda(101325.0),
+                "vpd_weekly": _wda(1000.0),
+                "co2_weekly": _wda(400.0),
+                "pressure_weekly": _wda(101325.0),
                 "fapar_weekly": _wda(0.5),
-                "ppfd_umol_m2_s1_weekly": _wda(500.0),
+                "ppfd_weekly": _wda(500.0),
                 "aridity_index_weekly": _wda(0.5),
                 "soil_moisture_weekly": _wda(100.0),
             },
@@ -482,8 +482,8 @@ class TestRothcDriverExecution:
         result = dr.execute(
             ["soil_organic_carbon_monthly"],
             inputs={
-                "temperature_celcius_monthly": _mda(10.0),
-                "precipitation_mm_monthly": _mda(50.0),
+                "temperature_monthly": _mda(10.0),
+                "precipitation_monthly": _mda(50.0),
                 "evaporation_monthly": _mda(30.0),
                 "soil_carbon_input_monthly": _mda(0.2),
                 "clay_content": _sda(30.0),
@@ -528,12 +528,12 @@ class TestSgamInnerExecution:
             )
 
         result = _sgam(
-            plant_type=plant_type_da.values.astype(int),
+            plant_type=plant_type_da,
             pft_params=pft_params_ds,
-            temperature_celcius_weekly=_da(15.0),
+            temperature_weekly=_da(15.0),
             gpp_weekly=_da(5.0),
             soil_moisture_weekly=_da(100.0),
-            vpd_pa_weekly=_da(1000.0),
+            vpd_weekly=_da(1000.0),
             lue_weekly=_da(2.0),
             iwue_weekly=_da(100.0),
             dates_weekly=time,
@@ -573,12 +573,12 @@ class TestSgamInnerExecution:
             )
 
         result = _sgam(
-            plant_type=plant_type_da.values.astype(int),
+            plant_type=plant_type_da,
             pft_params=pft_params_ds,
-            temperature_celcius_weekly=_da(15.0),
+            temperature_weekly=_da(15.0),
             gpp_weekly=_da(5.0),
             soil_moisture_weekly=_da(100.0),
-            vpd_pa_weekly=_da(1000.0),
+            vpd_weekly=_da(1000.0),
             lue_weekly=_da(2.0),
             iwue_weekly=_da(100.0),
             dates_weekly=time,
@@ -612,7 +612,7 @@ class TestDisturbancesDaily:
             return xr.DataArray(values, dims=["pixel"], coords={"pixel": pixel})
 
         result = disturbances_daily(
-            temperature_celcius_daily=_da(np.full((n_days, n_pixels), 15.0)),
+            temperature_daily=_da(np.full((n_days, n_pixels), 15.0)),
             gpp_daily=_da(np.full((n_days, n_pixels), 5.0)),
             lai_daily=_da(np.full((n_days, n_pixels), 2.0)),
             plant_type=_static_da(np.zeros(n_pixels, dtype=float)),
@@ -648,8 +648,8 @@ class TestSplashExecution:
             sunshine_fraction_daily=_da(
                 np.clip(rng.normal(0.5, 0.2, (n_days, n_pixels)), 0, 1)
             ),
-            temperature_celcius_daily=_da(rng.normal(10, 5, (n_days, n_pixels))),
-            precipitation_mm_daily=_da(np.abs(rng.normal(2, 1, (n_days, n_pixels)))),
+            temperature_daily=_da(rng.normal(10, 5, (n_days, n_pixels))),
+            precipitation_daily=_da(np.abs(rng.normal(2, 1, (n_days, n_pixels)))),
             elevation=_static_da(np.array([50.0, 100.0])),
             latitude=_static_da(np.array([51.5, 52.0])),
             max_soil_moisture=_static_da(np.array([150.0, 150.0])),
@@ -708,8 +708,8 @@ class TestSplashExecution:
             sunshine_fraction_daily=_da(
                 np.clip(rng.normal(0.5, 0.2, (n_days, n_pixels)), 0, 1)
             ),
-            temperature_celcius_daily=_da(rng.normal(10, 5, (n_days, n_pixels))),
-            precipitation_mm_daily=_da(np.abs(rng.normal(2, 1, (n_days, n_pixels)))),
+            temperature_daily=_da(rng.normal(10, 5, (n_days, n_pixels))),
+            precipitation_daily=_da(np.abs(rng.normal(2, 1, (n_days, n_pixels)))),
             elevation=_static_da(np.array([50.0])),
             latitude=_static_da(np.array([51.5])),
             max_soil_moisture=_static_da(np.array([150.0])),

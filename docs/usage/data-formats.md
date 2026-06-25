@@ -64,9 +64,9 @@ For gridded or multi-point data, files should have:
 
 - A `time` dimension with a datetime coordinate
 - Spatial dimensions (`x`/`y` or `lat`/`lon`) with a CRS attribute, **or** a `pixel` dimension
-- Data variables named without frequency suffixes (e.g., `temperature_celcius`, not `temperature_celcius_daily`)
+- Data variables named without frequency suffixes (e.g., `temperature`, not `temperature_daily`)
 
-SatTerC appends the frequency suffix internally. For example, a variable `temperature_celcius` in a daily input file becomes the node `temperature_celcius_daily` in the DAG.
+SatTerC appends the frequency suffix internally. For example, a variable `temperature` in a daily input file becomes the node `temperature_daily` in the DAG.
 
 ## Model Data Requirements
 
@@ -79,8 +79,8 @@ Static variables have no suffix.
 | Category | Variable | Description |
 |----------|----------|-------------|
 | **Inputs (daily)** | `sunshine_fraction` | Fraction of daylight hours that are sunny (0–1) |
-| | `temperature_celcius` | Air temperature (°C) |
-| | `precipitation_mm` | Precipitation (mm) |
+| | `temperature` | Air temperature (°C) |
+| | `precipitation` | Precipitation (mm/day) |
 | **Inputs (static)** | `elevation` | Elevation (m) |
 | | `latitude` | Latitude (degrees) — or use `[grid]` section |
 | | `max_soil_moisture` | Maximum soil moisture capacity (mm) |
@@ -88,18 +88,18 @@ Static variables have no suffix.
 | | `soil_moisture_init_max_diff` | Max diff for soil moisture convergence (default: 1.0) |
 | **Outputs (daily)** | `actual_evapotranspiration` | Actual evapotranspiration (mm/day) |
 | | `soil_moisture` | Soil moisture content (mm) |
-| | `runoff` | Runoff (mm/day) |
+| | `runoff` | Runoff (mm) |
 
 ### P-Model
 
 | Category | Variable | Description |
 |----------|----------|-------------|
-| **Inputs (weekly)** | `temperature_celcius` | Air temperature (°C) |
-| | `vpd_pa` | Vapor pressure deficit (Pa) |
-| | `co2_ppm` | Atmospheric CO₂ (ppm) |
-| | `pressure_pa` | Atmospheric pressure (Pa) |
+| **Inputs (weekly)** | `temperature` | Air temperature (°C) |
+| | `vpd` | Vapor pressure deficit (Pa) |
+| | `co2` | Atmospheric CO₂ (ppm) |
+| | `pressure` | Atmospheric pressure (Pa) |
 | | `fapar` | Fraction of absorbed PAR (0–1) |
-| | `ppfd_umol_m2_s1` | Photosynthetic photon flux density (μmol/m²/s) |
+| | `ppfd` | Photosynthetic photon flux density (μmol/m²/s) |
 | **Derived (daily→weekly)** | `aridity_index` | AET/precipitation ratio — requires SPLASH output resampled to weekly |
 | | `soil_moisture` | From SPLASH, resampled to weekly |
 | | `mean_growth_temperature` | Mean temperature on growing degree days (computed internally) |
@@ -115,10 +115,10 @@ Static variables have no suffix.
 
 | Category | Variable | Description |
 |----------|----------|-------------|
-| **Inputs (weekly)** | `temperature_celcius` | Air temperature (°C) |
+| **Inputs (weekly)** | `temperature` | Air temperature (°C) |
 | | `gpp` | Gross primary productivity (from P-Model) |
 | | `soil_moisture` | Soil moisture (from SPLASH) |
-| | `vpd_pa` | Vapor pressure deficit (Pa) |
+| | `vpd` | Vapor pressure deficit (Pa) |
 | | `lue` | Light use efficiency (from P-Model) |
 | | `iwue` | Intrinsic water use efficiency (from P-Model) |
 | **Inputs (static)** | `plant_type` | Plant functional type as integer (0=tree, 1=grass, 2=shrub, 3=crop) |
@@ -138,8 +138,8 @@ Static variables have no suffix.
 
 | Category | Variable | Description |
 |----------|----------|-------------|
-| **Inputs (monthly)** | `temperature_celcius` | Monthly mean temperature (°C) |
-| | `precipitation_mm` | Monthly precipitation (mm) |
+| **Inputs (monthly)** | `temperature` | Monthly mean temperature (°C) |
+| | `precipitation` | Monthly precipitation (mm) |
 | **Derived (from SPLASH)** | `evaporation` | Monthly actual evapotranspiration (mm) |
 | **Derived (from SGAM)** | `soil_carbon_input` | From `litter_pool`, resampled to monthly |
 | **Inputs (static)** | `clay_content` | Clay content (%) |
@@ -167,7 +167,7 @@ Static variables have no suffix.
 ```toml
 [inputs.daily]
 path = "data/daily.nc"
-vars = ["precipitation_mm", "sunshine_fraction", "temperature_celcius"]
+vars = ["precipitation", "sunshine_fraction", "temperature"]
 
 [inputs.static]
 path = "data/static.nc"
@@ -179,11 +179,11 @@ vars = ["elevation", "max_soil_moisture"]
 ```toml
 [inputs.daily]
 path = "data/daily.nc"
-vars = ["precipitation_mm", "sunshine_fraction", "temperature_celcius"]
+vars = ["precipitation", "sunshine_fraction", "temperature"]
 
 [inputs.weekly]
 path = "data/weekly.nc"
-vars = ["co2_ppm", "fapar", "ppfd_umol_m2_s1", "pressure_pa", "vpd_pa"]
+vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
 
 [inputs.static]
 path = "data/static.nc"
@@ -192,7 +192,7 @@ vars = ["elevation", "max_soil_moisture"]
 [[resample]]
 from_freq = "daily"
 to_freq = "weekly"
-vars = ["temperature_celcius", "precipitation_mm"]
+vars = ["temperature", "precipitation"]
 ```
 
 ### Full Chain (SPLASH + P-Model + SGAM + RothC)
@@ -200,11 +200,11 @@ vars = ["temperature_celcius", "precipitation_mm"]
 ```toml
 [inputs.daily]
 path = "data/daily.nc"
-vars = ["precipitation_mm", "sunshine_fraction", "temperature_celcius"]
+vars = ["precipitation", "sunshine_fraction", "temperature"]
 
 [inputs.weekly]
 path = "data/weekly.nc"
-vars = ["co2_ppm", "fapar", "ppfd_umol_m2_s1", "pressure_pa", "vpd_pa"]
+vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
 
 [inputs.static]
 path = "data/static.nc"
@@ -218,7 +218,7 @@ vars = [
 [[resample]]
 from_freq = "daily"
 to_freq = "weekly"
-vars = ["temperature_celcius", "precipitation_mm"]
+vars = ["temperature", "precipitation"]
 
 [[resample]]
 from_freq = "weekly"

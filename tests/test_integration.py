@@ -19,12 +19,12 @@ class TestLoadedInputs:
     """Test that load_inputs() returns correctly shaped DataArrays."""
 
     def test_daily_input_shape(self, pipeline_inputs):
-        da = pipeline_inputs["temperature_celcius_daily"]
+        da = pipeline_inputs["temperature_daily"]
         assert da.sizes["time"] == N_DAYS
         assert da.sizes["pixel"] == N_PIXELS
 
     def test_weekly_input_shape(self, pipeline_inputs):
-        da = pipeline_inputs["co2_ppm_weekly"]
+        da = pipeline_inputs["co2_weekly"]
         assert 50 <= da.sizes["time"] <= 54
         assert da.sizes["pixel"] == N_PIXELS
 
@@ -40,8 +40,8 @@ class TestLoadedInputs:
 
     def test_no_nan_in_daily_inputs(self, pipeline_inputs):
         for name in (
-            "temperature_celcius_daily",
-            "precipitation_mm_daily",
+            "temperature_daily",
+            "precipitation_daily",
             "sunshine_fraction_daily",
         ):
             da = pipeline_inputs[name]
@@ -81,30 +81,30 @@ class TestDriverExecution:
     def test_get_final_vars_all_frequencies(self, pipeline_driver, pipeline_inputs):
         """get_final_vars() produces valid final_vars across daily, weekly, monthly."""
         output_specs = {
-            "daily": IOSpec(path="", vars=["temperature_celcius"]),
-            "weekly": IOSpec(path="", vars=["co2_ppm"]),
+            "daily": IOSpec(path="", vars=["temperature"]),
+            "weekly": IOSpec(path="", vars=["co2"]),
             "monthly": IOSpec(path="", vars=["dummy_variable"]),
         }
         final_vars = get_final_vars(output_specs)
         assert final_vars == [
-            "temperature_celcius_daily",
-            "co2_ppm_weekly",
+            "temperature_daily",
+            "co2_weekly",
             "dummy_variable_monthly",
         ]
         results = pipeline_driver.execute(final_vars, inputs=pipeline_inputs)
         assert all(v in results for v in final_vars)
-        assert results["temperature_celcius_daily"].sizes["pixel"] == N_PIXELS
-        assert results["co2_ppm_weekly"].sizes["pixel"] == N_PIXELS
+        assert results["temperature_daily"].sizes["pixel"] == N_PIXELS
+        assert results["co2_weekly"].sizes["pixel"] == N_PIXELS
         assert results["dummy_variable_monthly"].sizes["pixel"] == N_PIXELS
 
     def test_get_final_vars_single_frequency(self, pipeline_driver, pipeline_inputs):
         """Filtering output_specs to one frequency requests only those targets."""
         all_specs = {
-            "daily": IOSpec(path="", vars=["temperature_celcius"]),
+            "daily": IOSpec(path="", vars=["temperature"]),
             "monthly": IOSpec(path="", vars=["dummy_variable"]),
         }
         daily_vars = get_final_vars({"daily": all_specs["daily"]})
-        assert daily_vars == ["temperature_celcius_daily"]
+        assert daily_vars == ["temperature_daily"]
         results = pipeline_driver.execute(daily_vars, inputs=pipeline_inputs)
-        assert "temperature_celcius_daily" in results
+        assert "temperature_daily" in results
         assert "dummy_variable_monthly" not in results

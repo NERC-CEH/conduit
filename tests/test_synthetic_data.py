@@ -27,8 +27,8 @@ class TestSyntheticDataGeneration:
     def test_daily_variables(self, daily_ds):
         """Test daily dataset contains expected variables."""
         expected_vars = {
-            "temperature_celcius",
-            "precipitation_mm",
+            "temperature",
+            "precipitation",
             "sunshine_fraction",
             "lai",
             "gpp",
@@ -38,11 +38,11 @@ class TestSyntheticDataGeneration:
     def test_weekly_variables(self, weekly_ds):
         """Test weekly dataset contains expected variables."""
         expected_vars = {
-            "co2_ppm",
+            "co2",
             "fapar",
-            "ppfd_umol_m2_s1",
-            "pressure_pa",
-            "vpd_pa",
+            "ppfd",
+            "pressure",
+            "vpd",
         }
         assert expected_vars.issubset(set(weekly_ds.data_vars))
 
@@ -50,8 +50,8 @@ class TestSyntheticDataGeneration:
         """Test monthly dataset contains expected variables."""
         expected_vars = {
             "dummy_variable",
-            "temperature_celcius",
-            "precipitation_mm",
+            "temperature",
+            "precipitation",
         }
         assert expected_vars.issubset(set(monthly_ds.data_vars))
 
@@ -76,13 +76,13 @@ class TestSyntheticDataValues:
 
     def test_temperature_range(self, daily_ds):
         """Test temperature is in reasonable range for UK."""
-        temp = daily_ds.temperature_celcius.values
+        temp = daily_ds.temperature.values
         assert np.nanmin(temp) > -20
         assert np.nanmax(temp) < 40
 
     def test_precipitation_non_negative(self, daily_ds):
         """Test precipitation is non-negative."""
-        precip = daily_ds.precipitation_mm.values
+        precip = daily_ds.precipitation.values
         assert np.nanmin(precip) >= 0
 
     def test_sunshine_fraction_valid(self, daily_ds):

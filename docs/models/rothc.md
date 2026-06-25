@@ -68,13 +68,13 @@ RothC requires the following monthly `DataArray` inputs:
 
 | Variable | Units | Description |
 |----------|-------|-------------|
-| `temperature_celcius_monthly` | °C | Monthly mean air temperature |
-| `precipitation_mm_monthly` | mm | Monthly precipitation |
+| `temperature_monthly` | °C | Monthly mean air temperature |
+| `precipitation_monthly` | mm | Monthly precipitation |
 | `evaporation_monthly` | mm | Monthly open pan evaporation |
 | `plant_cover_monthly` | dimensionless (0–1) | Monthly plant cover (boolean: covered or bare) |
 | `dpm_rpm_ratio_monthly` | dimensionless | Ratio of decomposable to resistant plant material |
-| `soil_carbon_input_monthly` | tC·ha⁻¹·month⁻¹ | Monthly carbon input from litter |
-| `farmyard_manure_input_monthly` | tC·ha⁻¹·month⁻¹ | Monthly farmyard manure input |
+| `soil_carbon_input_monthly` | tC·ha⁻¹ | Carbon input from litter for the month |
+| `farmyard_manure_input_monthly` | tC·ha⁻¹ | Farmyard manure input for the month |
 
 And the following static `DataArray` inputs:
 
@@ -86,15 +86,16 @@ And the following static `DataArray` inputs:
 
 ### Outputs
 
-RothC returns five monthly `DataArray` outputs, all in tC·ha⁻¹:
+RothC returns six monthly `DataArray` outputs, all in tC·ha⁻¹:
 
 | Variable | Units | Description |
 |----------|-------|-------------|
 | `decomposable_plant_material_monthly` | tC·ha⁻¹ | DPM pool |
 | `resistant_plant_material_monthly` | tC·ha⁻¹ | RPM pool |
-| `microbial_biomass_monthly` | tC·ha⁻¹ | Microbial biomass pool |
+| `microbial_biomass_monthly` | tC·ha⁻¹ | Microbial biomass (BIO) pool |
 | `humified_organic_matter_monthly` | tC·ha⁻¹ | HUM pool |
 | `soil_organic_carbon_monthly` | tC·ha⁻¹ | Total soil organic carbon (sum of all pools) |
+| `heterotrophic_respiration_monthly` | tC·ha⁻¹ | CO₂ released by microbial decomposition during the month |
 
 ### Python API
 

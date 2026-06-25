@@ -3,8 +3,11 @@
 # dependencies = [
 #     "marimo",
 #     "matplotlib==3.10.9",
-#     "satterc==0.4.0",
+#     "satterc==0.4.1",
 # ]
+#
+# [tool.uv.sources]
+# satterc = { path = ".." }
 # ///
 
 import marimo
@@ -89,9 +92,9 @@ def _(Config, tomllib):
     [inputs.daily]
     path = "daily.nc"
     vars = [
-      "precipitation_mm",
+      "precipitation",
       "sunshine_fraction",
-      "temperature_celcius",
+      "temperature",
       "lai",
       "gpp",
     ]
@@ -99,11 +102,11 @@ def _(Config, tomllib):
     [inputs.weekly]
     path = "weekly.nc"
     vars = [
-      "co2_ppm",
+      "co2",
       "fapar",
-      "ppfd_umol_m2_s1",
-      "pressure_pa",
-      "vpd_pa",
+      "ppfd",
+      "pressure",
+      "vpd",
     ]
 
     [inputs.monthly]
@@ -126,35 +129,60 @@ def _(Config, tomllib):
       "stem_pool_init",
     ]
 
-    [[derive]]
-    output = "aridity_index_daily"
-    inputs = ["precipitation_mm_daily", "actual_evapotranspiration_daily"]
-    expression = "precipitation_mm_daily / actual_evapotranspiration_daily"
+    [[node]]
+    name = "aridity_index_daily"
+    inputs = ["precipitation_daily", "actual_evapotranspiration_daily"]
+    expression = "precipitation_daily / actual_evapotranspiration_daily"
+    units = "1"  # ratio of two mm d-1 fluxes -> dimensionless
 
-    [[derive]]
-    output = "leaf_area_index_weekly"
+    [[node]]
+    name = "leaf_area_index_weekly"
     inputs = ["leaf_pool_weekly", "pft_params"]
     expression = 'leaf_pool_weekly / pft_params["leaf_carbon_area"]'
+    units = "m2 m-2"  # leaf carbon per ground area / leaf carbon per leaf area
 
-    [[derive]]
-    output = "evaporation_monthly"
-    inputs = ["actual_evapotranspiration_monthly"]
-    expression = "actual_evapotranspiration_monthly"
+    # SPLASH AET is a daily rate (mm d-1); RothC wants a monthly total (mm).
+    # Summing the daily rate over the month integrates it (daily Δt = 1 day, so
+    # Σ mm d-1 is numerically the monthly mm total); units = "mm" relabels the
+    # rate as the resulting total.
+    [[node]]
+    name = "evaporation_monthly"
+    inputs = ["actual_evapotranspiration_daily"]
+    expression = "actual_evapotranspiration_daily.resample(time='1ME').sum()"
+    units = "mm"
 
-    [[derive]]
-    output = "soil_carbon_input_monthly"
-    inputs = ["litter_pool_monthly"]
-    expression = "litter_pool_monthly"
+    # Precipitation is likewise a daily rate (mm d-1); aggregate to a monthly
+    # total (mm) for RothC the same way. (Done as a derive rather than a plain
+    # [[resample]] because that would feed the mm d-1 rate straight into RothC's
+    # mm input and the resample output name would collide with this one.)
+    [[node]]
+    name = "precipitation_monthly"
+    inputs = ["precipitation_daily"]
+    expression = "precipitation_daily.resample(time='1ME').sum()"
+    units = "mm"
 
-    [[derive]]
-    output = "inert_organic_matter"
+    # Carbon entering the soil each month = the litter produced that month. SGAM's
+    # litter_pool is an accumulate-only stock (no decomposition; that is RothC's
+    # job), so the monthly litterfall is its *increment*: diff the weekly pool and
+    # sum within each month. Using the increment (rather than summing turnover_*)
+    # also captures litter from disturbance events, which the turnover outputs omit.
+    # SGAM reports g m-2; RothC wants t ha-1, so convert with pint (factor 100).
+    [[node]]
+    name = "soil_carbon_input_monthly"
+    inputs = ["litter_pool_weekly"]
+    expression = "litter_pool_weekly.diff('time').resample(time='1ME').sum().assign_attrs(units='g m-2').pint.quantify().pint.to('t ha-1').pint.dequantify()"
+    units = "t ha-1"
+
+    [[node]]
+    name = "inert_organic_matter"
     inputs = ["organic_carbon_stocks"]
-    expression = "0.049 * organic_carbon_stocks**1.139"
+    expression = "0.049 * organic_carbon_stocks**1.139"  # Falloon IOM (t ha-1)
+    units = "t ha-1"
 
     [[resample]]
     vars = [
-      "temperature_celcius",
-      "precipitation_mm",
+      "temperature",
+      "precipitation",
       "soil_moisture",
       "aridity_index",
     ]
@@ -163,9 +191,7 @@ def _(Config, tomllib):
 
     [[resample]]
     vars = [
-      "temperature_celcius",
-      "precipitation_mm",
-      "actual_evapotranspiration",
+      "temperature",
     ]
     from_freq = "daily"
     to_freq = "monthly"
@@ -175,13 +201,6 @@ def _(Config, tomllib):
     from_freq = "daily"
     to_freq = "weekly"
     aggfunc = "max"
-
-    [[resample]]
-    vars = [
-      "litter_pool",
-    ]
-    from_freq = "weekly"
-    to_freq = "monthly"
 
     [outputs.daily]
     path = "results/daily.nc"

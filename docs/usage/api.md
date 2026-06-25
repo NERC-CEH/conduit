@@ -42,7 +42,7 @@ config_data = {
     "inputs": {
         "daily": {
             "path": "data/daily.nc",
-            "vars": ["precipitation_mm", "sunshine_fraction", "temperature_celcius"],
+            "vars": ["precipitation", "sunshine_fraction", "temperature"],
         },
         "static": {
             "path": "data/static.nc",
@@ -120,7 +120,7 @@ name:
 inputs = load_inputs(parsed.input_specs)
 ```
 
-Temporal variables are keyed as `{var}_{freq}` (e.g. `temperature_celcius_daily`).
+Temporal variables are keyed as `{var}_{freq}` (e.g. `temperature_daily`).
 Static variables have no suffix (e.g. `elevation`). Grid coordinates
 (`latitude`, `longitude`) are computed automatically when the inputs carry a CRS.
 
@@ -209,7 +209,7 @@ from satterc.config import Config
 config_data = {
     "models": {"splash": {}},
     "inputs": {
-        "daily": {"path": "data/daily.nc", "vars": ["precipitation_mm", "sunshine_fraction", "temperature_celcius"]},
+        "daily": {"path": "data/daily.nc", "vars": ["precipitation", "sunshine_fraction", "temperature"]},
         "static": {"path": "data/static.nc", "vars": ["elevation", "latitude", "max_soil_moisture"]},
     },
     "outputs": {

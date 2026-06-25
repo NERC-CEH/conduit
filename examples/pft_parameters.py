@@ -4,9 +4,12 @@
 #     "marimo",
 #     "matplotlib==3.10.9",
 #     "numpy==2.4.4",
-#     "satterc==0.4.0",
+#     "satterc==0.4.1",
 #     "scipy==1.17.1",
 # ]
+#
+# [tool.uv.sources]
+# satterc = { path = ".." }
 # ///
 
 import marimo
@@ -89,9 +92,9 @@ def _(Config, tomllib):
     [inputs.daily]
     path = "daily.nc"
     vars = [
-      "precipitation_mm",
+      "precipitation",
       "sunshine_fraction",
-      "temperature_celcius",
+      "temperature",
       "lai",
       "gpp",
     ]
@@ -99,11 +102,11 @@ def _(Config, tomllib):
     [inputs.weekly]
     path = "weekly.nc"
     vars = [
-      "co2_ppm",
+      "co2",
       "fapar",
-      "ppfd_umol_m2_s1",
-      "pressure_pa",
-      "vpd_pa",
+      "ppfd",
+      "pressure",
+      "vpd",
     ]
 
     [inputs.static]
@@ -117,14 +120,14 @@ def _(Config, tomllib):
       "root_pool_init",
     ]
 
-    [[derive]]
-    output = "aridity_index_daily"
-    inputs = ["precipitation_mm_daily", "actual_evapotranspiration_daily"]
-    expression = "precipitation_mm_daily / actual_evapotranspiration_daily"
+    [[node]]
+    name = "aridity_index_daily"
+    inputs = ["precipitation_daily", "actual_evapotranspiration_daily"]
+    expression = "precipitation_daily / actual_evapotranspiration_daily"
 
     [[resample]]
     vars = [
-      "temperature_celcius",
+      "temperature",
       "soil_moisture",
       "aridity_index",
     ]
@@ -187,9 +190,9 @@ def _(dr, inputs, np):
         "gpp_weekly",
         "lue_weekly",
         "iwue_weekly",
-        "temperature_celcius_weekly",
+        "temperature_weekly",
         "soil_moisture_weekly",
-        "vpd_pa_weekly",
+        "vpd_weekly",
         "disturbances_weekly",
         "dates_weekly",
         "leaf_pool_init",
@@ -344,7 +347,7 @@ def _(mo):
 
     $$u_i = \frac{\theta_i - \theta_i^{\min}}{\theta_i^{\max} - \theta_i^{\min}}$$
 
-    Normalisation by prior range maps *prior* widths to [0, 1], but the posterior
+    Normalisation by prior range maps *prior* widths to \[0, 1\], but the posterior
     widths in normalised space are still very different (~25×). A single isotropic
     step size cannot serve both directions well, so we use **per-parameter step sizes**
     matched to each posterior width (≈ 1σ per direction):

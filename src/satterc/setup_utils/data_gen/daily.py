@@ -39,7 +39,7 @@ def time_coord(n_days: int, start_date: str = "2020-01-01") -> NDArray[np.dateti
     return start + np.arange(n_days)
 
 
-def temperature_celcius_daily(
+def temperature_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
 ) -> xr.DataArray:
@@ -61,16 +61,16 @@ def temperature_celcius_daily(
         data=data,
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "degrees_C", "long_name": "air temperature"},
-        name="temperature_celcius",
+        attrs={"units": "degC", "long_name": "air temperature"},
+        name="temperature",
     )
 
 
-def precipitation_mm_daily(
+def precipitation_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
 ) -> xr.DataArray:
-    """Daily precipitation in mm."""
+    """Daily precipitation in mm d-1."""
     n_days = len(time_coord)
     n_pixels = len(pixel_coords)
 
@@ -87,8 +87,8 @@ def precipitation_mm_daily(
         data=data,
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "mm", "long_name": "precipitation"},
-        name="precipitation_mm",
+        attrs={"units": "mm d-1", "long_name": "precipitation"},
+        name="precipitation",
     )
 
 
@@ -110,7 +110,7 @@ def sunshine_fraction_daily(
         data=data,
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "dimensionless", "long_name": "sunshine fraction"},
+        attrs={"units": "1", "long_name": "sunshine fraction"},
         name="sunshine_fraction",
     )
 
@@ -119,7 +119,7 @@ def lai_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
 ) -> xr.DataArray:
-    """Daily Leaf Area Index (m2/m2)."""
+    """Daily Leaf Area Index (dimensionless ratio, m2 m-2)."""
     n_days = len(time_coord)
     n_pixels = len(pixel_coords)
 
@@ -131,7 +131,7 @@ def lai_daily(
         data=data,
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "m2/m2", "long_name": "leaf area index"},
+        attrs={"units": "1", "long_name": "leaf area index"},
         name="lai",
     )
 
@@ -139,13 +139,13 @@ def lai_daily(
 def gpp_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
-    temperature_celcius_daily: xr.DataArray,
+    temperature_daily: xr.DataArray,
 ) -> xr.DataArray:
-    """Daily Gross Primary Productivity (gC/m2/d)."""
+    """Daily Gross Primary Productivity (g m-2 d-1)."""
     n_days = len(time_coord)
     n_pixels = len(pixel_coords)
 
-    temp_vals = temperature_celcius_daily.values  # (n_days, n_pixels)
+    temp_vals = temperature_daily.values  # (n_days, n_pixels)
     seasonal = _generate_seasonal_cycle(n_days, 5.0, -np.pi / 3, 0.0)[:, np.newaxis]
     temp_factor = np.maximum(temp_vals - 5.0, 0.0) / 15.0
     noise = np.random.uniform(-1.0, 1.0, (n_days, n_pixels))
@@ -155,7 +155,7 @@ def gpp_daily(
         data=data,
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "gC/m2/d", "long_name": "gross primary productivity"},
+        attrs={"units": "g m-2 d-1", "long_name": "gross primary productivity"},
         name="gpp",
     )
 
@@ -172,12 +172,12 @@ def dummy_variable_daily(
         data=np.full((n_days, n_pixels), np.nan),
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "dimensionless", "long_name": "dummy variable"},
+        attrs={"units": "1", "long_name": "dummy variable"},
         name="dummy_variable",
     )
 
 
-def co2_ppm_daily(
+def co2_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
 ) -> xr.DataArray:
@@ -197,7 +197,7 @@ def co2_ppm_daily(
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
         attrs={"units": "ppm", "long_name": "atmospheric CO2 concentration"},
-        name="co2_ppm",
+        name="co2",
     )
 
 
@@ -217,16 +217,16 @@ def fapar_daily(
         data=data,
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "dimensionless", "long_name": "fAPAR"},
+        attrs={"units": "1", "long_name": "fAPAR"},
         name="fapar",
     )
 
 
-def ppfd_umol_m2_s1_daily(
+def ppfd_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
 ) -> xr.DataArray:
-    """Photosynthetic photon flux density in umol/m2/s."""
+    """Photosynthetic photon flux density in umol m-2 s-1."""
     n_days = len(time_coord)
     n_pixels = len(pixel_coords)
 
@@ -239,12 +239,15 @@ def ppfd_umol_m2_s1_daily(
         data=data,
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
-        attrs={"units": "umol/m2/s", "long_name": "photosynthetic photon flux density"},
-        name="ppfd_umol_m2_s1",
+        attrs={
+            "units": "umol m-2 s-1",
+            "long_name": "photosynthetic photon flux density",
+        },
+        name="ppfd",
     )
 
 
-def pressure_pa_daily(
+def pressure_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
     elevation: xr.DataArray,
@@ -263,20 +266,20 @@ def pressure_pa_daily(
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
         attrs={"units": "Pa", "long_name": "atmospheric pressure"},
-        name="pressure_pa",
+        name="pressure",
     )
 
 
-def vpd_pa_daily(
+def vpd_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
-    temperature_celcius_daily: xr.DataArray,
+    temperature_daily: xr.DataArray,
 ) -> xr.DataArray:
     """Vapor pressure deficit in Pascals."""
     n_days = len(time_coord)
     n_pixels = len(pixel_coords)
 
-    temp = temperature_celcius_daily.values  # (n_days, n_pixels)
+    temp = temperature_daily.values  # (n_days, n_pixels)
     svp = 610.78 * np.exp(temp / (temp + 237.3) * 17.27)
     rh = np.clip(0.5 + np.random.uniform(-0.2, 0.2, (n_days, n_pixels)), 0.1, 0.95)
     data = np.clip(svp * (1.0 - rh), 50.0, 3000.0)
@@ -286,11 +289,11 @@ def vpd_pa_daily(
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
         attrs={"units": "Pa", "long_name": "vapor pressure deficit"},
-        name="vpd_pa",
+        name="vpd",
     )
 
 
-def wind_speed_ms_daily(
+def wind_speed_daily(
     time_coord: NDArray[np.datetime64],
     pixel_coords: pd.MultiIndex,
 ) -> xr.DataArray:
@@ -312,5 +315,5 @@ def wind_speed_ms_daily(
         dims=["time", "pixel"],
         coords={"time": time_coord, "pixel": pixel_coords},
         attrs={"units": "m/s", "long_name": "wind speed"},
-        name="wind_speed_ms",
+        name="wind_speed",
     )
