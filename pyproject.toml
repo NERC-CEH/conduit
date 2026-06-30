@@ -22,8 +22,6 @@ dependencies = [
     "pint>=0.25.3",
     "pint-xarray>=0.6.1",
     "pyarrow>=10.0",
-    "pyproj>=3.7.2",
-    "rioxarray>=0.22.0",
     "tomli-w>=1.2.0",
     "typer>=0.24.1",
     "xarray>=2026.2.0",
@@ -32,7 +30,10 @@ dependencies = [
 
 [project.optional-dependencies]
 viz = ["apache-hamilton[visualization]>=1.90.0"]
-all = ["breadboard[viz]"]
+# Geospatial inputs (CRS-aware (y, x) -> pixel stacking and lat/lon reprojection).
+# Only needed when inputs carry CRS metadata; imported lazily by breadboard.io.
+geo = ["pyproj>=3.7.2", "rioxarray>=0.22.0"]
+all = ["breadboard[viz,geo]"]
 
 [project.scripts]
 breadboard = "breadboard.cli:main"
@@ -63,7 +64,7 @@ examples = [
     "matplotlib>=3.10.8",
 ]
 test = [
-    "breadboard[viz]",
+    "breadboard[viz,geo]",
     "coverage>=7.13.5",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",

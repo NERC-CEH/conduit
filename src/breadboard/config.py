@@ -141,11 +141,13 @@ class CacheSpec:
 class BlockingSpec:
     """Specification for the [blocking] section.
 
-    Controls how the stacked ``pixel`` dimension is partitioned into
-    fixed-size sequential blocks to bound peak memory usage.
+    Controls how a partition dimension (``dim``, default ``pixel``) is split into
+    fixed-size sequential blocks to bound peak memory usage. Set ``dim`` to block
+    over any other dimension (e.g. ``location``) for non-gridded pipelines.
     """
 
     block_size: int
+    dim: str = "pixel"
 
     @classmethod
     def from_config(cls, entry: dict) -> "BlockingSpec":
@@ -156,7 +158,12 @@ class BlockingSpec:
                 "[blocking] 'block_size' must be a positive integer, "
                 f"got {block_size!r}."
             )
-        return cls(block_size=block_size)
+        dim = entry.get("dim", "pixel")
+        if not isinstance(dim, str) or not dim:
+            raise ValueError(
+                f"[blocking] 'dim' must be a non-empty string, got {dim!r}."
+            )
+        return cls(block_size=block_size, dim=dim)
 
 
 @dataclass
@@ -197,10 +204,19 @@ class SubsetSpec:
 
 @dataclass
 class IOSpec:
-    """I/O specification for a single input or output section."""
+    """I/O specification for a single input or output section.
+
+    ``suffix`` controls how this section's variables are mapped to Hamilton node
+    names. When ``None`` (the default) the effective suffix is derived from the
+    section label: ``_<label>`` for a temporal/grouped section, or ``""`` (bare
+    names) for the conventional ``static`` label. Set ``suffix = ""`` on any
+    section for bare names, or ``suffix = "_x"`` to choose an explicit suffix.
+    See ``breadboard.io.effective_suffix``.
+    """
 
     path: str
     vars: list[str]
+    suffix: str | None = None
 
 
 @dataclass
@@ -288,6 +304,7 @@ class Config:
             input_specs[freq] = IOSpec(
                 path=params["path"],
                 vars=params.get("vars") or [],
+                suffix=params.get("suffix"),
             )
 
     def _parse_outputs(
@@ -310,6 +327,7 @@ class Config:
             output_specs[freq] = IOSpec(
                 path=params["path"],
                 vars=vars_,
+                suffix=params.get("suffix"),
             )
 
     def _parse_resample(self, data: dict, driver_config: dict) -> list[str]:

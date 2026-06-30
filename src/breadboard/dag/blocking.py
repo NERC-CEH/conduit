@@ -1,8 +1,9 @@
-"""Blocked driver execution for pixel-dimension memory management (Mechanism B).
+"""Blocked driver execution for memory management (Mechanism B).
 
-Partitions the stacked ``pixel`` dimension into fixed-size blocks and calls
-``dr.execute`` per block sequentially, then concatenates results along ``pixel``.
-Peak memory is bounded to a small multiple of one block's footprint.
+Partitions a chosen dimension (``dim``, default ``pixel``) into fixed-size blocks
+and calls ``dr.execute`` per block sequentially, then concatenates results along
+that dimension. Peak memory is bounded to a small multiple of one block's
+footprint.
 """
 
 from __future__ import annotations
@@ -18,34 +19,39 @@ if TYPE_CHECKING:
     from breadboard.config import BlockingSpec
 
 
-def _pixel_input_names(inputs: dict[str, Any]) -> list[str]:
-    """Return the names of inputs that have a ``pixel`` dimension."""
+def _block_input_names(inputs: dict[str, Any], dim: str = "pixel") -> list[str]:
+    """Return the names of inputs that have the ``dim`` dimension."""
     return [
         name
         for name, val in inputs.items()
-        if isinstance(val, xr.DataArray) and "pixel" in val.dims
+        if isinstance(val, xr.DataArray) and dim in val.dims
     ]
+
+
+# Backwards-compatible alias (the partition dimension defaults to ``pixel``).
+_pixel_input_names = _block_input_names
 
 
 def _make_blocks(
     inputs: dict[str, Any],
-    pixel_names: list[str],
+    block_names: list[str],
     block_size: int,
+    dim: str = "pixel",
 ) -> Generator[dict[str, Any]]:
-    """Yield sliced input dicts, one per pixel block.
+    """Yield sliced input dicts, one per block along ``dim``.
 
     Partition is deterministic and fixed-size (independent of worker count)
     so cache keys are stable across machines and restarts.
     """
-    if not pixel_names:
+    if not block_names:
         yield inputs
         return
 
-    n_pixels = inputs[pixel_names[0]].sizes["pixel"]
-    for start in range(0, n_pixels, block_size):
+    n = inputs[block_names[0]].sizes[dim]
+    for start in range(0, n, block_size):
         sl = slice(start, start + block_size)
         yield {
-            name: val.isel(pixel=sl) if name in pixel_names else val
+            name: val.isel({dim: sl}) if name in block_names else val
             for name, val in inputs.items()
         }
 
@@ -53,20 +59,21 @@ def _make_blocks(
 def _concat_results(
     block_results: list[dict[str, Any]],
     final_vars: list[str],
+    dim: str = "pixel",
 ) -> dict[str, Any]:
-    """Concatenate per-block results along the ``pixel`` dimension."""
+    """Concatenate per-block results along the ``dim`` dimension."""
     out: dict[str, Any] = {}
     for var in final_vars:
         first = block_results[0][var]
-        if not (isinstance(first, xr.DataArray) and "pixel" in first.dims):
+        if not (isinstance(first, xr.DataArray) and dim in first.dims):
             raise ValueError(
                 f"Blocking cannot recombine '{var}' "
                 f"(dims: {getattr(first, 'dims', '(scalar)')}) — it has no "
-                f"'pixel' dimension. Remove it from [outputs] when using "
+                f"{dim!r} dimension. Remove it from [outputs] when using "
                 f"[blocking], or disable [blocking] to request "
-                f"pixel-aggregated outputs."
+                f"{dim}-aggregated outputs."
             )
-        out[var] = xr.concat([r[var] for r in block_results], dim="pixel")
+        out[var] = xr.concat([r[var] for r in block_results], dim=dim)
     return out
 
 
@@ -76,7 +83,7 @@ def execute_blocked(
     final_vars: list[str],
     spec: BlockingSpec,
 ) -> dict[str, Any]:
-    """Execute the driver in pixel blocks and concatenate results.
+    """Execute the driver in blocks along ``spec.dim`` and concatenate results.
 
     Parameters
     ----------
@@ -87,11 +94,12 @@ def execute_blocked(
     final_vars
         Node names to compute, as returned by ``get_final_vars``.
     spec
-        Blocking configuration (``block_size``).
+        Blocking configuration (``block_size`` and ``dim``).
     """
-    pixel_names = _pixel_input_names(inputs)
-    blocks = list(_make_blocks(inputs, pixel_names, spec.block_size))
+    block_names = _block_input_names(inputs, spec.dim)
+    blocks = list(_make_blocks(inputs, block_names, spec.block_size, spec.dim))
     return _concat_results(
         [dr.execute(final_vars, inputs=bi) for bi in blocks],  # type: ignore[reportArgumentType]
         final_vars,
+        spec.dim,
     )

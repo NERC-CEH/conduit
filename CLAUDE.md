@@ -12,10 +12,17 @@ changes (config schema, public APIs, behaviour) freely rather than adding
 compatibility shims.
 
 The refactor is **phased**: Phase 1 (done) renamed the package and stripped all
-carbon-domain models. Later phases generalise the I/O layer away from the baked-in
-temporal-frequency (`{var}_{freq}`, daily/weekly/monthly/static) and geospatial
-`(time, pixel)` + CRS conventions, which are still present but slated to become
-opt-in. See the plan file if working through subsequent phases.
+carbon-domain models. Phase 2 (done) generalised the I/O layer: input section
+labels may be arbitrary (not just daily/weekly/monthly/static), the
+frequency-suffix naming is opt-out (`IOSpec.suffix`; see
+`breadboard.io.effective_suffix`), a `time` dimension is auto-detected (frequency
+*validation* only for known labels), the geospatial layer (CRS stacking +
+lat/lon) is opt-in and lazily imports the optional `geo` extra
+(`rioxarray`/`pyproj`) only when CRS metadata is present, and `[blocking]` can
+partition any `dim` (default `pixel`). Remaining Phase 2 follow-ups: the
+`[subset]`/Zarr-region parallel-write path is still `pixel`-specific (it serves
+the gridded use case), and the resample `RESAMPLE_FREQ_MAP` is a fixed default
+convention. Phase 4 is the docs/examples rewrite. See the plan file for details.
 
 ## Guiding philosophy
 

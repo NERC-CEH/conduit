@@ -7,9 +7,7 @@ from typing import Any, cast
 
 import numpy as np
 import pandas as pd
-import rioxarray as rioxarray
 import xarray as xr
-from pyproj import Transformer
 
 from .config import RESAMPLE_FREQ_MAP, IOSpec, SubsetSpec
 from .spatial import stack_spatial_dims
@@ -17,6 +15,47 @@ from .spatial import stack_spatial_dims
 
 class MisalignedGridError(Exception):
     """Raised when two datasets do not share a common CRS and coordinates."""
+
+
+def _ensure_rio() -> None:
+    """Import rioxarray (registering the ``.rio`` accessor) or raise a clear error.
+
+    The geospatial layer (CRS-aware stacking + lat/lon reprojection) is optional;
+    ``rioxarray``/``pyproj`` are only needed when CRS-bearing inputs are present.
+    """
+    try:
+        import rioxarray as rioxarray  # registers the .rio accessor
+    except ImportError as exc:  # pragma: no cover - only hit without the extra
+        raise ImportError(
+            "geospatial (CRS-bearing) inputs require the optional 'geo' extra; "
+            "install it with `pip install breadboard[geo]`."
+        ) from exc
+
+
+def _has_crs(ds: xr.Dataset) -> bool:
+    """Cheaply detect CRS metadata without importing rioxarray.
+
+    Looks for the markers CF/rioxarray round-trips through NetCDF/Zarr: a ``crs``
+    global attribute, a ``spatial_ref`` grid-mapping coordinate, or a per-variable
+    ``grid_mapping`` attribute. Used to decide whether to activate the (lazy)
+    geospatial path, so non-gridded pipelines never touch rioxarray/pyproj.
+    """
+    if ds.attrs.get("crs") or "spatial_ref" in ds.coords:
+        return True
+    return any("grid_mapping" in da.attrs for da in ds.data_vars.values())
+
+
+def effective_suffix(label: str, spec: IOSpec) -> str:
+    """Resolve the node-name suffix for an input/output section.
+
+    Honours an explicit ``IOSpec.suffix`` when set; otherwise defaults to
+    ``_<label>``, except the conventional ``static`` label which defaults to
+    ``""`` (bare names). This is the single place the frequency-suffix naming
+    convention is applied, so it is opt-out and not a hard requirement.
+    """
+    if spec.suffix is not None:
+        return spec.suffix
+    return "" if label == "static" else f"_{label}"
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +152,7 @@ def stack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
     """Stack (y, x) to pixel if CRS-bearing 2D grid; pass through otherwise."""
     if "pixel" in ds.dims:
         return ds
+    _ensure_rio()
     if ds.rio.crs is not None:
         return stack_spatial_dims(ds)
     return ds
@@ -167,13 +207,23 @@ def unstack_pixel(ds: xr.Dataset) -> xr.Dataset:
 _FREQ_CODES: dict[str, str] = {"daily": "D", "weekly": "W", "monthly": "ME"}
 
 
-def _validate_dates(ds: xr.Dataset, freq: str) -> pd.DatetimeIndex:
-    """Extract and validate the time index from a dataset."""
+def _time_index(ds: xr.Dataset, label: str = "time") -> pd.DatetimeIndex:
+    """Return the dataset's ``time`` index, asserting it is a ``DatetimeIndex``.
+
+    Unlike `_validate_dates`, this performs no frequency validation; it is used
+    for input groups whose label is not a known temporal frequency.
+    """
     idx = cast(pd.DatetimeIndex, ds.get_index("time"))
     if not isinstance(idx, pd.DatetimeIndex):
         raise ValueError(
-            f"Expected a DatetimeIndex for '{freq}' inputs, got {type(idx)}"
+            f"Expected a DatetimeIndex for '{label}' inputs, got {type(idx)}"
         )
+    return idx
+
+
+def _validate_dates(ds: xr.Dataset, freq: str) -> pd.DatetimeIndex:
+    """Extract and validate the time index from a dataset against a known freq."""
+    idx = _time_index(ds, freq)
 
     expected = _FREQ_CODES[freq]
     inferred = pd.infer_freq(idx)
@@ -239,6 +289,7 @@ def _check_common_grid(
     atol: float = 1e-6,
 ) -> None:
     """Raise MisalignedGridError if CRS and coordinates do not match."""
+    _ensure_rio()
     if ds1.rio.crs != ds2.rio.crs:
         raise MisalignedGridError(
             f"Mismatched CRS! {label1}={ds1.rio.crs} ≠ {label2}={ds2.rio.crs}"
@@ -262,6 +313,9 @@ def _compute_lat_lon(
     spatial_datasets: dict[str, xr.Dataset],
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Compute stacked latitude and longitude DataArrays from CRS-bearing datasets."""
+    from pyproj import Transformer
+
+    _ensure_rio()
     items = list(spatial_datasets.items())
     ref_name, ref_ds = items[0]
     for name, ds in items[1:]:
@@ -394,40 +448,58 @@ def _save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
 def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
+    geospatial: bool | None = None,
 ) -> dict[str, Any]:
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
-    Keys follow Hamilton naming conventions:
-    - Temporal variables: ``{var}_{freq}`` (e.g. ``temperature_daily``)
-    - Static variables: ``{var}`` (no suffix)
-    - Time indices: ``dates_{freq}``
-    - Grid: ``latitude``, ``longitude`` (only when CRS-bearing inputs are present)
+    Node names are formed from each section's variables and its
+    `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily`` or, for a
+    bare section, ``elevation``). A ``time`` dimension is auto-detected per
+    section: when present a ``dates_{label}`` index is emitted, and its frequency
+    is *validated* only for sections whose label is a known frequency
+    (``daily``/``weekly``/``monthly``) — arbitrary labels are accepted without
+    validation. Sections with no ``time`` dimension contribute no dates node.
+
+    The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
+    ``latitude``/``longitude``) is **opt-in** and lazily loaded: it activates only
+    when an input carries CRS metadata, importing the optional ``geo`` extra
+    (``rioxarray``/``pyproj``) at that point. Non-gridded pipelines never touch
+    those dependencies. Pass ``geospatial=True``/``False`` to force it on or off.
 
     Parameters
     ----------
     input_specs:
-        Mapping from frequency string to ``IOSpec`` (path, vars, format).
+        Mapping from section label to ``IOSpec`` (path, vars, suffix).
         Typically ``parsed_config.input_specs``.
     subset_spec:
         If provided, slice all pixel-bearing inputs to the specified pixel
-        range after loading.  The pixel ordering follows the row-major
-        stacking of the spatial grid.  Typically ``parsed_config.subset_spec``.
+        range after loading.  Typically ``parsed_config.subset_spec``.
+    geospatial:
+        Force the geospatial path on (``True``) or off (``False``). When ``None``
+        (default) it is auto-detected from the presence of CRS metadata.
     """
     inputs: dict[str, Any] = {}
-    raw_datasets: dict[str, xr.Dataset] = {}
+    raw_datasets: dict[str, xr.Dataset] = {
+        label: _load_raw(spec.path) for label, spec in input_specs.items()
+    }
 
-    for freq, spec in input_specs.items():
-        ds_raw = _load_raw(spec.path)
-        raw_datasets[freq] = ds_raw
+    if geospatial is None:
+        geospatial = any(_has_crs(ds) for ds in raw_datasets.values())
 
-        ds = stack_if_gridded(ds_raw)
-        suffix = "" if freq == "static" else f"_{freq}"
+    for label, spec in input_specs.items():
+        ds_raw = raw_datasets[label]
+        ds = stack_if_gridded(ds_raw) if geospatial else ds_raw
+        suffix = effective_suffix(label, spec)
         vars_to_load = list(ds.data_vars) if spec.vars is None else spec.vars
         for var in vars_to_load:
             inputs[f"{var}{suffix}"] = ds[var]
 
-        if freq != "static":
-            inputs[f"dates_{freq}"] = _validate_dates(ds_raw, freq)
+        if "time" in ds.dims:
+            inputs[f"dates_{label}"] = (
+                _validate_dates(ds_raw, label)
+                if label in _FREQ_CODES
+                else _time_index(ds_raw, label)
+            )
 
     dates = {
         key[len("dates_") :]: val
@@ -436,11 +508,12 @@ def load_inputs(
     }
     _validate_temporal_alignment(dates)
 
-    spatial = {f: ds for f, ds in raw_datasets.items() if ds.rio.crs is not None}
-    if spatial:
-        lat, lon = _compute_lat_lon(spatial)
-        inputs["latitude"] = lat
-        inputs["longitude"] = lon
+    if geospatial:
+        spatial = {label: ds for label, ds in raw_datasets.items() if _has_crs(ds)}
+        if spatial:
+            lat, lon = _compute_lat_lon(spatial)
+            inputs["latitude"] = lat
+            inputs["longitude"] = lon
 
     if subset_spec is not None:
         sl = slice(subset_spec.pixel_start, subset_spec.pixel_end)
@@ -477,7 +550,7 @@ def get_outputs(
     transform = flatten_pixel_index if stacked else unstack_if_gridded
     out: dict[str, xr.Dataset] = {}
     for freq, spec in output_specs.items():
-        suffix = "" if freq == "static" else f"_{freq}"
+        suffix = effective_suffix(freq, spec)
         # (Re-)assign names to all arrays to ensure merging succeeds
         arrays = [results[f"{var}{suffix}"].rename(var) for var in spec.vars]
         out[freq] = transform(xr.merge(arrays))
@@ -589,10 +662,11 @@ def create_output_store(
     created: list[str] = []
     for freq, spec in zarr_specs.items():
         coords = {name: skeleton.coords[name] for name in skeleton.coords}
-        if freq == "static":
+        # A section is temporal iff it contributed a ``dates_{label}`` index.
+        dates = inputs.get(f"dates_{freq}")
+        if dates is None:
             shape, dims, chunks = (n_pixel,), ("pixel",), (chunk,)
         else:
-            dates = inputs[f"dates_{freq}"]
             coords["time"] = dates
             shape = (len(dates), n_pixel)
             dims = ("time", "pixel")
@@ -748,7 +822,7 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
         Flat list of Hamilton node names (e.g. ``["gpp_daily", ...]``).
     """
     return [
-        var if freq == "static" else f"{var}_{freq}"
+        f"{var}{effective_suffix(freq, spec)}"
         for freq, spec in output_specs.items()
         for var in spec.vars
     ]

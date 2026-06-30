@@ -1,11 +1,13 @@
-"""Spatial dimension stacking utilities."""
+"""Spatial dimension stacking utilities (optional geospatial extra)."""
 
-import rioxarray as rioxarray
 import xarray as xr
 
 
 def stack_spatial_dims(ds: xr.Dataset) -> xr.Dataset:
     """Stack spatial dimensions into a single pixel dimension.
+
+    Requires the optional ``geo`` extra (``rioxarray``/``pyproj``), which is only
+    imported when geospatial inputs are actually used.
 
     Parameters
     ----------
@@ -18,6 +20,8 @@ def stack_spatial_dims(ds: xr.Dataset) -> xr.Dataset:
     xr.Dataset
         Dataset with two spatial dimensions stacked into a single 'pixel' dimension.
     """
+    import rioxarray as rioxarray  # registers the .rio accessor
+
     # Use rioxarray to identify spatial dimensions (y, x)
     spatial_dims = ds.rio.y_dim, ds.rio.x_dim
 
