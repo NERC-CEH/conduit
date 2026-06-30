@@ -1,11 +1,11 @@
-"""Tests for the ``satterc run --dry-run`` pre-flight and its building blocks.
+"""Tests for the ``breadboard run --dry-run`` pre-flight and its building blocks.
 
 Three layers:
 
-- direct tests of :func:`satterc.dag.unit_check.check_input_units` (the runtime,
+- direct tests of :func:`breadboard.dag.unit_check.check_input_units` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
-- direct tests of :func:`satterc.io.assert_output_paths_writable`;
+- direct tests of :func:`breadboard.io.assert_output_paths_writable`;
 - CLI integration tests of the broader pre-flight (config / inputs / DAG plan /
   output paths) via ``runner.invoke(app, ["run", ..., "--dry-run"])``.
 """
@@ -18,12 +18,12 @@ import pytest
 import xarray as xr
 from typer.testing import CliRunner
 
-from satterc import UnitsWarning
-from satterc.cli import app
-from satterc.config import IOSpec, ResampleSpec, SubsetSpec
-from satterc.dag.driver import build_driver
-from satterc.dag.unit_check import check_input_units
-from satterc.io import assert_output_paths_writable
+from breadboard import UnitsWarning
+from breadboard.cli import app
+from breadboard.config import IOSpec, ResampleSpec, SubsetSpec
+from breadboard.dag.driver import build_driver
+from breadboard.dag.unit_check import check_input_units
+from breadboard.io import assert_output_paths_writable
 
 runner = CliRunner()
 
@@ -60,7 +60,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from satterc.dag._utils import declare_units\n"
+        "from breadboard.dag._utils import declare_units\n"
         "class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -166,7 +166,7 @@ class TestCheckInputUnitsPropagation:
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
         declaring consumer is not validated, since a node can change units."""
-        from satterc.config import NodeSpec
+        from breadboard.config import NodeSpec
 
         register("dv_cons", _consumer("g m-2 d-1", in_name="flux"))
         specs = [
@@ -218,16 +218,17 @@ class TestAssertOutputPathsWritable:
 
 
 # ---------------------------------------------------------------------------
-# CLI: satterc run --dry-run
+# CLI: breadboard run --dry-run
 # ---------------------------------------------------------------------------
 
 
 def _config(tmp_path, synthetic_data_dir, outputs: str = "") -> str:
     """Write a config pointing at the session synthetic data, with optional outputs."""
     content = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
+[[node]]
+name = "mean_growth_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 

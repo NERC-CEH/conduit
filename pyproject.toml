@@ -3,9 +3,9 @@ requires = ["uv_build>=0.8.10,<0.9.0"]
 build-backend = "uv_build"
 
 [project]
-name = "satterc"
-version = "0.4.1"
-description = "Add your description here"
+name = "breadboard"
+version = "0.1.0"
+description = "An opinionated Hamilton + xarray + pint foundation for geoscientific data pipelines."
 authors = [
     { name = "jmarshrossney", email = "17361029+jmarshrossney@users.noreply.github.com" }
 ]
@@ -32,16 +32,15 @@ dependencies = [
 
 [project.optional-dependencies]
 viz = ["apache-hamilton[visualization]>=1.90.0"]
-models = ["pyrealm>=2.0.0", "rothc-py", "sgam"]
-all = ["satterc[viz,models]"]
+all = ["breadboard[viz]"]
 
 [project.scripts]
-satterc = "satterc.cli:main"
+breadboard = "breadboard.cli:main"
 
 [project.urls]
-Homepage = "https://SatTerC.github.io/satterc"
-Repository = "https://github.com/SatTerC/satterc"
-Documentation = "https://SatTerC.github.io/satterc"
+Homepage = "https://github.com/NERC-CEH/breadboard"
+Repository = "https://github.com/NERC-CEH/breadboard"
+Documentation = "https://github.com/NERC-CEH/breadboard"
 
 [dependency-groups]
 dev = [
@@ -54,7 +53,7 @@ dev = [
 ]
 docs = [
     {include-group = "examples"},
-    "satterc[all]",  # examples and API docs import the model modules
+    "breadboard[viz]",
     "marimo>=0.23.0",
     "marimo-md-export>=0.5.2",
     "mkdocstrings-python>=2.0.3",
@@ -64,7 +63,7 @@ examples = [
     "matplotlib>=3.10.8",
 ]
 test = [
-    "satterc[models]",  # the test suite imports pyrealm/sgam/rothc
+    "breadboard[viz]",
     "coverage>=7.13.5",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
@@ -72,10 +71,6 @@ test = [
 
 [tool.uv]
 exclude-newer = "1 week"
-
-[tool.uv.sources]
-rothc-py = { git = "https://github.com/SatTerC/rothc_py.git" }
-sgam = { git = "https://github.com/SatTerC/sgam.git" }
 
 [tool.pyright]
 venvPath = "."
@@ -106,7 +101,7 @@ select = [
 "tests/**" = ["D", "E501"]
 "scripts/**" = ["D"]
 # Typer CLI modules use typer.Option() in function signatures as standard practice.
-"src/satterc/cli/**" = ["B008"]
+"src/breadboard/cli/**" = ["B008"]
 # Marimo notebooks use bare expressions for display output (B018),
 # contain prose that naturally exceeds 88 chars (E501),
 # include academic citations with en dashes (RUF001),
@@ -117,10 +112,3 @@ select = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
-
-[tool.pytest.ini_options]
-filterwarnings = [
-    "ignore:'where' used without 'out':UserWarning",
-    "ignore:\\s*Pyrealm 2\\.0\\.0 uses a new default.*:UserWarning",
-    "ignore::pyrealm.core.experimental.ExperimentalFeatureWarning",
-]

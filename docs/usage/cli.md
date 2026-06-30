@@ -5,23 +5,23 @@ icon: lucide/terminal
 
 # Using the Command-Line Interface
 
-SatTerC provides a `satterc` command for running pipelines from the terminal.
+breadboard provides a `breadboard` command for running pipelines from the terminal.
 This guide walks through a typical workflow from setup to execution.
 
-For a complete reference of all commands, arguments, and options, see the [CLI Reference](../api/satterc.cli/index.md).
+For a complete reference of all commands, arguments, and options, see the [CLI Reference](../api/breadboard.cli/index.md).
 
 ## The Workflow
 
-A typical SatTerC CLI workflow has four steps:
+A typical breadboard CLI workflow has four steps:
 
 ```
 setup → data-gen → graph → run
 ```
 
-1. **Generate a config** with `satterc setup`
-2. **Create test data** with `satterc data-gen generate`
-3. **Visualise the pipeline** with `satterc graph`
-4. **Execute the pipeline** with `satterc run`
+1. **Generate a config** with `breadboard setup`
+2. **Create test data** with `breadboard data-gen generate`
+3. **Visualise the pipeline** with `breadboard graph`
+4. **Execute the pipeline** with `breadboard run`
 
 Let's walk through each step.
 
@@ -32,7 +32,7 @@ The `setup` command creates a TOML configuration file. You can run it interactiv
 ### Interactive mode
 
 ```sh
-satterc setup
+breadboard setup
 ```
 
 This walks you through:
@@ -45,7 +45,7 @@ This walks you through:
 ### Non-interactive mode
 
 ```sh
-satterc setup --models splash pmodel --defaults
+breadboard setup --models splash pmodel --defaults
 ```
 
 This generates a config with the specified models and placeholder paths, no prompts.
@@ -53,7 +53,7 @@ This generates a config with the specified models and placeholder paths, no prom
 ### Custom output path
 
 ```sh
-satterc setup --models splash --output my_pipeline.toml
+breadboard setup --models splash --output my_pipeline.toml
 ```
 
 The generated config includes all input variables required by the selected models, placeholder output sections, and any resampling steps needed to bridge temporal frequencies.
@@ -63,7 +63,7 @@ The generated config includes all input variables required by the selected model
 Before running on real data, test your pipeline with synthetic inputs:
 
 ```sh
-satterc data-gen generate config.toml
+breadboard data-gen generate config.toml
 ```
 
 This creates NetCDF files at the paths specified in your config. By default it generates data for a single site over 2 years.
@@ -71,7 +71,7 @@ This creates NetCDF files at the paths specified in your config. By default it g
 ### Custom grid and duration
 
 ```sh
-satterc data-gen generate config.toml --grid 4,4 --duration 6m --seed 42
+breadboard data-gen generate config.toml --grid 4,4 --duration 6m --seed 42
 ```
 
 This produces a 4×4 grid of synthetic data covering 6 months.
@@ -83,7 +83,7 @@ The duration format is a number followed by a unit: `2y` (years), `6m` (months),
 Before running, inspect the DAG to verify the structure looks correct:
 
 ```sh
-satterc graph config.toml --pdf
+breadboard graph config.toml --pdf
 ```
 
 This produces `pipeline.pdf` showing all nodes and their dependencies. Each node
@@ -104,7 +104,7 @@ filled by category:
 You can also output as PNG:
 
 ```sh
-satterc graph config.toml --png
+breadboard graph config.toml --png
 ```
 
 ### Customising the styling
@@ -114,10 +114,10 @@ defaults — colours, layout, the legend, or even a custom style function. Keepi
 it in its own file means one style can be reused across many pipelines:
 
 ```sh
-satterc graph config.toml --style examples/graphviz.toml --pdf
+breadboard graph config.toml --style examples/graphviz.toml --pdf
 ```
 
-See the commented [`examples/graphviz.toml`](https://github.com/SatTerC/satterc/blob/main/examples/graphviz.toml)
+See the commented [`examples/graphviz.toml`](https://github.com/breadboard/breadboard/blob/main/examples/graphviz.toml)
 template for the full set of keys (`palette`, `graph_attr`/`node_attr`/`edge_attr`,
 `show_legend`, `cluster_by_frequency`, and `style_function`).
 
@@ -132,7 +132,7 @@ Requires [graphviz](https://graphviz.org/) to be installed.
 Execute the pipeline:
 
 ```sh
-satterc run config.toml
+breadboard run config.toml
 ```
 
 This reads the config, builds the DAG, executes all required nodes in dependency order, and writes output files as specified in the `[outputs.*]` sections.
@@ -142,7 +142,7 @@ This reads the config, builds the DAG, executes all required nodes in dependency
 Before committing to a long run, you can pre-flight a config with `--dry-run`:
 
 ```sh
-satterc run config.toml --dry-run
+breadboard run config.toml --dry-run
 ```
 
 This performs every check a real run depends on, but executes no model and writes no output. It validates, in order:
@@ -180,7 +180,7 @@ To reuse unchanged intermediate results between runs, enable caching — either 
 | `--cache-dir` | Directory for the cache store (implies `--cache`). |
 
 ```sh
-satterc run config.toml --cache --cache-dir runs/cache
+breadboard run config.toml --cache --cache-dir runs/cache
 ```
 
 This is especially useful for calibration loops that re-run the pipeline while
@@ -203,9 +203,9 @@ ds["soil_moisture"].plot()
 Every command supports `-h` / `--help`:
 
 ```sh
-satterc -h
-satterc setup -h
-satterc data-gen generate -h
+breadboard -h
+breadboard setup -h
+breadboard data-gen generate -h
 ```
 
-For detailed documentation on each CLI module's functions and parameters, see the [CLI Reference](../api/satterc.cli/index.md).
+For detailed documentation on each CLI module's functions and parameters, see the [CLI Reference](../api/breadboard.cli/index.md).

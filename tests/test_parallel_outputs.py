@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from satterc.config import IOSpec, SubsetSpec
-from satterc.io import (
+from breadboard.config import IOSpec, SubsetSpec
+from breadboard.io import (
     create_output_store,
     flatten_pixel_index,
     get_final_vars,
@@ -236,12 +236,10 @@ class TestZarrSubset:
 
 def _config_text(synthetic_data_dir, out_path, subset=None, block_size=2):
     blocks = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.rothc]
-n_years_spinup = 1
+[[node]]
+name = "mean_growth_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 
@@ -283,7 +281,7 @@ class TestCLIParallelWorkflow:
     ):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from breadboard.cli import app
 
         store = tmp_path / "weekly.zarr"
         runner = CliRunner()
@@ -336,7 +334,7 @@ class TestConcurrentZarrWrites:
     """Mirror the real deployment: N OS processes writing disjoint regions at once.
 
     The sequential tests validate correctness but not concurrency safety. Here we
-    launch genuinely independent ``satterc run`` processes (as ``parallel satterc
+    launch genuinely independent ``breadboard run`` processes (as ``parallel breadboard
     run`` would) against one shared store and assert no writes are lost.
     """
 
@@ -348,7 +346,7 @@ class TestConcurrentZarrWrites:
 
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from breadboard.cli import app
 
         store = tmp_path / "weekly.zarr"
 
@@ -378,7 +376,7 @@ class TestConcurrentZarrWrites:
                 [
                     sys.executable,
                     "-c",
-                    "from satterc.cli import app; app()",
+                    "from breadboard.cli import app; app()",
                     "run",
                     str(cfg),
                 ],

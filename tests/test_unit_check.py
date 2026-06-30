@@ -11,11 +11,11 @@ from hamilton import driver
 from hamilton.function_modifiers import extract_fields
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from satterc import UnitsWarning, units
-from satterc.config import NodeSpec, ResampleSpec
-from satterc.dag._utils import declare_units
-from satterc.dag.driver import build_driver
-from satterc.dag.unit_check import check_dag_units
+from breadboard import UnitsWarning, units
+from breadboard.config import NodeSpec, ResampleSpec
+from breadboard.dag._utils import declare_units
+from breadboard.dag.driver import build_driver
+from breadboard.dag.unit_check import check_dag_units
 
 
 def _da():
@@ -80,7 +80,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from satterc.dag._utils import declare_units\n"
+        "from breadboard.dag._utils import declare_units\n"
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -104,7 +104,7 @@ def _bare_producer(unit: str, name: str = "flux"):
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"
-        "from satterc.dag._utils import declare_units\n"
+        "from breadboard.dag._utils import declare_units\n"
         "@declare_units\n"
         f"def {name}() -> Annotated[xr.DataArray, {unit!r}]:\n"
         "    return xr.DataArray([1.0])\n"
@@ -124,7 +124,7 @@ def _plain_consumer(name: str = "plain_cons", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from satterc.dag._utils import declare_units\n"
+        "from breadboard.dag._utils import declare_units\n"
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -304,9 +304,12 @@ class TestConsistent:
             warnings.simplefilter("error")
             check_dag_units(dr, mode="strict", exact=True)
 
-    def test_real_pmodel_sgam_pipeline_clean(self):
-        # pmodel -> sgam declares gpp/lue/iwue identically; clean even under exact.
-        dr = build_driver(["models.pmodel", "models.sgam"], {})
+    def test_producer_consumer_same_unit_clean(self, register):
+        # Producer and consumer of gpp_weekly declare identical units: clean
+        # even under exact matching.
+        register("clean_prod", _producer("g m-2 d-1"))
+        register("clean_cons", _consumer("g m-2 d-1"))
+        dr = build_driver(["clean_prod", "clean_cons"], {})
         check_dag_units(dr, mode="strict", exact=True)
 
 
@@ -338,17 +341,18 @@ class TestBuildDriverIntegration:
 
 
 class TestResamplePropagation:
-    """The real ``pmodel`` emits ``gpp_weekly`` ('g m-2 d-1'); resampling to
+    """A producer emits ``gpp_weekly`` ('g m-2 d-1'); resampling to
     ``gpp_monthly`` should propagate that unit so a downstream consumer is
     checked against it."""
 
     def _build(self, register, consumer_unit):
+        register("rs_prod", _producer("g m-2 d-1"))  # produces gpp_weekly
         register("rs_cons", _consumer(consumer_unit, in_name="gpp_monthly"))
         specs = [
             ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly")
         ]
         return build_driver(
-            ["models.pmodel", "resample", "rs_cons"], {"resample_specs": specs}
+            ["rs_prod", "resample", "rs_cons"], {"resample_specs": specs}
         )
 
     def test_incompatible_consumer_of_resampled_var_raises(self, register):
@@ -424,7 +428,7 @@ class TestNodePropagation:
 class TestUnitsWarningQualname:
     """The node function's qualname appears in UnitsWarning messages emitted by
     the @declare_units runtime wrapper, making the source of the warning clear
-    without requiring the user to inspect the satterc call stack."""
+    without requiring the user to inspect the breadboard call stack."""
 
     def test_missing_units_warning_includes_qualname(self):
         from typing import Annotated

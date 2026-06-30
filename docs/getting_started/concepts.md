@@ -3,15 +3,15 @@ title: Concepts
 icon: lucide/git-branch
 ---
 
-# How SatTerC Works: Directed Acyclic Graphs
+# How breadboard Works: Directed Acyclic Graphs
 
-At its core, SatTerC represents a pipeline as a **Directed Acyclic Graph (DAG)**.
+At its core, breadboard represents a pipeline as a **Directed Acyclic Graph (DAG)**.
 This section explains what that means and why it matters.
 
 ## What is a DAG?
 
 A Directed Acyclic Graph is a network of nodes connected by directed edges, with no cycles.
-In SatTerC:
+In breadboard:
 
 - **Nodes** are computations — Python functions that produce a value (typically an `xarray.DataArray`).
 - **Edges** represent dependencies — if node B needs the output of node A, there is a directed edge from A to B.
@@ -51,9 +51,9 @@ The same config and data always produce the same results.
 Models are independent modules that declare their inputs and outputs.
 You can mix and match them freely — add RothC to an existing SPLASH + P-Model pipeline by adding one config section.
 
-## How SatTerC Uses DAGs
+## How breadboard Uses DAGs
 
-SatTerC is built on the [Hamilton](https://github.com/dagworks-inc/hamilton) DAG framework.
+breadboard is built on the [Hamilton](https://github.com/dagworks-inc/hamilton) DAG framework.
 Here's how the pieces fit together:
 
 ### 1. Configuration
@@ -81,7 +81,7 @@ vars = ["actual_evapotranspiration", "soil_moisture"]
 
 ### 2. Build
 
-When you run `satterc run config.toml`, SatTerC:
+When you run `breadboard run config.toml`, breadboard:
 
 1. Parses the config file
 2. Imports the requested model modules
@@ -102,7 +102,7 @@ The DAG engine:
 You can inspect the DAG at any time:
 
 ```bash
-satterc graph config.toml --pdf
+breadboard graph config.toml --pdf
 ```
 
 This produces a visual graph showing all nodes and their dependencies, colour-coded by temporal frequency.
@@ -110,7 +110,7 @@ This produces a visual graph showing all nodes and their dependencies, colour-co
 ## Nodes and Naming
 
 Every node in the DAG has a unique name, derived from the function that produces it.
-By convention, SatTerC appends a frequency suffix to distinguish temporal resolutions:
+By convention, breadboard appends a frequency suffix to distinguish temporal resolutions:
 
 | Suffix | Meaning |
 |--------|---------|

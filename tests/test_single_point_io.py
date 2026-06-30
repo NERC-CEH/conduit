@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from satterc.config import IOSpec
-from satterc.io import (
+from breadboard.config import IOSpec
+from breadboard.io import (
     dataset_to_dataframe,
     load_inputs,
     load_static,

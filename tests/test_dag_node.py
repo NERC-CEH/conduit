@@ -1,13 +1,13 @@
-"""Tests for satterc.dag.node — runtime-generated Hamilton modules."""
+"""Tests for breadboard.dag.node — runtime-generated Hamilton modules."""
 
 import sys
 import types
 
 import xarray as xr
 
-from satterc.config import NodeSpec
-from satterc.dag.node import _build_fn_code, make_node_module
-from satterc.units import units_from_signature
+from breadboard.config import NodeSpec
+from breadboard.dag.node import _build_fn_code, make_node_module
+from breadboard.units import units_from_signature
 
 
 def _expr_spec(name, inputs, expression, units=None):

@@ -3,7 +3,7 @@ title: Home
 icon: lucide/house
 ---
 
-# SatTerC: Satellite to Terrestrial Carbon modelling using DAGs
+# breadboard: Satellite to Terrestrial Carbon modelling using DAGs
 
 A Python framework for data-driven terrestrial carbon modelling based on Directed Acyclic Graphs.
 
@@ -15,10 +15,10 @@ See the [Installation guide](getting_started/installation.md) for detailed instr
 
 Get a pipeline running in 5 minutes — see the [Quickstart guide](getting_started/quickstart.md).
 
-## What is SatTerC?
+## What is breadboard?
 
-SatTerC lets you compose terrestrial carbon models into pipelines described by a simple TOML configuration file.
-Models are connected as a Directed Acyclic Graph (DAG), meaning you declare **what** you want computed and SatTerC figures out **how** to compute it.
+breadboard lets you compose terrestrial carbon models into pipelines described by a simple TOML configuration file.
+Models are connected as a Directed Acyclic Graph (DAG), meaning you declare **what** you want computed and breadboard figures out **how** to compute it.
 
 Key features:
 
@@ -32,16 +32,14 @@ Key features:
 
 - [Quickstart](getting_started/quickstart.md) — run your first pipeline
 - [Concepts](getting_started/concepts.md) — how DAGs work
-- [Models](models/index.md) — built-in model overview
 - [Configuration](usage/config.md) — TOML config reference
 - [CLI](usage/cli.md) — command-line interface
-- [examples](#) — interactive notebooks (run `just export-all` to generate)
 
 ## Acknowledgements
 
 ### Funding
 
-SatTerC is supported by the following grants and institutions:
+breadboard is supported by the following grants and institutions:
 
 <!-- Add your funding bodies here. Example:
 
@@ -52,7 +50,7 @@ SatTerC is supported by the following grants and institutions:
 
 ### Contributors
 
-The following people have contributed to the development of SatTerC:
+The following people have contributed to the development of breadboard:
 
 <!-- Add contributors here. Example:
 
@@ -64,7 +62,7 @@ The following people have contributed to the development of SatTerC:
 
 ### Software Dependencies
 
-SatTerC builds on the following open-source projects:
+breadboard builds on the following open-source projects:
 
 - [Hamilton](https://github.com/dagworks-inc/hamilton) — DAG-based dataflow framework
 - [pyrealm](https://github.com/ImperialCollegeLondon/pyrealm) — SPLASH and P-Model implementations

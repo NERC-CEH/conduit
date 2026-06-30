@@ -8,9 +8,9 @@ import pint
 import pytest
 import xarray as xr
 
-from satterc import units
-from satterc.config import Config
-from satterc.dag._utils import declare_units
+from breadboard import units
+from breadboard.config import Config
+from breadboard.dag._utils import declare_units
 
 
 def _da(values, unit=None):
@@ -511,32 +511,42 @@ class TestConfigUnits:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: units validation/conversion through a real model node
+# End-to-end: units validation/conversion through a @declare_units model node
 # ---------------------------------------------------------------------------
 
 
 class TestModelNodeEndToEnd:
-    """Units behaviour through the real ``pmodel`` node, in ``strict`` mode.
+    """Units behaviour through a synthetic ``@declare_units`` node, strict mode.
 
-    Exercises the actual ``@declare_units`` + ``@xarray_io`` composition on the
-    public node (not a synthetic decorator): every declared input is validated,
-    a convertible wrong-unit input is converted, an incompatible one raises, and
-    the output is stamped — all through the pyrealm-backed implementation.
+    Exercises the real ``@declare_units`` decorator on a typed multi-output
+    node: every declared input is validated, a convertible wrong-unit input is
+    converted, an incompatible one raises, and the output unit is stamped.
     """
 
     @staticmethod
-    def _pmodel_inputs(**overrides):
+    def _model():
+        from typing import Annotated, TypedDict
+
+        from breadboard.dag._utils import declare_units
+
+        class Out(TypedDict):
+            gpp_weekly: Annotated[xr.DataArray, "g m-2 d-1"]
+
+        @declare_units
+        def mymodel(
+            temperature_weekly: Annotated[xr.DataArray, "degC"],
+            pressure_weekly: Annotated[xr.DataArray, "Pa"],
+        ) -> Out:  # type: ignore[valid-type]
+            return {"gpp_weekly": temperature_weekly * 0.0 + 1.0}
+
+        return mymodel
+
+    @staticmethod
+    def _inputs(**overrides):
         # (value, unit) per declared input; overrides replace specific entries.
         spec = {
             "temperature_weekly": (15.0, "degC"),
-            "vpd_weekly": (1000.0, "Pa"),
-            "co2_weekly": (400.0, "ppm"),
             "pressure_weekly": (101325.0, "Pa"),
-            "fapar_weekly": (0.5, "1"),
-            "ppfd_weekly": (500.0, "umol m-2 s-1"),
-            "mean_growth_temperature_weekly": (15.0, "degC"),
-            "aridity_index_weekly": (0.5, "1"),
-            "soil_moisture_weekly": (100.0, "mm"),
         }
         spec.update(overrides)
         return {
@@ -544,28 +554,25 @@ class TestModelNodeEndToEnd:
         }
 
     def test_convertible_input_accepted_and_output_stamped(self):
-        from satterc.dag.pmodel import pmodel
-
+        model = self._model()
         # Pressure supplied in hPa where Pa is declared: must convert, not fail.
-        inputs = self._pmodel_inputs(pressure_weekly=(1013.25, "hPa"))
+        inputs = self._inputs(pressure_weekly=(1013.25, "hPa"))
         with units.mode("strict"):
-            out = pmodel(**inputs)
+            out = model(**inputs)
         assert out["gpp_weekly"].attrs["units"] == "g m-2 d-1"
 
     def test_incompatible_input_raises(self):
         import pint
 
-        from satterc.dag.pmodel import pmodel
-
-        # VPD supplied in kg where Pa is declared: dimensionally incompatible.
-        inputs = self._pmodel_inputs(vpd_weekly=(1000.0, "kg"))
+        model = self._model()
+        # Pressure supplied in kg where Pa is declared: dimensionally incompatible.
+        inputs = self._inputs(pressure_weekly=(1000.0, "kg"))
         with units.mode("strict"), pytest.raises(pint.DimensionalityError):
-            pmodel(**inputs)
+            model(**inputs)
 
     def test_missing_units_strict_raises(self):
-        from satterc.dag.pmodel import pmodel
-
-        inputs = self._pmodel_inputs()
-        inputs["co2_weekly"].attrs.pop("units")
+        model = self._model()
+        inputs = self._inputs()
+        inputs["temperature_weekly"].attrs.pop("units")
         with units.mode("strict"), pytest.raises(ValueError, match="no 'units'"):
-            pmodel(**inputs)
+            model(**inputs)

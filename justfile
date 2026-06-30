@@ -22,21 +22,19 @@ test:
 
 # Run tests with coverage report.
 test-cov:
-  pytest --cov=satterc --cov-report=term-missing --cov-fail-under=90
+  pytest --cov=breadboard --cov-report=term-missing --cov-fail-under=90
 
 # Build the documentation using Zensical.
 docs:
   zensical build
 
-# Export a single example notebook to docs/Examples/.
+# Export a single example notebook to docs/examples/.
 export example:
   # Export to Markdown file
   marimo-md-export "examples/{{example}}.py" "docs/examples/{{example}}.md" \
     --html-output docs/examples/{{example}}-notebook.html --overflow scroll
 
-# Export all notebooks in examples/ to docs/Examples/.
+# Export all notebooks in examples/ to docs/examples/.
+# (Generic example notebooks are added in a later phase; none yet.)
 export-all:
-  just export my_first_pipeline
-  just export soil_moisture
-  just export pft_parameters
-  just export full_pipeline
+  @echo "No example notebooks to export yet."

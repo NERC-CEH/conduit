@@ -1,7 +1,6 @@
-"""Tests for the satterc CLI commands."""
+"""Tests for the breadboard CLI commands."""
 
 import shutil
-import tomllib
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -9,10 +8,9 @@ import pytest
 import xarray as xr
 from typer.testing import CliRunner
 
-from satterc._version import __version__
-from satterc.cli import app
-from satterc.cli.data_gen import _parse_duration, _validate_output_paths
-from satterc.cli.graph import (
+from breadboard._version import __version__
+from breadboard.cli import app
+from breadboard.cli.graph import (
     _import_style_function,
     cluster_nodes_by_frequency,
     color_edges_by_frequency,
@@ -20,9 +18,8 @@ from satterc.cli.graph import (
     make_style_function,
     relabel_with_units,
 )
-from satterc.cli.graph_style import DEFAULT_PALETTE, GraphvizSpec, load_graphviz_spec
-from satterc.cli.setup import _display_models, _parse_selections, _toggle_selections
-from satterc.config import load_config
+from breadboard.cli.graph_style import DEFAULT_PALETTE, GraphvizSpec, load_graphviz_spec
+from breadboard.config import load_config
 
 runner = CliRunner()
 
@@ -36,12 +33,11 @@ runner = CliRunner()
 def config_toml(tmp_path, synthetic_data_dir):
     """Config TOML pointing to session-scoped synthetic NetCDF files."""
     content = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.rothc]
-n_years_spinup = 1
+[[node]]
+name = "mean_growth_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
+units = "degC"
 
 [grid]
 
@@ -68,38 +64,6 @@ vars = [
     p = tmp_path / "config.toml"
     p.write_text(content)
     return p
-
-
-@pytest.fixture
-def datagen_config_toml(tmp_path):
-    """Config TOML and output data dir for data-gen generate tests.
-
-    The parent directory exists but no NetCDF files have been written yet.
-    """
-    data_dir = tmp_path / "data"
-    content = f"""\
-[models.rothc]
-n_years_spinup = 1
-
-[inputs.daily]
-path = "{data_dir / "daily.nc"}"
-vars = ["precipitation", "sunshine_fraction", "temperature"]
-
-[inputs.weekly]
-path = "{data_dir / "weekly.nc"}"
-vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
-
-[inputs.monthly]
-path = "{data_dir / "monthly.nc"}"
-vars = ["dummy_variable"]
-
-[inputs.static]
-path = "{data_dir / "static.nc"}"
-vars = ["elevation", "plant_type", "clay_content", "soil_depth", "organic_carbon_stocks"]
-"""
-    toml_path = tmp_path / "datagen_config.toml"
-    toml_path.write_text(content)
-    return toml_path, data_dir
 
 
 # ---------------------------------------------------------------------------
@@ -147,18 +111,19 @@ class TestGraphCommand:
         assert dot.exists()
         text = dot.read_text()
         # Declared units appear in node labels in place of the "DataArray" type.
-        assert "t ha-1" in text  # e.g. rothc soil carbon pools
-        gpp_line = next(
-            line for line in text.splitlines() if line.strip().startswith("gpp_weekly ")
+        assert "degC" in text  # the [[node]]'s declared output unit
+        node_line = next(
+            line
+            for line in text.splitlines()
+            if line.strip().startswith("mean_growth_temperature_weekly ")
         )
-        assert "<i>g m-2 d-1</i>" in gpp_line
-        assert "DataArray" not in gpp_line
+        assert "<i>degC</i>" in node_line
+        assert "DataArray" not in node_line
 
     @pytest.mark.skipif(not shutil.which("dot"), reason="graphviz not installed")
     def test_style_file_overrides_palette(self, config_toml, tmp_path):
         style = tmp_path / "style.toml"
-        # the test config runs pmodel (weekly) + rothc (monthly), so weekly
-        # function nodes are present to receive the overridden fill colour.
+        # the test config's derived weekly node receives the overridden fill colour.
         style.write_text('[palette]\nweekly = "#123456"\n')
         out = tmp_path / "pipeline"
         result = runner.invoke(
@@ -185,7 +150,7 @@ class TestCustomStyleFunction:
         return make_style_function(GraphvizSpec(), set(output_vars))
 
     def test_static_input_gets_static_colour(self):
-        node = self._mock_node(tags={"module": "satterc.inputs.static"})
+        node = self._mock_node(tags={"module": "breadboard.inputs.static"})
         style, _, label = self._style()(node=node, node_class="default")
         assert style["fillcolor"] == DEFAULT_PALETTE["static"]
         assert label == "static input"
@@ -258,20 +223,20 @@ class TestGraphPostProcessing:
         assert "color=" not in digraph.body[1]
 
     def test_infer_frequencies_by_neighbour_consensus(self):
-        # sgam: weekly in, weekly out -> weekly; its input table follows it.
+        # mymodel: weekly in, weekly out -> weekly; its input table follows it.
         digraph = SimpleNamespace(
             body=[
-                "\ttemperature_weekly -> sgam\n",
-                "\tsgam -> gpp_weekly\n",
-                "\t_sgam_inputs -> sgam\n",
+                "\ttemperature_weekly -> mymodel\n",
+                "\tmymodel -> gpp_weekly\n",
+                "\t_mymodel_inputs -> mymodel\n",
             ]
         )
         freq = infer_frequencies(
             digraph,  # type: ignore[arg-type]
             {"temperature_weekly": "weekly", "gpp_weekly": "weekly"},
         )
-        assert freq["sgam"] == "weekly"
-        assert freq["_sgam_inputs"] == "weekly"
+        assert freq["mymodel"] == "weekly"
+        assert freq["_mymodel_inputs"] == "weekly"
 
     def test_infer_frequencies_conflict_stays_unresolved(self):
         # a node bridging daily and monthly has no consensus -> not assigned.
@@ -368,296 +333,10 @@ class TestImportStyleFunction:
 class TestStrayGraphvizSection:
     def test_science_config_ignores_graphviz_section(self, tmp_path):
         cfg = tmp_path / "config.toml"
-        cfg.write_text("[graphviz]\nshow_legend = true\n[models.pmodel]\n")
+        cfg.write_text(
+            "[graphviz]\nshow_legend = true\n"
+            '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x * 2"\n'
+        )
         # must not raise the missing-_import_path error for [graphviz]
         parsed = load_config(cfg)
-        assert "models.pmodel" in parsed.modules
-
-
-# ---------------------------------------------------------------------------
-# data-gen helpers
-# ---------------------------------------------------------------------------
-
-
-class TestDataGenHelpers:
-    def test_parse_duration_years(self):
-        assert _parse_duration("2y") == int(2 * 365.25)
-
-    def test_parse_duration_months(self):
-        assert _parse_duration("6m") == int(6 * 30.44)
-
-    def test_parse_duration_days(self):
-        assert _parse_duration("30d") == 30
-
-    def test_parse_duration_case_insensitive(self):
-        assert _parse_duration("1Y") == _parse_duration("1y")
-
-    def test_parse_duration_invalid_format_raises(self):
-        import typer
-
-        with pytest.raises(typer.BadParameter):
-            _parse_duration("bad")
-
-    def test_validate_output_paths_fresh_files(self, datagen_config_toml):
-        toml_path, data_dir = datagen_config_toml
-        config = load_config(toml_path)
-        paths, dirs_to_create, files_to_overwrite = _validate_output_paths(config)
-        # data_dir does not exist yet → all four paths land in dirs_to_create
-        assert len(paths) == 4
-        assert data_dir in dirs_to_create
-        assert files_to_overwrite == []
-
-    def test_validate_output_paths_existing_files(self, datagen_config_toml):
-        toml_path, data_dir = datagen_config_toml
-        data_dir.mkdir()
-        (data_dir / "daily.nc").write_bytes(b"")
-        config = load_config(toml_path)
-        _, _, files_to_overwrite = _validate_output_paths(config)
-        assert any("daily.nc" in str(p) for p in files_to_overwrite)
-
-
-# ---------------------------------------------------------------------------
-# data-gen generate command
-# ---------------------------------------------------------------------------
-
-
-class TestDataGenGenerateCommand:
-    def test_generate_creates_files(self, datagen_config_toml):
-        toml_path, data_dir = datagen_config_toml
-        result = runner.invoke(
-            app,
-            ["data-gen", "generate", str(toml_path), "--duration", "30d"],
-        )
-        assert result.exit_code == 0, result.output
-        assert (data_dir / "daily.nc").exists()
-        assert (data_dir / "static.nc").exists()
-
-    def test_shows_generation_params_in_output(self, datagen_config_toml):
-        toml_path, _ = datagen_config_toml
-        result = runner.invoke(
-            app,
-            ["data-gen", "generate", str(toml_path), "--duration", "30d"],
-        )
-        assert "Grid dimensions" in result.output
-        assert "Duration" in result.output
-        assert "Random seed" in result.output
-
-    def test_overwrite_confirmed_reruns_successfully(self, datagen_config_toml):
-        toml_path, _data_dir = datagen_config_toml
-        # First run creates files.
-        runner.invoke(
-            app, ["data-gen", "generate", str(toml_path), "--duration", "30d"]
-        )
-        # Second run: files exist → prompt → confirm overwrite.
-        result = runner.invoke(
-            app,
-            ["data-gen", "generate", str(toml_path), "--duration", "30d"],
-            input="y\n",
-        )
-        assert result.exit_code == 0, result.output
-
-    def test_overwrite_declined_aborts(self, datagen_config_toml):
-        toml_path, _data_dir = datagen_config_toml
-        runner.invoke(
-            app, ["data-gen", "generate", str(toml_path), "--duration", "30d"]
-        )
-        result = runner.invoke(
-            app,
-            ["data-gen", "generate", str(toml_path), "--duration", "30d"],
-            input="n\n",
-        )
-        assert result.exit_code != 0
-
-    def test_invalid_duration_fails(self, datagen_config_toml):
-        toml_path, _ = datagen_config_toml
-        result = runner.invoke(
-            app, ["data-gen", "generate", str(toml_path), "--duration", "bad"]
-        )
-        assert result.exit_code != 0
-
-    def test_missing_config_fails(self, tmp_path):
-        result = runner.invoke(app, ["data-gen", "generate", str(tmp_path / "no.toml")])
-        assert result.exit_code != 0
-
-
-# ---------------------------------------------------------------------------
-# setup helpers
-# ---------------------------------------------------------------------------
-
-
-class TestSetupHelpers:
-    def test_parse_selections_comma_separated(self):
-        assert _parse_selections("a,b") == ["a", "b"]
-
-    def test_parse_selections_space_separated(self):
-        assert _parse_selections("a b") == ["a", "b"]
-
-    def test_parse_selections_mixed_delimiters(self):
-        assert _parse_selections("a, b c") == ["a", "b", "c"]
-
-    def test_parse_selections_empty_string(self):
-        assert _parse_selections("") == []
-
-    def test_toggle_adds_new_item(self):
-        result = _toggle_selections([], ["splash"])
-        assert "splash" in result
-
-    def test_toggle_removes_existing_item(self):
-        result = _toggle_selections(["splash"], ["splash"])
-        assert "splash" not in result
-
-    def test_toggle_skips_item_not_in_available_set(self):
-        result = _toggle_selections([], ["unknown"], available={"splash", "pmodel"})
-        assert result == []
-
-    def test_display_models_marks_selected(self, capsys):
-        _display_models(["splash", "pmodel", "rothc"], {"splash"})
-        captured = capsys.readouterr()
-        assert "[x]" in captured.out
-        assert "splash" in captured.out
-        assert "pmodel" in captured.out
-
-
-# ---------------------------------------------------------------------------
-# setup command — non-interactive (--defaults)
-# ---------------------------------------------------------------------------
-
-
-class TestSetupCommandNonInteractive:
-    def test_defaults_creates_toml(self, tmp_path):
-        out = tmp_path / "config.toml"
-        result = runner.invoke(
-            app,
-            ["setup", "--defaults", "--models", "rothc", "--output", str(out)],
-        )
-        assert result.exit_code == 0, result.output
-        assert out.exists()
-
-    def test_generated_toml_is_loadable(self, tmp_path):
-        out = tmp_path / "config.toml"
-        runner.invoke(
-            app,
-            ["setup", "--defaults", "--models", "rothc", "--output", str(out)],
-        )
-        # Should parse without error.
-        load_config(out)
-
-    def test_generated_toml_contains_model_params(self, tmp_path):
-        out = tmp_path / "config.toml"
-        runner.invoke(
-            app,
-            ["setup", "--defaults", "--models", "rothc", "--output", str(out)],
-        )
-        with open(out, "rb") as f:
-            data = tomllib.load(f)
-        assert "models" in data
-        assert "rothc" in data["models"]
-
-    def test_defaults_without_models_fails(self):
-        result = runner.invoke(app, ["setup", "--defaults"])
-        assert result.exit_code != 0
-
-    def test_invalid_model_name_fails(self, tmp_path):
-        out = tmp_path / "config.toml"
-        result = runner.invoke(
-            app,
-            ["setup", "--defaults", "--models", "notamodel", "--output", str(out)],
-        )
-        assert result.exit_code != 0
-
-    def test_existing_output_with_defaults_exits_with_error(self, tmp_path):
-        out = tmp_path / "config.toml"
-        out.write_text("# existing")
-        result = runner.invoke(
-            app,
-            ["setup", "--defaults", "--models", "rothc", "--output", str(out)],
-        )
-        assert result.exit_code == 1
-        assert str(out) in result.output
-
-
-# ---------------------------------------------------------------------------
-# setup command — interactive
-# ---------------------------------------------------------------------------
-
-
-class TestSetupCommandInteractive:
-    def test_models_option_with_interactive_prompts_creates_config(self, tmp_path):
-        out = tmp_path / "config.toml"
-        # Prompts in order:
-        #   _select_custom_modules: module path → "\n" (finish)
-        #   confirm "Use default paths?" → "\n" (accept True)
-        #   prompt "Output config path" → "\n" (accept default)
-        #   confirm "Generate synthetic data?" → "\n" (accept False)
-        result = runner.invoke(
-            app,
-            ["setup", "--models", "rothc", "--output", str(out)],
-            input="\n\n\n\n",
-        )
-        assert result.exit_code == 0, result.output
-        assert out.exists()
-
-    def test_interactive_overwrite_confirmed(self, tmp_path):
-        out = tmp_path / "config.toml"
-        out.write_text("# old content")
-        # First prompt: "Overwrite?" → "y"; then the 4 interactive prompts.
-        result = runner.invoke(
-            app,
-            ["setup", "--models", "rothc", "--output", str(out)],
-            input="y\n\n\n\n\n",
-        )
-        assert result.exit_code == 0, result.output
-        # File should have been replaced with valid TOML.
-        with open(out, "rb") as f:
-            tomllib.load(f)
-
-    def test_interactive_overwrite_declined(self, tmp_path):
-        out = tmp_path / "config.toml"
-        original = "# old content"
-        out.write_text(original)
-        result = runner.invoke(
-            app,
-            ["setup", "--models", "rothc", "--output", str(out)],
-            input="n\n",
-        )
-        assert result.exit_code == 0
-        assert out.read_text() == original
-
-    def test_fully_interactive_model_selection(self, tmp_path):
-        out = tmp_path / "config.toml"
-        # Prompts in order:
-        #   _select_builtin_models: "1\n" (select splash), "0\n" (done)
-        #   _select_custom_modules: "\n" (finish)
-        #   confirm "Use default paths?" → "\n"
-        #   prompt "Output config path" → "\n"
-        #   confirm "Generate synthetic data?" → "\n"
-        result = runner.invoke(
-            app,
-            ["setup", "--output", str(out)],
-            input="1\n0\n\n\n\n\n",
-        )
-        assert result.exit_code == 0, result.output
-        assert out.exists()
-
-    def test_interactive_with_data_generation(self, tmp_path):
-        out = tmp_path / "config.toml"
-        # Prompts in order:
-        #   custom modules → "\n"
-        #   use default paths → "\n"
-        #   output path → "\n"  (accepts --output default)
-        #   generate data → "y\n"
-        #   grid → "\n" (1,1)
-        #   duration → "30d\n"
-        #   seed → "\n" (42)
-        result = runner.invoke(
-            app,
-            ["setup", "--models", "splash", "--output", str(out)],
-            input="\n\n\ny\n\n30d\n\n",
-        )
-        assert result.exit_code == 0, result.output
-        # Generated config must be loadable.
-        load_config(out)
-        # Input data files must have been written alongside the config.
-        inputs_dir = out.parent / "inputs"
-        assert inputs_dir.exists()
-        assert any(inputs_dir.iterdir())
+        assert "node" in parsed.modules

@@ -1,8 +1,13 @@
-# `satterc`
+# `breadboard`
+
+An opinionated [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) +
+[xarray](https://xarray.dev) + [pint](https://pint.readthedocs.io) foundation for
+building configurable, unit-aware data pipelines and forward models in geoscience
+and environmental science.
 
 This is a work in progress - expect **very** sharp edges.
 
-For usage instructions see the [documentation](https://SatTerC.github.io/satterc) (this is also WIP!)
+For usage instructions see the [documentation](https://NERC-CEH.github.io/breadboard) (this is also WIP!)
 
 ## Developer instructions
 
@@ -18,8 +23,8 @@ This project uses **[uv](https://docs.astral.sh/uv/)** for dependency management
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/SatTerC/satterc.git
-cd satterc
+git clone https://github.com/NERC-CEH/breadboard.git
+cd breadboard
 ```
 
 
@@ -86,18 +91,18 @@ just export-all  # export all example notebooks
 
 ## CLI use
 
-Installing `satterc` will installing the `satterc` command.
+Installing `breadboard` will install the `breadboard` command.
 You can explore the documentation using the `-h` or `--help` flags, e.g.
 
 ```bash
-satterc -h  # help for the base command
-satterc graph -h  # help for the 'graph' subcommand
+breadboard -h  # help for the base command
+breadboard graph -h  # help for the 'graph' subcommand
 ```
 
 ### Generate a visualisation of the DAG
 
 ```bash
-satterc graph config.toml --pdf  # or --png
+breadboard graph config.toml --pdf  # or --png
 ```
 
 > [!NOTE]
@@ -107,7 +112,7 @@ satterc graph config.toml --pdf  # or --png
 
 ```bash
 mkdir outputs
-satterc run config.toml
+breadboard run config.toml
 ```
 
 This will produce three netcdf files in `outputs/`, for daily, weekly and monthly output data.

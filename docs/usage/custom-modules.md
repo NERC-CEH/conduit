@@ -5,12 +5,12 @@ icon: lucide/puzzle
 
 # Custom Modules
 
-Extend SatTerC pipelines with your own Python modules.
+Extend breadboard pipelines with your own Python modules.
 
 ## Overview
 
 Any importable Python module can be added to a pipeline.
-SatTerC uses the [Hamilton](https://github.com/dagworks-inc/hamilton) DAG framework, which means:
+breadboard uses the [Hamilton](https://github.com/dagworks-inc/hamilton) DAG framework, which means:
 
 - Each **function** in your module becomes a **node** in the DAG.
 - The **function name** is the node name.
@@ -50,7 +50,7 @@ class _Parameters:
     another_param: str = "default"
 ```
 
-This enables the `satterc setup` command to discover your module's parameters.
+This enables the `breadboard setup` command to discover your module's parameters.
 
 ### 3. Reference it in your config
 
@@ -123,7 +123,7 @@ path = "results/daily.nc"
 vars = ["drought_index", "soil_moisture"]
 ```
 
-## Using Custom Modules with `satterc setup`
+## Using Custom Modules with `breadboard setup`
 
 During interactive setup, you can add custom module paths.
 The setup tool will attempt to import the module and read its `_Parameters` to include them in the generated config.
@@ -131,4 +131,4 @@ The setup tool will attempt to import the module and read its `_Parameters` to i
 ## Dependencies
 
 Ensure any packages your custom module requires are installed in your environment.
-SatTerC does not manage dependencies for custom modules.
+breadboard does not manage dependencies for custom modules.

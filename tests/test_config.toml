@@ -1,9 +1,11 @@
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.rothc]
-n_years_spinup = 1
+# Generic model-free test pipeline. The single derived node stands in for the
+# domain models that used to live here: it produces a weekly DataArray
+# (`mean_growth_temperature`) from the daily temperature input, exercising
+# config-driven node generation, resampling and the [inputs.*] frequency model.
+[[node]]
+name = "mean_growth_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 
@@ -46,4 +48,3 @@ vars = [
   "leaf_pool_init",
   "stem_pool_init",
 ]
-

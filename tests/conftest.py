@@ -3,11 +3,11 @@ from pathlib import Path
 import pytest
 import xarray as xr
 
-from satterc import units
-from satterc.config import load_config
-from satterc.dag.driver import build_driver
-from satterc.io import load_inputs
-from satterc.setup_utils.data_gen import generate_synthetic_data
+from breadboard import units
+from breadboard.config import load_config
+from breadboard.dag.driver import build_driver
+from breadboard.io import load_inputs
+from breadboard.setup_utils.data_gen import generate_synthetic_data
 
 units.set_mode("off")
 

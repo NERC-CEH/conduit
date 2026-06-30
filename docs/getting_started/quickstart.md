@@ -5,19 +5,19 @@ icon: lucide/rocket
 
 # Quickstart: Your First Pipeline
 
-Get a SatTerC pipeline running in 5 minutes.
+Get a breadboard pipeline running in 5 minutes.
 This guide walks through creating a minimal pipeline that computes soil moisture and evapotranspiration from synthetic data.
 
 ## Prerequisites
 
-Follow the [Installation guide](installation.md) to install SatTerC and optional dependencies.
+Follow the [Installation guide](installation.md) to install breadboard and optional dependencies.
 
 ## Step 1: Generate a Config
 
 Use the interactive setup command to create a configuration file:
 
 ```sh
-satterc setup
+breadboard setup
 ```
 
 This will prompt you to select models. Choose `splash` for this tutorial.
@@ -26,7 +26,7 @@ Accept the default paths when prompted.
 Or skip the prompts and use defaults:
 
 ```sh
-satterc setup --models splash --defaults
+breadboard setup --models splash --defaults
 ```
 
 This creates a `config.toml` file that looks like:
@@ -65,7 +65,7 @@ Create test data from the config:
 
 ```sh
 mkdir -p inputs
-satterc data-gen generate config.toml --grid 1,1 --duration 1y --seed 42
+breadboard data-gen generate config.toml --grid 1,1 --duration 1y --seed 42
 ```
 
 This creates NetCDF files at the paths specified in your config.
@@ -75,7 +75,7 @@ This creates NetCDF files at the paths specified in your config.
 See what the DAG looks like:
 
 ```sh
-satterc graph config.toml --pdf
+breadboard graph config.toml --pdf
 ```
 
 This produces `pipeline.pdf` showing all nodes and their dependencies.
@@ -84,7 +84,7 @@ This produces `pipeline.pdf` showing all nodes and their dependencies.
 
 ```sh
 mkdir -p outputs
-satterc run config.toml
+breadboard run config.toml
 ```
 
 This reads the input data, executes the DAG, and writes the output files to `outputs/daily.nc`.
@@ -105,5 +105,4 @@ ds["soil_moisture"].plot()
 
 - Read about [how DAGs work](concepts.md) to understand the internals
 - See the [Configuration reference](../usage/config.md) for all available options
-- Browse the Examples for interactive notebooks (run `just export-all` to generate)
-- Learn about [built-in models](../models/index.md) and how to compose them
+- Learn how to plug in your own modules in [Custom modules](../usage/custom-modules.md)

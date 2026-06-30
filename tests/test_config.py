@@ -1,16 +1,15 @@
-"""Unit tests for satterc.config."""
+"""Unit tests for breadboard.config."""
 
 from pathlib import Path
 
 import pytest
 
-from satterc.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
+from breadboard.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
 EXPECTED_MODULES = [
-    "models.pmodel",
-    "models.rothc",
+    "node",  # test_config.toml defines a single [[node]] derived variable
     # resample absent — no [[resample]] entries in test_config.toml
     # inputs/outputs absent — now in input_specs / output_specs, not modules
 ]
@@ -102,13 +101,22 @@ class TestOutputSpecs:
 
 
 class TestDriverConfig:
-    """Tests for driver_config: model params and resample_specs only."""
+    """Tests for driver_config: module params and node/resample specs only."""
 
-    def test_model_params_merged_into_driver_config(self, parsed_config):
+    def test_node_specs_stashed_in_driver_config(self, parsed_config):
         dc = parsed_config.driver_config
-        assert dc["method_kphio"] == "sandoval"
-        assert dc["method_optchi"] == "lavergne20_c3"
-        assert dc["n_years_spinup"] == 1
+        assert "node_specs" in dc
+        assert [spec.name for spec in dc["node_specs"]] == [
+            "mean_growth_temperature_weekly"
+        ]
+
+    def test_module_params_merged_into_driver_config(self):
+        config = Config(
+            {"mymodel": {"_import_path": "pkg.mod", "threshold": 0.5, "mode": "fast"}}
+        )
+        dc = config.parse().driver_config
+        assert dc["threshold"] == 0.5
+        assert dc["mode"] == "fast"
 
     def test_no_io_path_keys_in_driver_config(self, parsed_config):
         dc = parsed_config.driver_config
@@ -145,25 +153,23 @@ class TestPathResolution:
 class TestValidation:
     """Tests for config validation behaviour."""
 
-    def test_unknown_model_raises_value_error(self, tmp_path):
-        config = Config({"models": {"unknown_model": {"param": "value"}}})
+    def test_non_importable_module_raises_value_error(self, tmp_path):
+        config = Config({"mymodel": {"_import_path": "no_such_pkg.mod"}})
 
         def _build():
-            from satterc.dag.driver import build_driver
+            from breadboard.dag.driver import build_driver
 
             parsed = config.parse()
             build_driver(parsed.modules, parsed.driver_config)
 
-        with pytest.raises(ValueError, match="unknown_model"):
+        with pytest.raises(ValueError, match="Cannot load module"):
             _build()
 
-    def test_duplicate_model_params_raise(self, tmp_path):
+    def test_duplicate_module_params_raise(self, tmp_path):
         config = Config(
             {
-                "models": {
-                    "pmodel": {"shared_param": "a"},
-                    "splash": {"shared_param": "b"},
-                }
+                "mod_a": {"_import_path": "pkg.a", "shared_param": "a"},
+                "mod_b": {"_import_path": "pkg.b", "shared_param": "b"},
             }
         )
         with pytest.raises(ValueError, match="shared_param"):
@@ -214,12 +220,12 @@ class TestGrid:
     """Tests for [grid] section parsing — now a no-op."""
 
     def test_grid_section_does_not_add_grid_module(self):
-        config = Config({"grid": {}, "models": {"pmodel": {}}})
+        config = Config({"grid": {}})
         parsed = config.parse()
         assert "grid" not in parsed.modules
 
     def test_no_grid_section_also_fine(self):
-        config = Config({"models": {"pmodel": {}}})
+        config = Config({"grid": {}})
         parsed = config.parse()
         assert "grid" not in parsed.modules
 
@@ -230,7 +236,6 @@ class TestResample:
     def test_resample_adds_resample_module(self):
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"}
                 ],
@@ -240,16 +245,15 @@ class TestResample:
         assert "resample" in parsed.modules
 
     def test_no_resample_omits_resample_module(self):
-        config = Config({"models": {"pmodel": {}}})
+        config = Config({"grid": {}})
         parsed = config.parse()
         assert "resample" not in parsed.modules
 
     def test_resample_specs_in_driver_config(self):
-        from satterc.config import ResampleSpec
+        from breadboard.config import ResampleSpec
 
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp", "npp"], "from_freq": "daily", "to_freq": "weekly"}
                 ],
@@ -266,7 +270,6 @@ class TestResample:
     def test_duplicate_resample_output_raises(self):
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"},
                     {"vars": ["gpp"], "from_freq": "weekly", "to_freq": "monthly"},
@@ -279,7 +282,6 @@ class TestResample:
     def test_unsupported_freq_pair_raises(self):
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp"], "from_freq": "monthly", "to_freq": "daily"}
                 ],
@@ -308,7 +310,7 @@ class TestNode:
         assert "node" in parsed.modules
 
     def test_no_node_omits_node_module(self):
-        config = Config({"models": {"pmodel": {}}})
+        config = Config({"grid": {}})
         parsed = config.parse()
         assert "node" not in parsed.modules
 

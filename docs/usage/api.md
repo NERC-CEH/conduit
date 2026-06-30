@@ -5,15 +5,14 @@ icon: lucide/code-2
 
 # Python API
 
-SatTerC can be driven from any Python script or notebook using the Python API.
+breadboard can be driven from any Python script or notebook using the Python API.
 This gives you fine-grained control: you can inspect individual nodes, plot
 intermediate results, or skip writing outputs to disk entirely. The CLI
-(`satterc run`) is a thin wrapper over the same API, useful when you just want
+(`breadboard run`) is a thin wrapper over the same API, useful when you just want
 to run a config file end-to-end.
 
 This page walks through the key steps — building a config, parsing it, loading
-inputs, building the driver, and executing the pipeline. For more in-depth
-worked examples, see the [Examples](../examples/my_first_pipeline.md) section.
+inputs, building the driver, and executing the pipeline.
 
 /// admonition | Import convention
     type: info
@@ -21,8 +20,8 @@ worked examples, see the [Examples](../examples/my_first_pipeline.md) section.
 All examples on this page assume the following imports:
 
 ```python
-from satterc import build_driver, get_final_vars, get_outputs, load_inputs
-from satterc.config import Config
+from breadboard import build_driver, get_final_vars, get_outputs, load_inputs
+from breadboard.config import Config
 ```
 ///
 
@@ -31,7 +30,7 @@ from satterc.config import Config
 ## Step 1: Build a config
 
 A pipeline is described by a configuration — a Python dictionary with the same
-structure as a SatTerC [TOML configuration](config.md) file. You can pass this
+structure as a breadboard [TOML configuration](config.md) file. You can pass this
 dict directly to `Config` instead of writing a TOML file to disk.
 
 ```python
@@ -182,7 +181,7 @@ datasets = get_outputs(results, parsed.output_specs)
 To write the outputs to disk, call `save_outputs()`:
 
 ```python
-from satterc import save_outputs
+from breadboard import save_outputs
 
 save_outputs(datasets, parsed.output_specs)
 ```
@@ -202,8 +201,8 @@ use with `xarray`'s plotting methods, `matplotlib`, or any other library.
 Here is a complete script that ties all the steps together:
 
 ```python
-from satterc import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
-from satterc.config import Config
+from breadboard import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
+from breadboard.config import Config
 
 # 1. Build config
 config_data = {
@@ -234,6 +233,5 @@ datasets = get_outputs(results, parsed.output_specs)
 save_outputs(datasets, parsed.output_specs)
 ```
 
-**From here**, check out the [Examples](../examples/my_first_pipeline.md) section
-for interactive notebook walkthroughs covering synthetic data generation,
-multi-model pipelines, PFT parameters, and more.
+**From here**, explore the [Configuration reference](config.md) and the
+[CLI](cli.md) to build your own pipelines.

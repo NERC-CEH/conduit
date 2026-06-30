@@ -9,9 +9,9 @@ Common issues and their solutions.
 
 ## Installation
 
-### `graphviz` not found when running `satterc graph`
+### `graphviz` not found when running `breadboard graph`
 
-The `satterc graph` command requires the system `graphviz` binary, not just the Python package.
+The `breadboard graph` command requires the system `graphviz` binary, not just the Python package.
 
 ```sh
 # Ubuntu/Debian
@@ -64,7 +64,7 @@ time,precipitation,temperature
 
 ### NetCDF file has wrong spatial dimensions
 
-SatTerC expects gridded NetCDF files to have a CRS (Coordinate Reference System) attribute. If your file uses non-standard dimension names, you may need to set the CRS:
+breadboard expects gridded NetCDF files to have a CRS (Coordinate Reference System) attribute. If your file uses non-standard dimension names, you may need to set the CRS:
 
 ```python
 import xarray as xr
@@ -82,7 +82,7 @@ The pipeline validates that time indices match the expected frequency:
 - **Weekly** must have frequency `"W"` or `"7D"`
 - **Monthly** must have frequency `"ME"` (month-end) or `"MS"` (month-start)
 
-If your data has gaps or irregular spacing, you'll see a validation error. Fix the data before loading, or use the `satterc data-gen` command to generate correctly-formatted synthetic data for testing.
+If your data has gaps or irregular spacing, you'll see a validation error. Fix the data before loading, or use the `breadboard data-gen` command to generate correctly-formatted synthetic data for testing.
 
 ## Running Pipelines
 
@@ -99,9 +99,9 @@ Check that:
 The SGAM and RothC models loop over pixels internally. For large grids (e.g., continental scale), consider:
 
 - Running on a subset first to validate your config
-- Using the `satterc data-gen` command with a small grid to test
+- Using the `breadboard data-gen` command with a small grid to test
 
-### `satterc setup` doesn't include a variable I need
+### `breadboard setup` doesn't include a variable I need
 
 The setup tool infers required variables by introspecting model modules. It may not catch:
 
@@ -125,7 +125,7 @@ ratio = "compress"
 Or visualise a sub-DAG in Python:
 
 ```python
-from satterc import build_driver, load_config
+from breadboard import build_driver, load_config
 
 parsed = load_config("config.toml")
 dr = build_driver(modules=parsed.modules, config=parsed.driver_config)

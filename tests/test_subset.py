@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from satterc.config import Config, IOSpec, SubsetSpec
-from satterc.dag.driver import build_driver
-from satterc.io import get_final_vars, load_inputs
+from breadboard.config import Config, IOSpec, SubsetSpec
+from breadboard.dag.driver import build_driver
+from breadboard.io import get_final_vars, load_inputs
 
 _FINAL_VARS = get_final_vars(
     {"weekly": IOSpec(path="", vars=["mean_growth_temperature"])}
@@ -59,7 +59,7 @@ class TestSubsetSpecValidation:
         assert parsed.subset_spec == SubsetSpec(pixel_start=0, pixel_end=100)
 
     def test_absent_section_gives_none(self):
-        parsed = Config.loads("[models.pmodel]\n").parse()
+        parsed = Config.loads("[grid]\n").parse()
         assert parsed.subset_spec is None
 
 
@@ -133,18 +133,16 @@ class TestSubsetPipelineResult:
 
 
 class TestCLISubset:
-    """satterc run with [subset] exits zero and writes only the subset pixels."""
+    """breadboard run with [subset] exits zero and writes only the subset pixels."""
 
     @pytest.fixture
     def subset_config_toml(self, tmp_path, synthetic_data_dir):
         out_path = tmp_path / "outputs.nc"
         content = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.rothc]
-n_years_spinup = 1
+[[node]]
+name = "mean_growth_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 
@@ -182,7 +180,7 @@ pixel_end = 2
 
     def _subset_path(self, out_path):
         """The auto-suffixed NetCDF path a [subset] run writes to."""
-        from satterc.io import subset_suffix
+        from breadboard.io import subset_suffix
 
         spec = SubsetSpec(0, 2)
         return out_path.with_name(
@@ -192,7 +190,7 @@ pixel_end = 2
     def test_exits_zero(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from breadboard.cli import app
 
         config_path, _ = subset_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -202,7 +200,7 @@ pixel_end = 2
         """A subset run writes a uniquely-suffixed, stacked (pixel) file."""
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from breadboard.cli import app
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -215,9 +213,9 @@ pixel_end = 2
     def test_output_values_match_full_run(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
-        from satterc.config import load_config
-        from satterc.io import get_outputs
+        from breadboard.cli import app
+        from breadboard.config import load_config
+        from breadboard.io import get_outputs
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])

@@ -72,44 +72,29 @@ class TestSyntheticDataGeneration:
 
 
 class TestSyntheticDataValues:
-    """Tests for synthetic data values."""
+    """Tests for the generic name-heuristic fallback generator's value contract.
 
-    def test_temperature_range(self, daily_ds):
-        """Test temperature is in reasonable range for UK."""
-        temp = daily_ds.temperature.values
-        assert np.nanmin(temp) > -20
-        assert np.nanmax(temp) < 40
+    The synthetic generator infers a distribution from each variable's name:
+    ``*_fraction``/``fapar`` etc. are bounded to [0, 1]; ``precipitation``/
+    ``lai``/``gpp`` etc. are non-negative; ``*_type`` is integer-valued.
+    """
 
-    def test_precipitation_non_negative(self, daily_ds):
-        """Test precipitation is non-negative."""
-        precip = daily_ds.precipitation.values
-        assert np.nanmin(precip) >= 0
-
-    def test_sunshine_fraction_valid(self, daily_ds):
-        """Test sunshine fraction is between 0 and 1."""
+    def test_bounded_vars_in_unit_interval(self, daily_ds):
         sunshine = daily_ds.sunshine_fraction.values
         assert np.nanmin(sunshine) >= 0
         assert np.nanmax(sunshine) <= 1
 
-    def test_lai_valid(self, daily_ds):
-        """Test LAI is non-negative."""
-        lai = daily_ds.lai.values
-        assert np.nanmin(lai) >= 0
+    def test_positive_vars_non_negative(self, daily_ds):
+        for name in ("precipitation", "lai", "gpp"):
+            assert np.nanmin(daily_ds[name].values) >= 0, name
 
-    def test_gpp_non_negative(self, daily_ds):
-        """Test GPP is non-negative."""
-        gpp = daily_ds.gpp.values
-        assert np.nanmin(gpp) >= 0
+    def test_integer_typed_var_is_integer_valued(self, static_ds):
+        plant_type = static_ds.plant_type.values
+        assert np.all(plant_type == np.round(plant_type))
 
-    def test_plant_type_valid(self, static_ds):
-        """Test plant type values are valid (1=grassland, 2=C3 crop, 3=woodland)."""
-        assert np.all(np.isin(static_ds.plant_type.values, [1, 2, 3]))
-
-    def test_elevation_reasonable(self, static_ds):
-        """Test elevation is in reasonable range."""
-        elev = static_ds.elevation.values
-        assert np.nanmin(elev) >= 0
-        assert np.nanmax(elev) < 1000
+    def test_no_nan_in_generated_data(self, daily_ds, static_ds):
+        assert not np.any(np.isnan(daily_ds.temperature.values))
+        assert not np.any(np.isnan(static_ds.elevation.values))
 
     def test_crs_metadata(self, daily_ds, static_ds):
         """Test CRS metadata is set correctly."""

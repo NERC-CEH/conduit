@@ -5,7 +5,7 @@ icon: lucide/database
 
 # Data Formats and Requirements
 
-SatTerC reads input data from files and writes results to disk.
+breadboard reads input data from files and writes results to disk.
 This page covers supported formats, spatial handling, and the variables each model requires.
 
 ## Supported File Formats
@@ -32,11 +32,11 @@ Format detection is automatic — the file extension determines how data is load
 
 ## Spatial Handling
 
-SatTerC handles three spatial configurations automatically:
+breadboard handles three spatial configurations automatically:
 
 ### 2D Gridded Data (NetCDF/Zarr with CRS)
 
-If your input file has spatial dimensions (`x`/`y` or `lat`/`lon`) with a CRS, SatTerC stacks them into a single `pixel` dimension. Each grid cell becomes one pixel in the pipeline.
+If your input file has spatial dimensions (`x`/`y` or `lat`/`lon`) with a CRS, breadboard stacks them into a single `pixel` dimension. Each grid cell becomes one pixel in the pipeline.
 
 ### Pre-Stacked Multi-Point Data
 
@@ -66,7 +66,7 @@ For gridded or multi-point data, files should have:
 - Spatial dimensions (`x`/`y` or `lat`/`lon`) with a CRS attribute, **or** a `pixel` dimension
 - Data variables named without frequency suffixes (e.g., `temperature`, not `temperature_daily`)
 
-SatTerC appends the frequency suffix internally. For example, a variable `temperature` in a daily input file becomes the node `temperature_daily` in the DAG.
+breadboard appends the frequency suffix internally. For example, a variable `temperature` in a daily input file becomes the node `temperature_daily` in the DAG.
 
 ## Model Data Requirements
 
@@ -229,5 +229,5 @@ vars = ["litter_pool"]
 /// admonition | Tip
     type: tip
 
-Use `satterc setup` to generate a config with the correct variables for your selected models automatically.
+Use `breadboard setup` to generate a config with the correct variables for your selected models automatically.
 ///

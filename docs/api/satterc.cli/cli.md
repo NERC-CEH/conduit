@@ -1,3 +1,0 @@
-# `satterc.cli`
-
-::: satterc.cli

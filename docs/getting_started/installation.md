@@ -5,7 +5,7 @@ icon: lucide/download
 
 # Installation
 
-SatTerC is currently only available from GitHub.
+breadboard is currently only available from GitHub.
 
 ## Prerequisites
 
@@ -16,16 +16,16 @@ SatTerC is currently only available from GitHub.
 === "pip"
 
     ```sh
-    pip install git+https://github.com/satterc/satterc
+    pip install git+https://github.com/breadboard/breadboard
     ```
 
 === "uv"
 
     ```sh
-    uv add git+https://github.com/satterc/satterc
+    uv add git+https://github.com/breadboard/breadboard
     ```
 
-This installs the `satterc` package and the `satterc` CLI command into your environment.
+This installs the `breadboard` package and the `breadboard` CLI command into your environment.
 
 The base install is intentionally lightweight — it includes the core engine
 (Hamilton, xarray, units checking, the config parser and the CLI) but **not** the
@@ -34,12 +34,12 @@ extras below.
 
 ## Optional features (extras)
 
-SatTerC groups its optional dependencies into installable extras:
+breadboard groups its optional dependencies into installable extras:
 
 | Extra | Installs | Needed for |
 | --- | --- | --- |
 | `models` | `pyrealm`, `rothc-py`, `sgam` | the built-in P-model, SPLASH, SGAM and RothC models |
-| `viz` | `apache-hamilton[visualization]` | rendering the DAG with `satterc graph` |
+| `viz` | `apache-hamilton[visualization]` | rendering the DAG with `breadboard graph` |
 | `all` | everything above | convenience — installs every optional feature |
 
 Append the extra(s) in square brackets:
@@ -47,22 +47,22 @@ Append the extra(s) in square brackets:
 === "pip"
 
     ```sh
-    pip install "satterc[models] @ git+https://github.com/satterc/satterc"
-    pip install "satterc[all] @ git+https://github.com/satterc/satterc"
+    pip install "breadboard[models] @ git+https://github.com/breadboard/breadboard"
+    pip install "breadboard[all] @ git+https://github.com/breadboard/breadboard"
     ```
 
 === "uv"
 
     ```sh
-    uv add "satterc[models] @ git+https://github.com/satterc/satterc"
-    uv add "satterc[all] @ git+https://github.com/satterc/satterc"
+    uv add "breadboard[models] @ git+https://github.com/breadboard/breadboard"
+    uv add "breadboard[all] @ git+https://github.com/breadboard/breadboard"
     ```
 
 ## Install for development
 
 ```sh
-git clone https://github.com/SatTerC/satterc.git
-cd satterc
+git clone https://github.com/breadboard/breadboard.git
+cd breadboard
 uv sync
 source .venv/bin/activate
 ```
@@ -74,7 +74,7 @@ development tooling, so you don't need to request them explicitly.
 
 ### Graphviz (for pipeline visualization)
 
-The `viz` extra installs the Python `graphviz` bindings, but `satterc graph` also
+The `viz` extra installs the Python `graphviz` bindings, but `breadboard graph` also
 needs the Graphviz system binaries:
 
 ```sh
@@ -88,5 +88,5 @@ brew install graphviz
 ## Verify installation
 
 ```sh
-satterc version
+breadboard version
 ```

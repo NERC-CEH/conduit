@@ -4,10 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-SatTerC is in **alpha** with no users outside the core collaboration. Backwards
+breadboard is in **alpha** with no external users. It was extracted from the
+(now-archived) `satterc` terrestrial-carbon framework to become a general-purpose,
+domain-agnostic foundation for data pipelines and forward models. Backwards
 compatibility is *not* a constraint: prefer the cleanest design and make breaking
 changes (config schema, public APIs, behaviour) freely rather than adding
 compatibility shims.
+
+The refactor is **phased**: Phase 1 (done) renamed the package and stripped all
+carbon-domain models. Later phases generalise the I/O layer away from the baked-in
+temporal-frequency (`{var}_{freq}`, daily/weekly/monthly/static) and geospatial
+`(time, pixel)` + CRS conventions, which are still present but slated to become
+opt-in. See the plan file if working through subsequent phases.
+
+## Guiding philosophy
+
+breadboard is an opinionated integration of Apache Hamilton (DAG), xarray (+ dask
+for scaling), and pint/cf-xarray/pint-xarray (units validation), driven by a TOML
+spec that can describe a whole DAG — including dynamically generated nodes — in
+plain text. Its value is the *integration*; favour **exposing** Hamilton and xarray
+machinery over building opaque wrappers. The units subsystem is the flagship
+feature and should be preserved and extended, not bypassed.
 
 ## Commands
 
@@ -38,50 +55,63 @@ Pre-commit hooks run `uv-lock`, `pyright`, and `ruff` on every commit — not th
 
 ## Architecture
 
-SatTerC is a data-driven terrestrial carbon modelling framework. It uses [Hamilton](https://github.com/DAGWorks-Inc/hamilton) to define computational DAGs that transform satellite/environmental inputs through biogeochemical models into carbon-related outputs.
+breadboard uses [Hamilton](https://github.com/DAGWorks-Inc/hamilton) to define
+computational DAGs that transform xarray inputs through user-supplied modules into
+outputs, with a TOML configuration spec and runtime/build-time unit validation.
 
 ### Core modules
 
-**`src/satterc/config.py`** — parses TOML config files into a `ParsedConfig` dataclass. Recognised top-level sections: `[inputs.*]`, `[outputs.*]`, `[grid]` (silently ignored — grid computation is in `io.py`), `[models.*]`, `[[node]]`, `[[resample]]`, `[cache]` (Hamilton result caching → `ParsedConfig.cache_spec`). Any other section is treated as an external module and must include `_import_path`. Key types exported: `Config`, `ParsedConfig`, `IOSpec`, `ResampleSpec`, `NodeSpec`, `CacheSpec`.
+**`src/breadboard/config.py`** — parses TOML config files into a `ParsedConfig` dataclass. Recognised top-level sections: `[inputs.*]`, `[outputs.*]`, `[grid]` (silently accepted — grid computation is in `io.py`), `[[node]]`, `[[resample]]`, `[cache]`, `[blocking]`, `[subset]`, `[units]`. **Any other section is treated as a user module and must include `_import_path = "pkg.module"`** — there is no special "models" namespace; user models are just modules. Key types exported: `Config`, `ParsedConfig`, `IOSpec`, `ResampleSpec`, `NodeSpec`, `CacheSpec`, `BlockingSpec`, `SubsetSpec`.
 
-**`src/satterc/dag/driver.py`** — builds Hamilton `Driver` objects from a `ParsedConfig`. The `MODULES` dict maps config section names (e.g. `"models.pmodel"`) to importable paths (e.g. `"satterc.dag.pmodel"`). External modules are imported directly.
+**`src/breadboard/dag/driver.py`** — builds Hamilton `Driver` objects from a `ParsedConfig`. The `MODULES` dict maps the two built-in short names (`"node"`, `"resample"`) to importable paths; every other module identifier is a dotted `_import_path` imported directly. `build_driver` also runs the build-time unit check (`check_dag_units`).
 
-**`src/satterc/io.py`** — all I/O lives here, outside the Hamilton DAG. Key public functions:
+**`src/breadboard/units.py` + `dag/unit_check.py` + `dag/_utils.py`** — the units subsystem (the flagship feature). `units.py` wires pint/cf-xarray/pint-xarray (UDUNITS registry) and provides the `Annotated[DataArray, "<unit>"]` signature convention plus strict/warn/off modes (env vars `BREADBOARD_UNITS_MODE`/`BREADBOARD_UNITS_EXACT`). `_utils.py:declare_units` enforces units at runtime; `unit_check.py` adds build-time (`check_dag_units`) and dry-run input (`check_input_units`) checks.
+
+**`src/breadboard/io.py`** — all I/O lives here, outside the Hamilton DAG. Key public functions:
 - `load_inputs(input_specs)` — reads NetCDF/Zarr/CSV/Parquet/JSON/TOML files; returns a flat dict of named `DataArray`s following Hamilton naming conventions (`{var}_{freq}`, `dates_{freq}`, `latitude`, `longitude`)
 - `get_outputs(results, output_specs)` — assembles Hamilton execute results into per-frequency `Dataset`s
 - `save_outputs(output_datasets, output_specs)` — writes datasets to disk
 - `get_final_vars(output_specs)` — returns the flat node name list to pass to `driver.execute(final_vars=...)`
+- `create_output_store` / `merge_subset_outputs` — pre-create Zarr stores and reassemble parallel subset runs
 
-**`src/satterc/dag/`** — the Hamilton DAG modules:
-- `pmodel.py`, `splash.py`, `sgam.py`, `rothc.py` — ecological model wrappers
-- `resample.py` — temporal resampling (daily ↔ weekly ↔ monthly), driven by `resample_specs` in driver config
-- `node.py` — dynamically generates Hamilton-compatible modules from `[[node]]` config entries using `exec()`; supports inline expressions or import-path + function name
-- `caching.py` — registers a content-based fingerprint for `xarray.DataArray` (Hamilton can't hash them by default) and applies `Builder.with_cache()` from a `CacheSpec`; imported lazily by `driver.build_driver` when caching is enabled
-- `_utils.py` — `@xarray_io()` decorator that wraps numpy functions to accept/return xarray objects
+(Note: io.py's frequency vocabulary and stacked-`pixel`/CRS geospatial model are the main domain-flavoured conventions still baked in; later phases make them opt-in.)
+
+**`src/breadboard/dag/`** — the built-in Hamilton DAG modules:
+- `resample.py` — temporal resampling (daily ↔ weekly ↔ monthly), driven by `resample_specs` in driver config; unit-preserving
+- `node.py` — dynamically generates Hamilton-compatible modules from `[[node]]` config entries using `exec()`; supports inline expressions or import-path + function name, with optional declared `units`. This is the "user model in TOML" path.
+- `caching.py` — registers a content-based fingerprint for `xarray.DataArray` and applies `Builder.with_cache()` from a `CacheSpec`
+- `blocking.py` — pixel-blocked driver execution (partition invariance)
+- `_utils.py` — `@declare_units` decorator (unit enforcement/stamping)
 - `_hamilton_fixes.py` — workarounds for Hamilton edge cases
 
-### Hamilton DAG conventions
+### Hamilton DAG conventions (for user-defined modules)
 
-Each module contains plain functions that become DAG nodes. Key patterns:
+Each module contains plain functions that become DAG nodes. The conventions a user
+model follows:
 
-- `@extract_fields` (from `hamilton.function_modifiers`) — splits a dict return into multiple DAG outputs
-- `@xarray_io()` — wraps numpy-based functions to accept/return xarray objects
-- Variable names carry frequency suffixes: `temperature_daily`, `gpp_monthly`, etc.
+- **Public node function name = the output node name** (single-output), or use `@extract_fields()` (from `hamilton.function_modifiers`) with a `TypedDict` return to split into multiple named outputs.
+- `@declare_units` (innermost) reads `Annotated[DataArray, "<unit>"]` from the signature/return and validates/stamps units.
+- **Parameter names = input node names** (following io.py's `{var}_{freq}` / bare-static / `dates_{freq}` / `latitude` conventions).
+- **Keyword-only args (after `*`) = config parameters**, populated from the module's own config section.
 
 ### Configuration-driven composition
 
-Config sections map directly to module names (e.g. `[models.pmodel]`, `[inputs.daily]`), so adding a built-in model means adding a module under `dag/` and a MODULES entry in `driver.py`. External modules need only a `_import_path` key in the config.
+A user module is added by writing a config section `[mymodel]` with
+`_import_path = "mypkg.mymodel"` (plus any keyword params), or inline via `[[node]]`.
+The built-ins `node` and `resample` are addressable by their short names.
 
 ### CLI
 
-The `typer`-based CLI (`src/satterc/cli/`) has commands: `run`, `graph` (visualise DAG as PDF/PNG), `setup` (interactive config generation), `data-gen` (synthetic data for testing), `version`.
+The `typer`-based CLI (`src/breadboard/cli/`) has commands: `run`, `graph`
+(visualise DAG as PDF/PNG/DOT), `version`, `create-store` and `merge` (for parallel
+subset runs). All are model-agnostic.
 
 ### Testing
 
-Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF data once (`tests/conftest.py`). The `setup_utils/data_gen` utilities mirror the real input format for integration testing.
+Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF data once (`tests/conftest.py`) via `setup_utils/data_gen` — a generic, name-heuristic synthetic-data generator (`coords.py` + `fallback.py`, no domain semantics). The session pipeline (`tests/test_config.toml`) is model-free: a single `[[node]]` derived variable stands in for a model. Coverage gate is 90% (`just test-cov`).
 
 ### Examples
 
-Marimo interactive notebooks live in `examples/`. Each has `satterc==<version>` pinned in its inline `# dependencies` block — update this when bumping the package version, then re-export with `just export-all`.
-
-`examples/` also holds two plain config files (not notebooks): `config.toml`, a full four-model pipeline mirroring `full_pipeline.py`, and `graphviz.toml`, a commented `satterc graph --style` template. Neither is loaded by any code or tooling (`just export`/`marimo check` only touch `.py`); they are user-facing references that the docs link to.
+`examples/` holds `graphviz.toml`, a commented `breadboard graph --style` template
+(a user-facing reference, not loaded by any tooling). Generic example notebooks are
+added in a later phase.

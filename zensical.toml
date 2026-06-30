@@ -2,13 +2,13 @@
 
 use_directory_urls = false
 
-site_name = "satterc"
-site_description = "A Python framework for data-driven terrestrial carbon modelling based on Directed Acyclic Graphs."
+site_name = "breadboard"
+site_description = "An opinionated Hamilton + xarray + pint foundation for geoscientific data pipelines."
 site_author = "Joe Marsh Rossney"
-site_url = "https://satterc.github.io/satterc"
+site_url = "https://NERC-CEH.github.io/breadboard"
 
-repo_name = "SatTerC/satterc"
-repo_url = "https://github.com/SatTerC/satterc"
+repo_name = "NERC-CEH/breadboard"
+repo_url = "https://github.com/NERC-CEH/breadboard"
 
 copyright = "Copyright &copy; 2026 The authors"
 
@@ -28,39 +28,19 @@ nav = [
       "usage/custom-modules.md",
       "usage/troubleshooting.md",
   ]},
-  { "Models" = [
-      "models/index.md",
-      "models/splash.md",
-      "models/pmodel.md",
-      "models/sgam.md",
-      "models/rothc.md",
-  ]},
-  { "Examples" = [
-      "examples/my_first_pipeline.md",
-      "examples/soil_moisture.md",
-      "examples/pft_parameters.md",
-      "examples/full_pipeline.md",
-  ]},
   { "API Reference" = [
-      "api/satterc.cli/index.md",
-      "api/satterc.cli/cli.md",
-      "api/satterc.cli/graph.md",
-      "api/satterc.cli/run.md",
-      "api/satterc.cli/setup.md",
-      "api/satterc.cli/data_gen.md",
-      "api/satterc.cli/version.md",
-      "api/satterc.config.md",
-      "api/satterc.dag.driver.md",
-      "api/satterc.dag/splash.md",
-      "api/satterc.dag/pmodel.md",
-      "api/satterc.dag/sgam.md",
-      "api/satterc.dag/rothc.md",
-      "api/satterc.dag/resample.md",
-      "api/satterc.setup_utils/config_gen.md",
-      "api/satterc.setup_utils/data_gen/daily.md",
-      "api/satterc.setup_utils/data_gen/fallback.md",
-      "api/satterc.setup_utils/data_gen/generate.md",
-      "api/satterc.setup_utils/data_gen/static.md",
+      "api/breadboard.cli/index.md",
+      "api/breadboard.cli/cli.md",
+      "api/breadboard.cli/graph.md",
+      "api/breadboard.cli/run.md",
+      "api/breadboard.cli/version.md",
+      "api/breadboard.config.md",
+      "api/breadboard.dag.driver.md",
+      "api/breadboard.dag/node.md",
+      "api/breadboard.dag/resample.md",
+      "api/breadboard.setup_utils/data_gen/coords.md",
+      "api/breadboard.setup_utils/data_gen/fallback.md",
+      "api/breadboard.setup_utils/data_gen/generate.md",
   ]},
 ]
 

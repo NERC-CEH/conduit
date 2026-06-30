@@ -8,15 +8,15 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from satterc.config import BlockingSpec, Config, IOSpec
-from satterc.dag.blocking import (
+from breadboard.config import BlockingSpec, Config, IOSpec
+from breadboard.dag.blocking import (
     _concat_results,
     _make_blocks,
     _pixel_input_names,
     execute_blocked,
 )
-from satterc.dag.driver import build_driver
-from satterc.io import get_final_vars
+from breadboard.dag.driver import build_driver
+from breadboard.io import get_final_vars
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -167,7 +167,7 @@ class TestBlockingSpecValidation:
         assert parsed.blocking_spec == BlockingSpec(block_size=8)
 
     def test_absent_section_gives_none(self):
-        parsed = Config.loads("[models.pmodel]\n").parse()
+        parsed = Config.loads("[grid]\n").parse()
         assert parsed.blocking_spec is None
 
 
@@ -207,7 +207,7 @@ class TestCachingWithBlocking:
     def test_blocked_cached_matches_unblocked(
         self, pipeline_config, pipeline_inputs, tmp_path
     ):
-        from satterc import CacheSpec
+        from breadboard import CacheSpec
 
         spec = BlockingSpec(block_size=2)
         cache = CacheSpec(path=str(tmp_path / "cache"))
@@ -232,18 +232,16 @@ class TestCachingWithBlocking:
 
 
 class TestCLIEndToEnd:
-    """satterc run with a [blocking] section exits zero and writes outputs."""
+    """breadboard run with a [blocking] section exits zero and writes outputs."""
 
     @pytest.fixture
     def blocking_config_toml(self, tmp_path, synthetic_data_dir):
         out_path = tmp_path / "outputs.nc"
         content = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.rothc]
-n_years_spinup = 1
+[[node]]
+name = "mean_growth_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 
@@ -281,7 +279,7 @@ block_size = 2
     def test_exits_zero(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from breadboard.cli import app
 
         config_path, _ = blocking_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -290,7 +288,7 @@ block_size = 2
     def test_output_file_written(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from breadboard.cli import app
 
         config_path, out_path = blocking_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -300,7 +298,7 @@ block_size = 2
         import xarray as xr
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from breadboard.cli import app
 
         config_path, out_path = blocking_config_toml
         # Run with blocking.
@@ -308,9 +306,9 @@ block_size = 2
         blocked_ds = xr.open_dataset(out_path)
 
         # Run without blocking for reference.
-        from satterc.config import load_config
-        from satterc.dag.driver import build_driver
-        from satterc.io import get_outputs, load_inputs
+        from breadboard.config import load_config
+        from breadboard.dag.driver import build_driver
+        from breadboard.io import get_outputs, load_inputs
 
         parsed = load_config(config_path)
         parsed.blocking_spec = None

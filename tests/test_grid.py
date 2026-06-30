@@ -3,14 +3,14 @@ Tests for grid (lat/lon) computation in load_inputs().
 
 The grid computation previously lived in pipeline/grid.py as Hamilton nodes.
 It now lives inside load_inputs() as plain function calls, using
-_compute_lat_lon() and _check_common_grid() from satterc.io.
+_compute_lat_lon() and _check_common_grid() from breadboard.io.
 """
 
 import numpy as np
 import pytest
 
-from satterc.config import IOSpec
-from satterc.io import MisalignedGridError, _check_common_grid, load_inputs
+from breadboard.config import IOSpec
+from breadboard.io import MisalignedGridError, _check_common_grid, load_inputs
 
 
 class TestCheckCommonGrid:

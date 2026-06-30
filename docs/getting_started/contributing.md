@@ -7,7 +7,7 @@ icon: lucide/code
 
 ## Design Philosophy
 
-SatTerC is built around a few core principles that shape every design decision.
+breadboard is built around a few core principles that shape every design decision.
 
 ### DAG-first
 
@@ -32,7 +32,7 @@ Each model (SPLASH, P-Model, SGAM, RothC) is a self-contained Python module. Mod
 
 ### Hamilton as the engine
 
-SatTerC is built on [Hamilton](https://github.com/dagworks-inc/hamilton), a DAG-based dataflow framework. Rather than reinventing the wheel, SatTerC focuses on domain-specific concerns (terrestrial carbon modelling, climate data handling) while delegating graph construction and execution to a mature library.
+breadboard is built on [Hamilton](https://github.com/dagworks-inc/hamilton), a DAG-based dataflow framework. Rather than reinventing the wheel, breadboard focuses on domain-specific concerns (terrestrial carbon modelling, climate data handling) while delegating graph construction and execution to a mature library.
 
 ## Development Setup
 
@@ -44,8 +44,8 @@ SatTerC is built on [Hamilton](https://github.com/dagworks-inc/hamilton), a DAG-
 ### Clone and install
 
 ```bash
-git clone https://github.com/SatTerC/satterc.git
-cd satterc
+git clone https://github.com/breadboard/breadboard.git
+cd breadboard
 uv sync
 source .venv/bin/activate
 ```
@@ -74,20 +74,20 @@ just export-all  # export all example notebooks
 
 ## Adding a New Model
 
-Built-in models live in `src/satterc/pipeline/models/`. To add a new model:
+Built-in models live in `src/breadboard/pipeline/models/`. To add a new model:
 
 1. **Create the module** — a Python file with functions that follow Hamilton conventions:
    - Function name = node name
    - Function parameters = required inputs (must match node names from upstream modules)
    - Return value = produced output(s)
 
-2. **Define parameters** (optional) — add a `<model_name>_parameters()` function that returns a tuple of configurable parameters with defaults. This enables `satterc setup` to discover your model's parameters.
+2. **Define parameters** (optional) — add a `<model_name>_parameters()` function that returns a tuple of configurable parameters with defaults. This enables `breadboard setup` to discover your model's parameters.
 
 3. **Use the `@extract_fields` decorator** — if your function returns a dict, use this decorator to declare which keys become individual DAG nodes.
 
 4. **Use the `@xarray_io()` decorator** — for the inner computation function that works with raw numpy arrays, this decorator handles conversion to/from xarray.
 
-5. **Register the model** — add it to the `BuiltinModels` enum in `src/satterc/setup_utils/__init__.py`.
+5. **Register the model** — add it to the `BuiltinModels` enum in `src/breadboard/setup_utils/__init__.py`.
 
 6. **Add documentation** — create a page in `docs/Models/` and add it to the navigation in `zensical.toml`.
 

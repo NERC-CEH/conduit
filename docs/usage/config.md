@@ -5,7 +5,7 @@ icon: lucide/settings
 
 # Configuration
 
-A SatTerC pipeline is described by a [TOML](https://toml.io/en/) configuration file.
+A breadboard pipeline is described by a [TOML](https://toml.io/en/) configuration file.
 Each section in the file activates a pipeline component — selecting which data to load,
 which models to run, and which results to save.
 Sections that are absent are simply not included in the pipeline, so you can build
@@ -96,8 +96,8 @@ method_optchi = "lavergne20_c3"
 n_years_spinup = 3
 ```
 
-Available built-in models: `splash`, `pmodel`, `sgam`, `rothc`.
-See the [Models](../models/splash.md) section for the parameters each model accepts.
+User models are loaded by their dotted `_import_path`; each module's keyword-only
+parameters can be supplied in its config section.
 
 /// admonition | Parameter namespacing
     type: note
@@ -259,7 +259,7 @@ On subsequent runs, nodes whose code and inputs are unchanged are read from the 
 
 ```toml
 [cache]
-path = ".satterc_cache"   # default; resolved relative to the config file
+path = ".breadboard_cache"   # default; resolved relative to the config file
 ```
 
 This builds on [Hamilton's caching](https://hamilton.apache.org/concepts/caching/): each node is keyed on a fingerprint of its code plus the fingerprints of its inputs, so the cache invalidates automatically when either changes.
@@ -274,7 +274,7 @@ No manual selection of which nodes to cache is required.
 
 | Key | Description |
 |-----|-------------|
-| `path` | Directory for the cache store (default `.satterc_cache`). Relative paths are resolved against the config file's directory. |
+| `path` | Directory for the cache store (default `.breadboard_cache`). Relative paths are resolved against the config file's directory. |
 | `enabled` | Set to `false` to keep the section but turn caching off. |
 | `recompute` | `true`, or a list of node names, to force recomputation (and re-cache) of those nodes even on a hit. |
 | `disable` | `true`, or a list of node names, to bypass the cache entirely for those nodes. |
@@ -285,12 +285,12 @@ path = "runs/cache"
 recompute = ["sgam"]   # always re-run sgam; reuse cached splash/pmodel
 ```
 
-The `satterc run` command also exposes `--cache/--no-cache` and `--cache-dir` to override these settings without editing the config. Omit `[cache]` entirely to disable caching.
+The `breadboard run` command also exposes `--cache/--no-cache` and `--cache-dir` to override these settings without editing the config. Omit `[cache]` entirely to disable caching.
 
 /// admonition | xarray fingerprinting
     type: note
 
-SatTerC registers a content-based fingerprint for `xarray.DataArray` that hashes both the array's values *and* its metadata (`name`, dimensions, coordinates). 
+breadboard registers a content-based fingerprint for `xarray.DataArray` that hashes both the array's values *and* its metadata (`name`, dimensions, coordinates). 
 A change to either the values or the metadata produces a different fingerprint and so misses the cache. 
 In practice you are unlikely to alter metadata without also changing values.
 ///
@@ -312,12 +312,12 @@ block_size = 500   # number of pixels processed at a time
 |-----|-------------|
 | `block_size` | Number of pixels per block. Required. Smaller values reduce peak memory; the last block may be smaller if `n_pixels` is not divisible. |
 
-For parallelism across pixels, see `[subset]` below — run independent `satterc` processes each covering a different spatial range, and merge the outputs afterwards.
+For parallelism across pixels, see `[subset]` below — run independent `breadboard` processes each covering a different spatial range, and merge the outputs afterwards.
 
 /// admonition | Outputs must vary over pixels
     type: warning
 
-`[blocking]` concatenates results along the `pixel` dimension. If any variable in `[outputs]` has no `pixel` dimension — for example, a spatial aggregate like a grid-mean — it cannot be recombined and SatTerC will raise a `ValueError`. Remove pixel-aggregated variables from `[outputs]` when using `[blocking]`, or omit `[blocking]` to request them.
+`[blocking]` concatenates results along the `pixel` dimension. If any variable in `[outputs]` has no `pixel` dimension — for example, a spatial aggregate like a grid-mean — it cannot be recombined and breadboard will raise a `ValueError`. Remove pixel-aggregated variables from `[outputs]` when using `[blocking]`, or omit `[blocking]` to request them.
 ///
 
 ---
@@ -342,8 +342,8 @@ The pixel ordering follows the row-major stacking of the spatial grid (x varies 
 
 #### HPC pattern: parallel shards
 
-Run N independent `satterc run` processes, each with a different `[subset]`. Because the
-processes share one config (and therefore one output `path`), SatTerC writes their outputs
+Run N independent `breadboard run` processes, each with a different `[subset]`. Because the
+processes share one config (and therefore one output `path`), breadboard writes their outputs
 in a **stacked `pixel` layout** so they don't collide, then a `merge` step reassembles the
 grid. How that works depends on the output format:
 
@@ -355,16 +355,16 @@ grid. How that works depends on the output format:
 For the Zarr workflow, create the store before launching the shards:
 
 ```bash
-satterc create-store config.toml          # build the empty shared store(s)
-parallel satterc run config_{}.toml ::: 0 1 2 3   # each shard region-writes its pixels
-satterc merge config.toml                  # unstack into a gridded *_gridded.zarr
+breadboard create-store config.toml          # build the empty shared store(s)
+parallel breadboard run config_{}.toml ::: 0 1 2 3   # each shard region-writes its pixels
+breadboard merge config.toml                  # unstack into a gridded *_gridded.zarr
 ```
 
 The NetCDF workflow skips `create-store`:
 
 ```bash
-parallel satterc run config_{}.toml ::: 0 1 2 3   # writes weekly_p<start>-<end>.nc
-satterc merge config.toml                  # concatenates parts into weekly.nc, gridded
+parallel breadboard run config_{}.toml ::: 0 1 2 3   # writes weekly_p<start>-<end>.nc
+breadboard merge config.toml                  # concatenates parts into weekly.nc, gridded
 ```
 
 `merge` writes NetCDF results to the config's declared path and Zarr results to a sibling
@@ -406,7 +406,7 @@ Validation happens at two points:
 - **Build time** — when the driver is built, every internal edge where both ends declare a unit is checked for consistency (subject to `mode` and `exact`), so a mismatch is caught before the pipeline runs. Units are propagated through resampling (which preserves units) so resampled edges are covered; a node is covered when its `[[node]]` entry declares `units` (see below). Edges fed by input files are checked at run time instead.
 - **Run time** — as each node executes, every `DataArray` input is validated against its declared unit. With `exact = false` a compatible input is converted to the declared unit; with `exact = true` it must already be that unit. Dimensionally incompatible inputs always raise. A `units` attribute that is missing — or present but unparseable (e.g. a non-CF string like `"fraction"`) — cannot be validated, so it follows `mode` (raise / warn / ignore).
 
-You can run these run-time input checks against your real data *without* executing the pipeline using [`satterc run --dry-run`](cli.md#validating-without-running-dry-run) — a fast pre-flight that catches a misconfigured input before a long run.
+You can run these run-time input checks against your real data *without* executing the pipeline using [`breadboard run --dry-run`](cli.md#validating-without-running-dry-run) — a fast pre-flight that catches a misconfigured input before a long run.
 
 Both settings can also be overridden per-process via the `SATTERC_UNITS_MODE` and `SATTERC_UNITS_EXACT` environment variables. Omit `[units]` to keep the defaults (`warn`, no exact match).
 
@@ -453,13 +453,13 @@ interactive prompts, inferring which input variables and resampling steps are
 required by the models you select.
 
 ```bash
-satterc setup
+breadboard setup
 ```
 
 To skip the interactive prompts and use default file paths:
 
 ```bash
-satterc setup --models splash pmodel --defaults
+breadboard setup --models splash pmodel --defaults
 ```
 
 Key options:
