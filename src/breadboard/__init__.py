@@ -10,6 +10,7 @@ from .config import (
     SubsetSpec,
     load_config,
 )
+from .dag._utils import declare_units
 from .dag.driver import build_driver
 from .io import (
     create_output_store,
@@ -32,6 +33,7 @@ __all__ = [
     "__version__",
     "build_driver",
     "create_output_store",
+    "declare_units",
     "get_final_vars",
     "get_outputs",
     "load_config",

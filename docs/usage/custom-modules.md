@@ -50,7 +50,7 @@ class _Parameters:
     another_param: str = "default"
 ```
 
-This enables the `breadboard setup` command to discover your module's parameters.
+Keyword-only parameters with defaults can be supplied from the module's config section.
 
 ### 3. Reference it in your config
 
@@ -104,8 +104,6 @@ def drought_index(
 Config:
 
 ```toml
-[models.splash]
-
 [my_drought]
 _import_path = "mypackage.drought_index"
 threshold_mm = 30.0
@@ -114,19 +112,10 @@ threshold_mm = 30.0
 path = "data/daily.nc"
 vars = ["precipitation", "temperature"]
 
-[inputs.static]
-path = "data/static.nc"
-vars = ["elevation"]
-
 [outputs.daily]
 path = "results/daily.nc"
-vars = ["drought_index", "soil_moisture"]
+vars = ["drought_index"]
 ```
-
-## Using Custom Modules with `breadboard setup`
-
-During interactive setup, you can add custom module paths.
-The setup tool will attempt to import the module and read its `_Parameters` to include them in the generated config.
 
 ## Dependencies
 

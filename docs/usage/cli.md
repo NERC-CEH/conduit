@@ -3,82 +3,30 @@ title: CLI Guide
 icon: lucide/terminal
 ---
 
-# Using the Command-Line Interface
+# Using the command-line interface
 
 breadboard provides a `breadboard` command for running pipelines from the terminal.
-This guide walks through a typical workflow from setup to execution.
+This guide walks through a typical workflow.
 
 For a complete reference of all commands, arguments, and options, see the [CLI Reference](../api/breadboard.cli/index.md).
 
-## The Workflow
+## The workflow
 
-A typical breadboard CLI workflow has four steps:
+A typical breadboard CLI workflow is:
 
 ```
-setup → data-gen → graph → run
+write a config.toml → graph → run
 ```
 
-1. **Generate a config** with `breadboard setup`
-2. **Create test data** with `breadboard data-gen generate`
-3. **Visualise the pipeline** with `breadboard graph`
-4. **Execute the pipeline** with `breadboard run`
+1. **Describe the pipeline** in a TOML config (see the [Quickstart](../getting_started/quickstart.md)
+   and [Configuration reference](config.md)).
+2. **Visualise the pipeline** with `breadboard graph`.
+3. **Execute the pipeline** with `breadboard run`.
 
-Let's walk through each step.
+The other commands — `create-store` and `merge` — support parallel subset runs over Zarr;
+see the [CLI Reference](../api/breadboard.cli/index.md).
 
-## Step 1: Generate a Configuration
-
-The `setup` command creates a TOML configuration file. You can run it interactively or with defaults.
-
-### Interactive mode
-
-```sh
-breadboard setup
-```
-
-This walks you through:
-
-1. Selecting built-in models (type numbers or names, toggle with re-entry)
-2. Optionally adding custom module paths
-3. Confirming input/output paths (or entering custom ones)
-4. Optionally generating synthetic data right away
-
-### Non-interactive mode
-
-```sh
-breadboard setup --models splash pmodel --defaults
-```
-
-This generates a config with the specified models and placeholder paths, no prompts.
-
-### Custom output path
-
-```sh
-breadboard setup --models splash --output my_pipeline.toml
-```
-
-The generated config includes all input variables required by the selected models, placeholder output sections, and any resampling steps needed to bridge temporal frequencies.
-
-## Step 2: Generate Synthetic Data
-
-Before running on real data, test your pipeline with synthetic inputs:
-
-```sh
-breadboard data-gen generate config.toml
-```
-
-This creates NetCDF files at the paths specified in your config. By default it generates data for a single site over 2 years.
-
-### Custom grid and duration
-
-```sh
-breadboard data-gen generate config.toml --grid 4,4 --duration 6m --seed 42
-```
-
-This produces a 4×4 grid of synthetic data covering 6 months.
-
-The duration format is a number followed by a unit: `2y` (years), `6m` (months), `30d` (days).
-
-## Step 3: Visualise the Pipeline
+## Visualise the pipeline
 
 Before running, inspect the DAG to verify the structure looks correct:
 
@@ -88,10 +36,10 @@ breadboard graph config.toml --pdf
 
 This produces `pipeline.pdf` showing all nodes and their dependencies. Each node
 displays its declared **unit** (read from the `Annotated[DataArray, "<unit>"]`
-type) in place of the generic `DataArray` type, the requested output nodes are
-highlighted with a coloured border, edges are coloured by temporal frequency,
-and nodes are grouped into dashed `daily`/`weekly`/`monthly` clusters. Nodes are
-filled by category:
+type) in place of the generic `DataArray` type, and the requested output nodes are
+highlighted with a coloured border. When sections represent temporal frequencies,
+edges are coloured by frequency and nodes are grouped into dashed
+`daily`/`weekly`/`monthly` clusters:
 
 | Colour | Category |
 |--------|----------|
@@ -117,7 +65,7 @@ it in its own file means one style can be reused across many pipelines:
 breadboard graph config.toml --style examples/graphviz.toml --pdf
 ```
 
-See the commented [`examples/graphviz.toml`](https://github.com/breadboard/breadboard/blob/main/examples/graphviz.toml)
+See the commented [`examples/graphviz.toml`](https://github.com/NERC-CEH/breadboard/blob/main/examples/graphviz.toml)
 template for the full set of keys (`palette`, `graph_attr`/`node_attr`/`edge_attr`,
 `show_legend`, `cluster_by_frequency`, and `style_function`).
 
@@ -127,7 +75,7 @@ template for the full set of keys (`palette`, `graph_attr`/`node_attr`/`edge_att
 Requires [graphviz](https://graphviz.org/) to be installed.
 ///
 
-## Step 4: Run the Pipeline
+## Run the pipeline
 
 Execute the pipeline:
 
@@ -145,29 +93,16 @@ Before committing to a long run, you can pre-flight a config with `--dry-run`:
 breadboard run config.toml --dry-run
 ```
 
-This performs every check a real run depends on, but executes no model and writes no output. It validates, in order:
+This performs every check a real run depends on, but executes no node and writes no output. It validates, in order:
 
 1. **Config** — the TOML parses into a valid pipeline.
-2. **Inputs** — every input file exists and opens, and its time axis has the expected frequency. (Files are opened lazily, so this reads metadata only, not the full arrays.)
+2. **Inputs** — every input file exists and opens. (Files are opened lazily, so this reads metadata only, not the full arrays.)
 3. **DAG** — the driver builds, and the build-time unit check passes.
 4. **Execution plan** — every variable in your `[outputs.*]` sections is reachable from the given inputs.
 5. **Input units** — the `units` attribute of each loaded input is checked against the unit its consuming node declares. This is the part that needs the real data, and the only unit check a normal run defers to run time — so a dry run surfaces a file delivered in the wrong units (or missing a `units` attribute) without running the pipeline. See [Units](config.md#units).
 6. **Output paths** — every output destination would accept a write (supported extension, writable parent directory, and — for subset runs — a pre-created Zarr store).
 
-A clean pre-flight prints a per-stage summary and exits `0`:
-
-```
-Dry run for config.toml
-  ✓ config parsed
-  ✓ inputs loaded: 25 variable(s) from 4 source(s)
-  ✓ DAG built (static unit check passed)
-  ✓ execution plan valid: 3 output node(s) reachable
-  ✓ input units validated (mode=warn)
-  ✓ output paths writable: 3 destination(s)
-Dry run passed.
-```
-
-The unit-checking stage honours the active `mode`: in `warn` mode a unit problem is reported as a warning and the dry run still passes, while in `strict` mode it fails with a non-zero exit. A genuine problem with the config, inputs, DAG plan, or output paths always fails the dry run regardless of `mode`.
+A clean pre-flight prints a per-stage summary and exits `0`. The unit-checking stage honours the active `mode`: in `warn` mode a unit problem is reported as a warning and the dry run still passes, while in `strict` mode it fails with a non-zero exit. A genuine problem with the config, inputs, DAG plan, or output paths always fails the dry run regardless of `mode`.
 
 ### Caching
 
@@ -186,26 +121,25 @@ breadboard run config.toml --cache --cache-dir runs/cache
 This is especially useful for calibration loops that re-run the pipeline while
 changing only a few parameters; see [Caching](config.md#caching) for details.
 
-## Inspecting Results
+## Inspecting results
 
 The output files are NetCDF (or whatever format you specified). Load them in Python:
 
 ```python
 import xarray as xr
 
-ds = xr.open_dataset("outputs/daily.nc")
+ds = xr.open_dataset("results/anomaly.nc")
 print(ds)
-ds["soil_moisture"].plot()
 ```
 
-## Getting Help
+## Getting help
 
 Every command supports `-h` / `--help`:
 
 ```sh
 breadboard -h
-breadboard setup -h
-breadboard data-gen generate -h
+breadboard run -h
+breadboard graph -h
 ```
 
 For detailed documentation on each CLI module's functions and parameters, see the [CLI Reference](../api/breadboard.cli/index.md).

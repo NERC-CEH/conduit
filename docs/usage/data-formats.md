@@ -229,5 +229,6 @@ vars = ["litter_pool"]
 /// admonition | Tip
     type: tip
 
-Use `breadboard setup` to generate a config with the correct variables for your selected models automatically.
+Set a CF-style `units` attribute on your input variables so breadboard can validate and
+convert them against the units your nodes declare.
 ///

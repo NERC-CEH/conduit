@@ -1,0 +1,146 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#   "breadboard==0.1.0",
+#   "marimo",
+#   "numpy==2.4.4",
+#   "xarray==2026.4.0",
+# ]
+#
+# [tool.uv.sources]
+# breadboard = { path = ".." }
+# ///
+
+import marimo
+
+__generated_with = "0.23.5"
+app = marimo.App(width="medium")
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Unit-safe pipelines
+
+    breadboard's flagship feature is **unit validation**, built on
+    [pint](https://pint.readthedocs.io) and [cf-xarray](https://cf-xarray.readthedocs.io).
+    A node declares the units it expects and produces via type annotations; breadboard then
+    *converts* compatible inputs, *rejects* incompatible ones, and *stamps* the declared
+    unit onto outputs — so a `"g m-2 d-1"` can never be silently fed where a `"kg"` is
+    expected.
+    """)
+    return
+
+
+@app.cell
+def _():
+    import marimo as mo
+    import numpy as np
+    import xarray as xr
+
+    from breadboard import declare_units, units
+
+    return declare_units, mo, np, units, xr
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Declaring units on a node
+
+    Annotate parameters and the return value with `Annotated[xr.DataArray, "<unit>"]`. The
+    units are CF/UDUNITS strings (e.g. `"Pa"`, `"hPa"`, `"umol m-2 s-1"`). Here a trivial
+    node simply passes pressure through, declaring it in pascals.
+    """)
+    return
+
+
+@app.cell
+def _(declare_units, xr):
+    from typing import Annotated
+
+    @declare_units
+    def mean_pressure(
+        pressure: Annotated[xr.DataArray, "Pa"],
+    ) -> Annotated[xr.DataArray, "Pa"]:
+        return pressure.mean("time")
+
+    return (mean_pressure,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Automatic conversion
+
+    Our input is in **hectopascals**, but the node declares **pascals**. breadboard converts
+    it (×100) and stamps the declared unit — no manual bookkeeping.
+    """)
+    return
+
+
+@app.cell
+def _(mean_pressure, np, units, xr):
+    pressure_hpa = xr.DataArray(
+        np.full((3, 2), 1013.25),
+        dims=("time", "site"),
+        coords={"time": np.arange(3), "site": ["a", "b"]},
+        attrs={"units": "hPa"},
+    )
+    with units.mode("strict"):
+        converted = mean_pressure(pressure_hpa)
+    converted  # ~101325 Pa, units attribute == "Pa"
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Incompatible units are rejected
+
+    Feeding a mass where a pressure is declared is a dimensional error — caught instead of
+    producing a silently wrong result.
+    """)
+    return
+
+
+@app.cell
+def _(mean_pressure, np, units, xr):
+    pressure_wrong = xr.DataArray(
+        np.full((3, 2), 1.0),
+        dims=("time", "site"),
+        coords={"time": np.arange(3), "site": ["a", "b"]},
+        attrs={"units": "kg"},  # not a pressure!
+    )
+    try:
+        with units.mode("strict"):
+            mean_pressure(pressure_wrong)
+        message = "no error (unexpected)"
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {exc}"
+    message
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Validation modes and build-time checks
+
+    The active mode is process-wide (`breadboard.units.set_mode(...)`, the
+    `BREADBOARD_UNITS_MODE` env var, or the `[units]` config section):
+
+    - **`strict`** — missing/unparseable units raise; dimensional mismatches always raise.
+    - **`warn`** (default) — missing units warn (`UnitsWarning`) but don't fail.
+    - **`off`** — skip validation entirely.
+
+    The same declarations also power *build-time* checks: when you `build_driver(...)`,
+    breadboard verifies that every edge's producer and consumer units agree, and
+    `breadboard run --dry-run` validates your input files' units — all before a single node
+    executes.
+    """)
+    return
+
+
+if __name__ == "__main__":
+    app.run()

@@ -44,7 +44,7 @@ breadboard is built on [Hamilton](https://github.com/dagworks-inc/hamilton), a D
 ### Clone and install
 
 ```bash
-git clone https://github.com/breadboard/breadboard.git
+git clone https://github.com/NERC-CEH/breadboard.git
 cd breadboard
 uv sync
 source .venv/bin/activate
@@ -72,24 +72,16 @@ just export <x>  # export a notebook example to docs
 just export-all  # export all example notebooks
 ```
 
-## Adding a New Model
+## Adding modules and nodes
 
-Built-in models live in `src/breadboard/pipeline/models/`. To add a new model:
+breadboard is domain-agnostic — it ships no built-in models. You add functionality from
+*outside* the package by writing your own Hamilton-compatible module and referencing it
+from a config section via `_import_path`. See [Custom modules](../usage/custom-modules.md)
+for the conventions (function name = node name, parameters = upstream node names,
+`Annotated[DataArray, "<unit>"]` for unit declarations).
 
-1. **Create the module** — a Python file with functions that follow Hamilton conventions:
-   - Function name = node name
-   - Function parameters = required inputs (must match node names from upstream modules)
-   - Return value = produced output(s)
-
-2. **Define parameters** (optional) — add a `<model_name>_parameters()` function that returns a tuple of configurable parameters with defaults. This enables `breadboard setup` to discover your model's parameters.
-
-3. **Use the `@extract_fields` decorator** — if your function returns a dict, use this decorator to declare which keys become individual DAG nodes.
-
-4. **Use the `@xarray_io()` decorator** — for the inner computation function that works with raw numpy arrays, this decorator handles conversion to/from xarray.
-
-5. **Register the model** — add it to the `BuiltinModels` enum in `src/breadboard/setup_utils/__init__.py`.
-
-6. **Add documentation** — create a page in `docs/Models/` and add it to the navigation in `zensical.toml`.
+The only modules that live inside the package are the generic built-ins (`node`,
+`resample`) registered in the `MODULES` dict in `src/breadboard/dag/driver.py`.
 
 ## Documentation
 

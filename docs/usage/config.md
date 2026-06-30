@@ -63,49 +63,46 @@ A pipeline with only `[inputs.daily]` and `[inputs.static]` is perfectly valid.
 
 ### Grid
 
-Include `[grid]` when your input data is a 2D spatial grid (i.e. has `x`/`y` dimensions
-and a CRS). It derives latitude and longitude arrays from the common spatial reference
-shared by all loaded datasets, and makes them available as DAG nodes (`latitude`,
-`longitude`) for downstream models.
+The geospatial layer (CRS-aware `(y, x)` → `pixel` stacking and computed
+`latitude`/`longitude` nodes) activates **automatically** whenever an input carries CRS
+metadata — it requires the optional `geo` extra, imported lazily only then. Non-gridded
+inputs are loaded with their native dimensions and never touch those dependencies. The
+`[grid]` section is accepted as an explicit marker but is otherwise optional:
 
 ```toml
 [grid]
 ```
 
-No parameters are required. Omit this section entirely for point-based or
-pre-stacked data.
-
 ---
 
-### Models
+### Modules
 
-Include one section per model you want to run.
-Any model-specific parameters go in the section body; if a model has no required
-parameters (or you are happy with all defaults) the section body can be empty.
+Compose the pipeline from modules. There are two built-ins addressable by short name —
+`[[node]]` (config-defined nodes) and `[[resample]]` (temporal resampling) — and any
+other section is **your own module**, loaded by its dotted `_import_path`. A module's
+keyword-only parameters can be supplied in its section body:
 
 ```toml
-[models.splash]
+# An inline node (built-in)
+[[node]]
+name = "temperature_anomaly_climate"
+inputs = ["temperature_climate"]
+expression = "temperature_climate - temperature_climate.mean('time')"
+units = "degC"
 
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.sgam]
-
-[models.rothc]
-n_years_spinup = 3
+# Your own module, with parameters
+[mymodel]
+_import_path = "mypackage.mymodel"
+threshold = 0.5
 ```
-
-User models are loaded by their dotted `_import_path`; each module's keyword-only
-parameters can be supplied in its config section.
 
 /// admonition | Parameter namespacing
     type: note
 
-All model parameters are merged into a single flat configuration dictionary, so
-parameter names must be unique across all active model sections.
-If two models share a parameter name, prefix it to disambiguate
-(e.g. `pmodel_method_kphio`).
+All module parameters are merged into a single flat configuration dictionary, so
+parameter names must be unique across all active sections.
+If two modules share a parameter name, prefix it to disambiguate
+(e.g. `mymodel_threshold`).
 ///
 
 ---
@@ -266,8 +263,8 @@ This builds on [Hamilton's caching](https://hamilton.apache.org/concepts/caching
 
 #### Why this matters: calibration loops
 
-The main motivation is iterative workflows that re-run the pipeline many times while changing only a few parameters — for example, an MCMC calibration of `sgam` in a `splash → pmodel → sgam → rothc` pipeline.
-Because only `sgam`'s parameters change between iterations, the upstream `splash` and `pmodel` outputs keep the same fingerprint and are served straight from the cache, so only `sgam` (and downstream) is recomputed.
+The main motivation is iterative workflows that re-run the pipeline many times while changing only a few parameters — for example, calibrating one module in an `a → b → c → d` pipeline.
+Because only that module's parameters change between iterations, the upstream outputs keep the same fingerprint and are served straight from the cache, so only the changed module (and downstream) is recomputed.
 No manual selection of which nodes to cache is required.
 
 #### Options
@@ -282,7 +279,7 @@ No manual selection of which nodes to cache is required.
 ```toml
 [cache]
 path = "runs/cache"
-recompute = ["sgam"]   # always re-run sgam; reuse cached splash/pmodel
+recompute = ["my_calibrated_node"]   # always re-run this node; reuse cached upstream
 ```
 
 The `breadboard run` command also exposes `--cache/--no-cache` and `--cache-dir` to override these settings without editing the config. Omit `[cache]` entirely to disable caching.
@@ -439,43 +436,6 @@ The referenced module must follow the same Hamilton DAG conventions as the built
 /// admonition | Parameter conflicts
     type: warning
 
-Custom module parameters are merged into the same flat configuration dictionary as
-built-in model parameters. Ensure your parameter names do not clash with those
-of any active built-in section.
-///
-
----
-
-## Auto-generating a config file
-
-The `setup` CLI command generates a valid configuration file through a series of
-interactive prompts, inferring which input variables and resampling steps are
-required by the models you select.
-
-```bash
-breadboard setup
-```
-
-To skip the interactive prompts and use default file paths:
-
-```bash
-breadboard setup --models splash pmodel --defaults
-```
-
-Key options:
-
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--models` | `-m` | Space-separated list of built-in models to include |
-| `--output` | `-o` | Output path for the generated config file (default: `config.toml`) |
-| `--defaults` | `-d` | Use default input/output paths without prompting (requires `--models`) |
-
-/// admonition | What the generator produces
-    type: note
-
-The generated config is a starting point. It will include all input variables
-required by the selected models, placeholder output sections, and any resampling
-steps needed to bridge temporal frequencies. You should review and adjust the
-generated file — for example, to remove variables you do not have, or to add
-custom module sections.
+Module parameters are merged into a single flat configuration dictionary. Ensure your
+parameter names do not clash with those of any other active section.
 ///

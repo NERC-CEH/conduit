@@ -3,106 +3,90 @@ title: Quickstart
 icon: lucide/rocket
 ---
 
-# Quickstart: Your First Pipeline
+# Quickstart: your first pipeline
 
-Get a breadboard pipeline running in 5 minutes.
-This guide walks through creating a minimal pipeline that computes soil moisture and evapotranspiration from synthetic data.
+Get a breadboard pipeline running in a few minutes. This guide builds a minimal pipeline
+that derives a temperature anomaly from an input field — no domain models, no geospatial
+setup.
 
 ## Prerequisites
 
-Follow the [Installation guide](installation.md) to install breadboard and optional dependencies.
+Follow the [Installation guide](installation.md) to install breadboard.
 
-## Step 1: Generate a Config
+## Step 1: Create some input data
 
-Use the interactive setup command to create a configuration file:
+breadboard reads the xarray-friendly formats you already use (NetCDF, Zarr, CSV, Parquet,
+JSON). Here we make a small NetCDF input:
 
-```sh
-breadboard setup
+```python
+import numpy as np
+import xarray as xr
+
+times = xr.date_range("2020-01-01", periods=90, freq="D")
+temperature = xr.DataArray(
+    10.0 + 8.0 * np.sin(np.linspace(0, 3.14, 90))[:, None] + np.arange(3),
+    dims=("time", "site"),
+    coords={"time": times, "site": ["a", "b", "c"]},
+    attrs={"units": "degC"},
+)
+xr.Dataset({"temperature": temperature}).to_netcdf("climate.nc")
 ```
 
-This will prompt you to select models. Choose `splash` for this tutorial.
-Accept the default paths when prompted.
+## Step 2: Write a config
 
-Or skip the prompts and use defaults:
-
-```sh
-breadboard setup --models splash --defaults
-```
-
-This creates a `config.toml` file that looks like:
+Save this as `config.toml`:
 
 ```toml
-[models.splash]
+[inputs.climate]
+path = "climate.nc"
+vars = ["temperature"]
 
-[inputs.daily]
-path = "inputs/daily.nc"
-vars = [
-  "precipitation",
-  "sunshine_fraction",
-  "temperature",
-]
+[[node]]
+name = "temperature_anomaly_climate"
+inputs = ["temperature_climate"]
+expression = "temperature_climate - temperature_climate.mean('time')"
+units = "degC"
 
-[inputs.static]
-path = "inputs/static.nc"
-vars = [
-  "elevation",
-  "max_soil_moisture",
-  "plant_type",
-]
-
-[outputs.daily]
-path = "outputs/daily.nc"
-vars = [
-  "actual_evapotranspiration",
-  "soil_moisture",
-  "runoff",
-]
+[outputs.climate]
+path = "anomaly.nc"
+vars = ["temperature_anomaly"]
 ```
 
-## Step 2: Generate Synthetic Data
+- `[inputs.climate]` loads `temperature` and exposes it to the DAG as
+  `temperature_climate` — the node name is `{var}_{section}`.
+- `[[node]]` defines a derived node inline and declares its output unit.
+- `[outputs.climate]` chooses what to write to disk.
 
-Create test data from the config:
-
-```sh
-mkdir -p inputs
-breadboard data-gen generate config.toml --grid 1,1 --duration 1y --seed 42
-```
-
-This creates NetCDF files at the paths specified in your config.
-
-## Step 3: Visualise the Pipeline
-
-See what the DAG looks like:
+## Step 3: Visualise the pipeline
 
 ```sh
 breadboard graph config.toml --pdf
 ```
 
-This produces `pipeline.pdf` showing all nodes and their dependencies.
+This produces `pipeline.pdf` showing the nodes and their dependencies. (Requires the
+`viz` extra and the Graphviz system binary.)
 
-## Step 4: Run the Pipeline
+## Step 4: Run the pipeline
 
 ```sh
-mkdir -p outputs
 breadboard run config.toml
 ```
 
-This reads the input data, executes the DAG, and writes the output files to `outputs/daily.nc`.
+This loads the input, executes the DAG, and writes `anomaly.nc`.
 
-## Step 5: Inspect the Results
-
-Load the output in Python:
+## Step 5: Inspect the results
 
 ```python
 import xarray as xr
 
-ds = xr.open_dataset("outputs/daily.nc")
+ds = xr.open_dataset("anomaly.nc")
 print(ds)
-ds["soil_moisture"].plot()
+print(ds["temperature_anomaly"].attrs["units"])  # "degC"
 ```
 
-## Next Steps
+## Next steps
 
-- Read about [how DAGs work](concepts.md) to understand the internals
-- See the [Configuration reference](../usage/config.md) for all available options
-- Learn how to plug in your own modules in [Custom modules](../usage/custom-modules.md)
+- Read about [how it works](concepts.md) to understand the DAG and config.
+- See the [Configuration reference](../usage/config.md) for all available options.
+- Learn how to plug in your own modules in [Custom modules](../usage/custom-modules.md).
+- Browse the runnable [Examples](../examples/getting_started.md).

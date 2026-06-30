@@ -35,24 +35,19 @@ dict directly to `Config` instead of writing a TOML file to disk.
 
 ```python
 config_data = {
-    "models": {
-        "splash": {},
-    },
     "inputs": {
-        "daily": {
-            "path": "data/daily.nc",
-            "vars": ["precipitation", "sunshine_fraction", "temperature"],
-        },
-        "static": {
-            "path": "data/static.nc",
-            "vars": ["elevation", "latitude", "max_soil_moisture"],
-        },
+        "climate": {"path": "data/climate.nc", "vars": ["temperature"]},
     },
-    "outputs": {
-        "daily": {
-            "path": "results/daily.nc",
-            "vars": ["actual_evapotranspiration", "soil_moisture", "runoff"],
+    "node": [
+        {
+            "name": "temperature_anomaly_climate",
+            "inputs": ["temperature_climate"],
+            "expression": "temperature_climate - temperature_climate.mean('time')",
+            "units": "degC",
         },
+    ],
+    "outputs": {
+        "climate": {"path": "results/anomaly.nc", "vars": ["temperature_anomaly"]},
     },
 }
 ```
@@ -81,10 +76,10 @@ parsed = Config(config_data).parse()
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `modules` | `list[str]` | Module identifiers (e.g. `["models.splash"]`) |
-| `driver_config` | `dict` | Parameters passed through to the Hamilton driver and models |
-| `input_specs` | `dict[str, IOSpec]` | Per-frequency input specifications (paths and variable lists) |
-| `output_specs` | `dict[str, IOSpec]` | Per-frequency output specifications |
+| `modules` | `list[str]` | Module identifiers (e.g. `["node"]`, or a dotted `_import_path`) |
+| `driver_config` | `dict` | Parameters passed through to the Hamilton driver and modules |
+| `input_specs` | `dict[str, IOSpec]` | Per-section input specifications (paths and variable lists) |
+| `output_specs` | `dict[str, IOSpec]` | Per-section output specifications |
 
 ---
 
@@ -206,13 +201,17 @@ from breadboard.config import Config
 
 # 1. Build config
 config_data = {
-    "models": {"splash": {}},
-    "inputs": {
-        "daily": {"path": "data/daily.nc", "vars": ["precipitation", "sunshine_fraction", "temperature"]},
-        "static": {"path": "data/static.nc", "vars": ["elevation", "latitude", "max_soil_moisture"]},
-    },
+    "inputs": {"climate": {"path": "data/climate.nc", "vars": ["temperature"]}},
+    "node": [
+        {
+            "name": "temperature_anomaly_climate",
+            "inputs": ["temperature_climate"],
+            "expression": "temperature_climate - temperature_climate.mean('time')",
+            "units": "degC",
+        },
+    ],
     "outputs": {
-        "daily": {"path": "results/daily.nc", "vars": ["actual_evapotranspiration", "soil_moisture", "runoff"]},
+        "climate": {"path": "results/anomaly.nc", "vars": ["temperature_anomaly"]},
     },
 }
 

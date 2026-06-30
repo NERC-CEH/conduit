@@ -28,6 +28,10 @@ nav = [
       "usage/custom-modules.md",
       "usage/troubleshooting.md",
   ]},
+  { "Examples" = [
+      "examples/getting_started.md",
+      "examples/unit_safe_pipelines.md",
+  ]},
   { "API Reference" = [
       "api/breadboard.cli/index.md",
       "api/breadboard.cli/cli.md",

@@ -3,7 +3,7 @@ title: Concepts
 icon: lucide/git-branch
 ---
 
-# How breadboard Works: Directed Acyclic Graphs
+# How breadboard works: Directed Acyclic Graphs
 
 At its core, breadboard represents a pipeline as a **Directed Acyclic Graph (DAG)**.
 This section explains what that means and why it matters.
@@ -19,15 +19,13 @@ In breadboard:
 
 ```mermaid
 graph LR
-    A["precipitation_daily"] --> B["soil_moisture_daily"]
-    C["temperature_daily"] --> B
-    D["max_soil_moisture"] --> B
-    B --> E["actual_evapotranspiration_daily"]
-    B --> F["runoff_daily"]
+    A["temperature_climate"] --> B["temperature_anomaly_climate"]
+    B --> C["warm_spell_days_climate"]
 ```
 
-In this simplified example, `soil_moisture_daily` depends on precipitation, temperature, and maximum soil moisture.
-The DAG makes these dependencies explicit and machine-readable.
+In this simplified example, `temperature_anomaly_climate` is derived from
+`temperature_climate`, and `warm_spell_days_climate` from the anomaly. The DAG makes
+these dependencies explicit and machine-readable.
 
 ## Why DAGs?
 
@@ -38,64 +36,66 @@ The DAG engine figures out which nodes need to run and in what order.
 
 ### Lazy execution
 
-Only the nodes required to produce your requested outputs are executed.
-If you only need soil moisture, the P-Model and SGAM nodes never run.
+Only the nodes required to produce your requested outputs are executed. If you only ask
+for the anomaly, any unrelated nodes never run.
 
 ### Reproducibility
 
-Every output is a pure function of its inputs.
-The same config and data always produce the same results.
+Every output is a pure function of its inputs. The same config and data always produce
+the same results.
 
 ### Composability
 
-Models are independent modules that declare their inputs and outputs.
-You can mix and match them freely — add RothC to an existing SPLASH + P-Model pipeline by adding one config section.
+Nodes are independent and declare their inputs and outputs by name. You can add a new
+computation to an existing pipeline by adding one config section — inline with `[[node]]`
+or by pointing at your own module with `_import_path`.
 
-## How breadboard Uses DAGs
+## How breadboard uses DAGs
 
-breadboard is built on the [Hamilton](https://github.com/dagworks-inc/hamilton) DAG framework.
-Here's how the pieces fit together:
+breadboard is built on the [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
+DAG framework. Here's how the pieces fit together:
 
 ### 1. Configuration
 
-You write a TOML config file that declares which models to run, where to load data from, and what to save:
+You write a TOML config that declares which modules to run, where to load data from, and
+what to save:
 
 ```toml
-[models.splash]
+[inputs.climate]
+path = "data/climate.nc"
+vars = ["temperature"]
 
-[models.pmodel]
-method_kphio = "sandoval"
+[[node]]
+name = "temperature_anomaly_climate"
+inputs = ["temperature_climate"]
+expression = "temperature_climate - temperature_climate.mean('time')"
+units = "degC"
 
-[inputs.daily]
-path = "data/daily.nc"
-vars = ["precipitation", "temperature", "sunshine_fraction"]
-
-[inputs.static]
-path = "data/static.nc"
-vars = ["elevation", "max_soil_moisture"]
-
-[outputs.daily]
-path = "results/daily.nc"
-vars = ["actual_evapotranspiration", "soil_moisture"]
+[outputs.climate]
+path = "results/anomaly.nc"
+vars = ["temperature_anomaly"]
 ```
 
 ### 2. Build
 
 When you run `breadboard run config.toml`, breadboard:
 
-1. Parses the config file
-2. Imports the requested model modules
-3. Builds a DAG by inspecting each function's signature (parameter names = required inputs, return values = produced outputs)
-4. Connects input loaders, models, resampling steps, and output savers into a single graph
+1. Parses the config file.
+2. Imports the requested modules — the built-ins (`node`, `resample`) and any of your own
+   modules referenced by `_import_path`.
+3. Builds a DAG by inspecting each function's signature (parameter names = required
+   inputs, return values = produced outputs).
+4. Connects input loaders, your nodes, resampling steps, and output savers into a single
+   graph, and runs the build-time unit-consistency check.
 
 ### 3. Execute
 
 The DAG engine:
 
-1. Starts from your requested target nodes (e.g., `save_daily_outputs`)
-2. Traces backwards to find all required upstream nodes
-3. Executes nodes in topological order, caching results
-4. Returns or saves the final outputs
+1. Starts from your requested target nodes.
+2. Traces backwards to find all required upstream nodes.
+3. Executes nodes in topological order, optionally caching results.
+4. Returns or saves the final outputs.
 
 ### 4. Visualise
 
@@ -105,25 +105,22 @@ You can inspect the DAG at any time:
 breadboard graph config.toml --pdf
 ```
 
-This produces a visual graph showing all nodes and their dependencies, colour-coded by temporal frequency.
+This produces a visual graph showing all nodes and their dependencies.
 
-## Nodes and Naming
+## Nodes and naming
 
-Every node in the DAG has a unique name, derived from the function that produces it.
-By convention, breadboard appends a frequency suffix to distinguish temporal resolutions:
+Every node in the DAG has a unique name. Inputs become node names by combining the
+variable with the section's suffix (`{var}{suffix}`), so `temperature` under
+`[inputs.climate]` becomes `temperature_climate`.
 
-| Suffix | Meaning |
-|--------|---------|
-| `_daily` | Daily temporal resolution |
-| `_weekly` | Weekly temporal resolution |
-| `_monthly` | Monthly temporal resolution |
-| (no suffix) | Static / time-invariant |
+The suffix is a **convention, not a requirement**: by default it is `_<section>`, except
+the conventional `static` section which uses bare names. Set `suffix = ""` for bare names
+on any section, or `suffix = "_x"` to choose your own. When sections represent temporal
+frequencies (e.g. `daily`/`weekly`/`monthly`), the optional [resampling](../usage/config.md)
+step creates edges between them (e.g. aggregating daily to weekly).
 
-For example, `soil_moisture_daily` and `soil_moisture_weekly` are distinct nodes.
-The resampling system creates edges between them (e.g., aggregating daily to weekly).
+## Custom modules
 
-## Custom Modules
-
-You can add your own functions to the DAG.
-Any Python module that follows Hamilton conventions (functions whose parameter names match node names) can be included.
-See [Custom Modules](../usage/custom-modules.md) for details.
+You can add your own functions to the DAG. Any Python module that follows Hamilton
+conventions (functions whose parameter names match node names) can be included via
+`_import_path`. See [Custom modules](../usage/custom-modules.md) for details.

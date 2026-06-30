@@ -3,69 +3,57 @@ title: Home
 icon: lucide/house
 ---
 
-# breadboard: Satellite to Terrestrial Carbon modelling using DAGs
+# breadboard
 
-A Python framework for data-driven terrestrial carbon modelling based on Directed Acyclic Graphs.
+**An opinionated [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) +
+[xarray](https://xarray.dev) + [pint](https://pint.readthedocs.io) foundation for
+building configurable, unit-aware data pipelines and forward models in geoscience and
+environmental science.**
+
+breadboard lets you describe a computational pipeline — a Directed Acyclic Graph (DAG)
+of operations over labelled N-D arrays — in a plain [TOML](https://toml.io) file. You
+declare **what** you want computed; the DAG engine works out **how** and in what order.
+
+It is domain-agnostic: forward models, land-cover classification, and analysis pipelines
+are all expressed the same way. The value is in the *integration* of these tools, so
+breadboard deliberately **exposes** Hamilton drivers and xarray objects rather than
+hiding them behind wrappers.
 
 ## Installation
 
-See the [Installation guide](getting_started/installation.md) for detailed instructions.
+See the [Installation guide](getting_started/installation.md).
 
-## Quick Start
+## Quick start
 
-Get a pipeline running in 5 minutes — see the [Quickstart guide](getting_started/quickstart.md).
+Get a pipeline running in a few minutes — see the [Quickstart](getting_started/quickstart.md).
 
-## What is breadboard?
+## Key features
 
-breadboard lets you compose terrestrial carbon models into pipelines described by a simple TOML configuration file.
-Models are connected as a Directed Acyclic Graph (DAG), meaning you declare **what** you want computed and breadboard figures out **how** to compute it.
+- **Config-as-DAG** — compose a pipeline from a TOML file, including nodes defined inline
+  or imported from your own modules (`_import_path`).
+- **Unit validation** — declare units on nodes; breadboard converts compatible inputs,
+  rejects incompatible ones, and checks consistency across the DAG *before* running
+  (powered by pint / cf-xarray).
+- **Dimension-agnostic I/O** — works with whatever dimensions your data has; optional
+  temporal-resampling and geospatial (CRS) helpers when you want them.
+- **Scales out** — content-addressed result caching, memory-bounded blocked execution,
+  and parallel subset runs over Zarr, via Hamilton and dask.
+- **CLI and Python API** — run from the terminal (`breadboard run`) or embed in a notebook.
 
-Key features:
-
-- **Composable models** — SPLASH, P-Model, SGAM, and RothC can be mixed and matched
-- **Automatic dependency resolution** — the DAG engine determines execution order
-- **Multiple data formats** — NetCDF, Zarr, CSV, Parquet, JSON
-- **CLI and Python API** — run from the terminal or embed in notebooks
-- **Extensible** — add your own models as Python modules
-
-## Learn More
+## Learn more
 
 - [Quickstart](getting_started/quickstart.md) — run your first pipeline
-- [Concepts](getting_started/concepts.md) — how DAGs work
+- [Concepts](getting_started/concepts.md) — how the DAG and config fit together
 - [Configuration](usage/config.md) — TOML config reference
-- [CLI](usage/cli.md) — command-line interface
+- [Custom modules](usage/custom-modules.md) — bring your own nodes
+- [Examples](examples/getting_started.md) — annotated, runnable notebooks
 
 ## Acknowledgements
 
-### Funding
-
-breadboard is supported by the following grants and institutions:
-
-<!-- Add your funding bodies here. Example:
-
-- **[Funding Body Name]** — Grant number XXXXXXX
-- **[Institution Name]** — Project title, grant period
-
--->
-
-### Contributors
-
-The following people have contributed to the development of breadboard:
-
-<!-- Add contributors here. Example:
-
-- **Joe Marsh Rossney** — Lead developer
-- **Name** — Role/contribution
-- **Name** — Role/contribution
-
--->
-
-### Software Dependencies
-
 breadboard builds on the following open-source projects:
 
-- [Hamilton](https://github.com/dagworks-inc/hamilton) — DAG-based dataflow framework
-- [pyrealm](https://github.com/ImperialCollegeLondon/pyrealm) — SPLASH and P-Model implementations
-- [RothC-Py](https://github.com/Rothamsted-Models/RothC_Py) — Rothamsted Carbon Model
-- [xarray](https://docs.xarray.dev/) — N-D labeled arrays and datasets
+- [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — DAG-based dataflow framework
+- [xarray](https://docs.xarray.dev/) — N-D labelled arrays and datasets
+- [pint](https://pint.readthedocs.io) & [cf-xarray](https://cf-xarray.readthedocs.io) — units
+- [dask](https://www.dask.org/) — parallel and out-of-core computation
 - [Typer](https://typer.tiangolo.com/) — CLI framework

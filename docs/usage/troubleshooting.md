@@ -76,13 +76,15 @@ ds.to_netcdf("data_with_crs.nc")
 
 ### Time index frequency mismatch
 
-The pipeline validates that time indices match the expected frequency:
+For input sections whose label is a recognised frequency, breadboard validates that the
+time index matches it:
 
-- **Daily** must have frequency `"D"` (one entry per calendar day)
-- **Weekly** must have frequency `"W"` or `"7D"`
-- **Monthly** must have frequency `"ME"` (month-end) or `"MS"` (month-start)
+- **daily** must have frequency `"D"` (one entry per calendar day)
+- **weekly** must have frequency `"W"` or `"7D"`
+- **monthly** must have frequency `"ME"` (month-end) or `"MS"` (month-start)
 
-If your data has gaps or irregular spacing, you'll see a validation error. Fix the data before loading, or use the `breadboard data-gen` command to generate correctly-formatted synthetic data for testing.
+If such data has gaps or irregular spacing, you'll see a validation error — fix the data
+before loading. Sections with other labels are not frequency-validated.
 
 ## Running Pipelines
 
@@ -90,25 +92,17 @@ If your data has gaps or irregular spacing, you'll see a validation error. Fix t
 
 Check that:
 
-1. The variables listed in `[outputs.*].vars` are actually computed by the active models
+1. The variables listed in `[outputs.*].vars` are actually produced by the active modules/nodes
 2. The output directory exists (create it with `mkdir -p outputs/`)
-3. The input data covers the time range you expect
+3. The input data covers the range you expect
 
 ### Pipeline is slow on large grids
 
-The SGAM and RothC models loop over pixels internally. For large grids (e.g., continental scale), consider:
+If a node loops over pixels internally, large grids can be slow. Consider:
 
-- Running on a subset first to validate your config
-- Using the `breadboard data-gen` command with a small grid to test
-
-### `breadboard setup` doesn't include a variable I need
-
-The setup tool infers required variables by introspecting model modules. It may not catch:
-
-- Variables computed by intermediate functions (like `aridity_index` or `mean_growth_temperature`)
-- Variables from custom modules
-
-After generating a config, review and adjust the `vars` lists manually.
+- Running on a `[subset]` first to validate your config
+- Bounding memory with a `[blocking]` section
+- Enabling `[cache]` for iterative re-runs
 
 ## DAG and Visualization
 

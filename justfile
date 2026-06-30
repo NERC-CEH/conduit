@@ -35,6 +35,6 @@ export example:
     --html-output docs/examples/{{example}}-notebook.html --overflow scroll
 
 # Export all notebooks in examples/ to docs/examples/.
-# (Generic example notebooks are added in a later phase; none yet.)
 export-all:
-  @echo "No example notebooks to export yet."
+  just export getting_started
+  just export unit_safe_pipelines

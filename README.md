@@ -85,7 +85,7 @@ You can run the following commands anywhere in the repository:
 just test        # run the test suite (pytest)
 just lint        # format and lint code with ruff, check examples with marimo
 just docs        # build the docs (zensical)
-just export <x>  # export a notebook example to docs (e.g. just export 00-getting-started)
+just export <x>  # export a notebook example to docs (e.g. just export getting_started)
 just export-all  # export all example notebooks
 ```
 

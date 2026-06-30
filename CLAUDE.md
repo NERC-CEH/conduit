@@ -19,10 +19,11 @@ frequency-suffix naming is opt-out (`IOSpec.suffix`; see
 *validation* only for known labels), the geospatial layer (CRS stacking +
 lat/lon) is opt-in and lazily imports the optional `geo` extra
 (`rioxarray`/`pyproj`) only when CRS metadata is present, and `[blocking]` can
-partition any `dim` (default `pixel`). Remaining Phase 2 follow-ups: the
+partition any `dim` (default `pixel`). Phase 4 (done) rewrote the docs and added
+generic example notebooks. Remaining Phase 2 follow-ups: the
 `[subset]`/Zarr-region parallel-write path is still `pixel`-specific (it serves
 the gridded use case), and the resample `RESAMPLE_FREQ_MAP` is a fixed default
-convention. Phase 4 is the docs/examples rewrite. See the plan file for details.
+convention. Phase 3 (jax-readiness, design-only) was skipped. See the plan file.
 
 ## Guiding philosophy
 
@@ -119,6 +120,8 @@ Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF dat
 
 ### Examples
 
-`examples/` holds `graphviz.toml`, a commented `breadboard graph --style` template
-(a user-facing reference, not loaded by any tooling). Generic example notebooks are
-added in a later phase.
+`examples/` holds two marimo notebooks — `getting_started.py` (end-to-end pipeline) and
+`unit_safe_pipelines.py` (the units feature) — each pinning `breadboard==<version>` in its
+inline `# /// script` block (update on a version bump, then `just export-all`). It also
+holds `graphviz.toml`, a commented `breadboard graph --style` template (a user-facing
+reference, not loaded by any tooling).
