@@ -1,9 +1,22 @@
 # `breadboard`
 
-An opinionated [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) +
-[xarray](https://xarray.dev) + [pint](https://pint.readthedocs.io) foundation for
-building configurable, unit-aware data pipelines and forward models in geoscience
-and environmental science.
+Turn a working research script into a **unit-safe, reproducible, scalable** pipeline —
+without a rewrite. You keep writing plain, typed [xarray](https://xarray.dev) functions;
+breadboard adds two things that are hard to get any other way:
+
+- **Static dimensional checking across the whole pipeline.** Units are validated *before
+  any compute runs* — the entire DAG is proven dimensionally consistent from your type
+  annotations, so you catch a hPa-vs-Pa mistake at build time, not 40 minutes into a run.
+- **Scale-up as a config knob, not a rewrite.** The same functions run in-memory, out-of-core
+  ([dask](https://www.dask.org/)), or across parallel processes over Zarr — you change the
+  config, not the code.
+
+Under the hood it composes [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
+(the DAG), xarray (labelled N-D arrays), and [pint](https://pint.readthedocs.io) /
+[cf-xarray](https://cf-xarray.readthedocs.io) (units) — but the point is to let you *not*
+have to learn them: you write ordinary annotated functions and describe how they wire
+together, and breadboard handles the rest. It is domain-agnostic (originally built for
+geoscience and environmental science, but nothing carbon- or grid-specific is baked in).
 
 This is a work in progress - expect **very** sharp edges.
 

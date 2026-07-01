@@ -5,19 +5,31 @@ icon: lucide/house
 
 # breadboard
 
-**An opinionated [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) +
-[xarray](https://xarray.dev) + [pint](https://pint.readthedocs.io) foundation for
-building configurable, unit-aware data pipelines and forward models in geoscience and
-environmental science.**
+**Turn a working research script into a unit-safe, reproducible, scalable pipeline —
+without a rewrite.**
 
-breadboard lets you describe a computational pipeline — a Directed Acyclic Graph (DAG)
-of operations over labelled N-D arrays — in a plain [TOML](https://toml.io) file. You
-declare **what** you want computed; the DAG engine works out **how** and in what order.
+You keep writing plain, typed [xarray](https://xarray.dev) functions. breadboard adds
+two things that are hard to get any other way:
+
+- **Static dimensional checking across the whole pipeline.** Units are validated *before
+  any compute runs*: the entire DAG is proven dimensionally consistent from your type
+  annotations, so a hPa-vs-Pa mistake is caught at build time, not part-way through a run.
+  Runtime unit conversion and validation come along for free.
+- **Scale-up as a config knob, not a rewrite.** The *same* functions run in-memory,
+  out-of-core ([dask](https://www.dask.org/)), or across parallel processes writing to a
+  shared Zarr store — driven by config, not by rewriting your code.
+
+Under the hood breadboard composes [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
+(the DAG engine), xarray (labelled N-D arrays), and [pint](https://pint.readthedocs.io) /
+[cf-xarray](https://cf-xarray.readthedocs.io) (units). The value is not the parts but where
+they *compose*: unit-checking is only possible over a whole graph, and scale is only free
+when the graph is separate from the functions. The aim is to let you get that value
+**without** having to learn Hamilton or pint — you write ordinary annotated functions and
+describe how they wire together. When you *do* want the underlying machinery, breadboard
+exposes the Hamilton driver and xarray objects rather than hiding them.
 
 It is domain-agnostic: forward models, land-cover classification, and analysis pipelines
-are all expressed the same way. The value is in the *integration* of these tools, so
-breadboard deliberately **exposes** Hamilton drivers and xarray objects rather than
-hiding them behind wrappers.
+are all expressed the same way — nothing carbon- or grid-specific is baked in.
 
 ## Installation
 
@@ -29,15 +41,20 @@ Get a pipeline running in a few minutes — see the [Quickstart](getting_started
 
 ## Key features
 
-- **Config-as-DAG** — compose a pipeline from a TOML file, including nodes defined inline
-  or imported from your own modules (`_import_path`).
-- **Unit validation** — declare units on nodes; breadboard converts compatible inputs,
-  rejects incompatible ones, and checks consistency across the DAG *before* running
-  (powered by pint / cf-xarray).
+- **Whole-pipeline unit validation** — declare units on nodes with a simple
+  `Annotated[DataArray, "<unit>"]` convention; breadboard converts compatible inputs,
+  rejects incompatible ones, and checks the *entire DAG* for dimensional consistency
+  **before** any compute runs (powered by pint / cf-xarray). This is the flagship feature.
+- **Scale without a rewrite** — the same functions run in-memory, out-of-core (dask), with
+  content-addressed result caching, memory-bounded blocked execution, or parallel subset
+  runs over a shared Zarr store — all driven by config, not code changes.
 - **Dimension-agnostic I/O** — works with whatever dimensions your data has; optional
   temporal-resampling and geospatial (CRS) helpers when you want them.
-- **Scales out** — content-addressed result caching, memory-bounded blocked execution,
-  and parallel subset runs over Zarr, via Hamilton and dask.
+- **Config-as-DAG** — describe how your functions wire together in a plain
+  [TOML](https://toml.io) file: import your own modules (`_import_path`) or define small
+  glue nodes inline (`[[node]]`), which makes swapping between not-quite-interchangeable
+  implementations a config edit. The config doubles as a reproducible, parameterizable
+  record of the run.
 - **CLI and Python API** — run from the terminal (`breadboard run`) or embed in a notebook.
 
 ## Learn more
