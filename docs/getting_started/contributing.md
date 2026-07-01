@@ -7,7 +7,7 @@ icon: lucide/code
 
 ## Design Philosophy
 
-breadboard is built around a few core principles that shape every design decision.
+conduit is built around a few core principles that shape every design decision.
 
 ### DAG-first
 
@@ -32,7 +32,7 @@ Each model (SPLASH, P-Model, SGAM, RothC) is a self-contained Python module. Mod
 
 ### Hamilton as the engine
 
-breadboard is built on [Hamilton](https://github.com/dagworks-inc/hamilton), a DAG-based dataflow framework. Rather than reinventing the wheel, breadboard focuses on domain-specific concerns (terrestrial carbon modelling, climate data handling) while delegating graph construction and execution to a mature library.
+conduit is built on [Hamilton](https://github.com/dagworks-inc/hamilton), a DAG-based dataflow framework. Rather than reinventing the wheel, conduit focuses on domain-specific concerns (terrestrial carbon modelling, climate data handling) while delegating graph construction and execution to a mature library.
 
 ## Development Setup
 
@@ -44,8 +44,8 @@ breadboard is built on [Hamilton](https://github.com/dagworks-inc/hamilton), a D
 ### Clone and install
 
 ```bash
-git clone https://github.com/NERC-CEH/breadboard.git
-cd breadboard
+git clone https://github.com/NERC-CEH/conduit.git
+cd conduit
 uv sync
 source .venv/bin/activate
 ```
@@ -74,14 +74,14 @@ just export-all  # export all example notebooks
 
 ## Adding modules and nodes
 
-breadboard is domain-agnostic — it ships no built-in models. You add functionality from
+conduit is domain-agnostic — it ships no built-in models. You add functionality from
 *outside* the package by writing your own Hamilton-compatible module and referencing it
 from a config section via `_import_path`. See [Custom modules](../usage/custom-modules.md)
 for the conventions (function name = node name, parameters = upstream node names,
 `Annotated[DataArray, "<unit>"]` for unit declarations).
 
 The only modules that live inside the package are the generic built-ins (`node`,
-`resample`) registered in the `MODULES` dict in `src/breadboard/dag/driver.py`.
+`resample`) registered in the `MODULES` dict in `src/conduit/dag/driver.py`.
 
 ## Documentation
 

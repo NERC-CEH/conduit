@@ -5,12 +5,12 @@ icon: lucide/puzzle
 
 # Custom Modules
 
-Extend breadboard pipelines with your own Python modules.
+Extend conduit pipelines with your own Python modules.
 
 ## Overview
 
 Any importable Python module can be added to a pipeline.
-breadboard uses the [Hamilton](https://github.com/dagworks-inc/hamilton) DAG framework, which means:
+conduit uses the [Hamilton](https://github.com/dagworks-inc/hamilton) DAG framework, which means:
 
 - Each **function** in your module becomes a **node** in the DAG.
 - The **function name** is the node name.
@@ -120,4 +120,4 @@ vars = ["drought_index"]
 ## Dependencies
 
 Ensure any packages your custom module requires are installed in your environment.
-breadboard does not manage dependencies for custom modules.
+conduit does not manage dependencies for custom modules.

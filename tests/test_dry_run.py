@@ -1,11 +1,11 @@
-"""Tests for the ``breadboard run --dry-run`` pre-flight and its building blocks.
+"""Tests for the ``conduit run --dry-run`` pre-flight and its building blocks.
 
 Three layers:
 
-- direct tests of :func:`breadboard.dag.unit_check.check_input_units` (the runtime,
+- direct tests of :func:`conduit.dag.unit_check.check_input_units` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
-- direct tests of :func:`breadboard.io.assert_output_paths_writable`;
+- direct tests of :func:`conduit.io.assert_output_paths_writable`;
 - CLI integration tests of the broader pre-flight (config / inputs / DAG plan /
   output paths) via ``runner.invoke(app, ["run", ..., "--dry-run"])``.
 """
@@ -18,12 +18,12 @@ import pytest
 import xarray as xr
 from typer.testing import CliRunner
 
-from breadboard import UnitsWarning
-from breadboard.cli import app
-from breadboard.config import IOSpec, ResampleSpec, SubsetSpec
-from breadboard.dag.driver import build_driver
-from breadboard.dag.unit_check import check_input_units
-from breadboard.io import assert_output_paths_writable
+from conduit import UnitsWarning
+from conduit.cli import app
+from conduit.config import IOSpec, ResampleSpec, SubsetSpec
+from conduit.dag.driver import build_driver
+from conduit.dag.unit_check import check_input_units
+from conduit.io import assert_output_paths_writable
 
 runner = CliRunner()
 
@@ -60,7 +60,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from breadboard.dag._utils import declare_units\n"
+        "from conduit.dag._utils import declare_units\n"
         "class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -166,7 +166,7 @@ class TestCheckInputUnitsPropagation:
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
         declaring consumer is not validated, since a node can change units."""
-        from breadboard.config import NodeSpec
+        from conduit.config import NodeSpec
 
         register("dv_cons", _consumer("g m-2 d-1", in_name="flux"))
         specs = [
@@ -218,7 +218,7 @@ class TestAssertOutputPathsWritable:
 
 
 # ---------------------------------------------------------------------------
-# CLI: breadboard run --dry-run
+# CLI: conduit run --dry-run
 # ---------------------------------------------------------------------------
 
 

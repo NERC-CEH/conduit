@@ -1,14 +1,14 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
-#   "breadboard==0.1.0",
+#   "conduit==0.1.0",
 #   "marimo",
 #   "numpy==2.4.4",
 #   "xarray==2026.4.0",
 # ]
 #
 # [tool.uv.sources]
-# breadboard = { path = ".." }
+# conduit = { path = ".." }
 # ///
 
 import marimo
@@ -20,9 +20,9 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Getting started with breadboard
+    # Getting started with conduit
 
-    **breadboard** turns a plain-text [TOML](https://toml.io) file into an executable
+    **conduit** turns a plain-text [TOML](https://toml.io) file into an executable
     [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) pipeline over
     [xarray](https://xarray.dev) data, with optional [pint](https://pint.readthedocs.io)
     unit validation.
@@ -43,7 +43,7 @@ def _():
     import numpy as np
     import xarray as xr
 
-    from breadboard import (
+    from conduit import (
         build_driver,
         get_final_vars,
         get_outputs,
@@ -76,7 +76,7 @@ def _(mo):
     mo.md(r"""
     ## 1. Some input data
 
-    breadboard works with the xarray objects you already use. Here we make a small
+    conduit works with the xarray objects you already use. Here we make a small
     `temperature` field over `time` and `site` — note there is **no** notion of a fixed
     frequency or a spatial grid; the dimensions are whatever your data has.
     """)
@@ -106,7 +106,7 @@ def _(mo):
     - `[inputs.climate]` loads `temperature` and exposes it to the DAG as
       `temperature_climate` (the node name is `{var}_{section}`).
     - `[[node]]` defines a derived node inline — here a temperature anomaly — and
-      declares its output unit, which breadboard validates and stamps.
+      declares its output unit, which conduit validates and stamps.
     - `[outputs.climate]` selects what to write to disk.
     """)
     return
@@ -184,7 +184,7 @@ def _(mo):
 
     - Swap the `[[node]]` for your own module via `_import_path` (see *Custom modules*).
     - Add unit checking across a whole DAG — see the **Unit-safe pipelines** example.
-    - Point the inputs at your real NetCDF/Zarr/CSV files and run `breadboard run`.
+    - Point the inputs at your real NetCDF/Zarr/CSV files and run `conduit run`.
     """)
     return
 

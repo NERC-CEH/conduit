@@ -12,8 +12,8 @@ import xarray as xr
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from breadboard.config import ResampleSpec
-from breadboard.dag import resample
+from conduit.config import ResampleSpec
+from conduit.dag import resample
 
 
 def _make_daily_da(n_days: int = 365, n_pixel: int = 4, seed: int = 0) -> xr.DataArray:

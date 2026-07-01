@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from breadboard.config import IOSpec
-from breadboard.io import (
+from conduit.config import IOSpec
+from conduit.io import (
     dataset_to_dataframe,
     load_inputs,
     load_static,

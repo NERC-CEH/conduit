@@ -3,15 +3,15 @@ title: Concepts
 icon: lucide/git-branch
 ---
 
-# How breadboard works: Directed Acyclic Graphs
+# How conduit works: Directed Acyclic Graphs
 
-At its core, breadboard represents a pipeline as a **Directed Acyclic Graph (DAG)**.
+At its core, conduit represents a pipeline as a **Directed Acyclic Graph (DAG)**.
 This section explains what that means and why it matters.
 
 ## What is a DAG?
 
 A Directed Acyclic Graph is a network of nodes connected by directed edges, with no cycles.
-In breadboard:
+In conduit:
 
 - **Nodes** are computations — Python functions that produce a value (typically an `xarray.DataArray`).
 - **Edges** represent dependencies — if node B needs the output of node A, there is a directed edge from A to B.
@@ -50,9 +50,9 @@ Nodes are independent and declare their inputs and outputs by name. You can add 
 computation to an existing pipeline by adding one config section — inline with `[[node]]`
 or by pointing at your own module with `_import_path`.
 
-## How breadboard uses DAGs
+## How conduit uses DAGs
 
-breadboard is built on the [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
+conduit is built on the [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
 DAG framework. Here's how the pieces fit together:
 
 ### 1. Configuration
@@ -78,7 +78,7 @@ vars = ["temperature_anomaly"]
 
 ### 2. Build
 
-When you run `breadboard run config.toml`, breadboard:
+When you run `conduit run config.toml`, conduit:
 
 1. Parses the config file.
 2. Imports the requested modules — the built-ins (`node`, `resample`) and any of your own
@@ -102,7 +102,7 @@ The DAG engine:
 You can inspect the DAG at any time:
 
 ```bash
-breadboard graph config.toml --pdf
+conduit graph config.toml --pdf
 ```
 
 This produces a visual graph showing all nodes and their dependencies.

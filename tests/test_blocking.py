@@ -8,15 +8,15 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from breadboard.config import BlockingSpec, Config, IOSpec
-from breadboard.dag.blocking import (
+from conduit.config import BlockingSpec, Config, IOSpec
+from conduit.dag.blocking import (
     _concat_results,
     _make_blocks,
     _pixel_input_names,
     execute_blocked,
 )
-from breadboard.dag.driver import build_driver
-from breadboard.io import get_final_vars
+from conduit.dag.driver import build_driver
+from conduit.io import get_final_vars
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -207,7 +207,7 @@ class TestCachingWithBlocking:
     def test_blocked_cached_matches_unblocked(
         self, pipeline_config, pipeline_inputs, tmp_path
     ):
-        from breadboard import CacheSpec
+        from conduit import CacheSpec
 
         spec = BlockingSpec(block_size=2)
         cache = CacheSpec(path=str(tmp_path / "cache"))
@@ -232,7 +232,7 @@ class TestCachingWithBlocking:
 
 
 class TestCLIEndToEnd:
-    """breadboard run with a [blocking] section exits zero and writes outputs."""
+    """conduit run with a [blocking] section exits zero and writes outputs."""
 
     @pytest.fixture
     def blocking_config_toml(self, tmp_path, synthetic_data_dir):
@@ -279,7 +279,7 @@ block_size = 2
     def test_exits_zero(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from breadboard.cli import app
+        from conduit.cli import app
 
         config_path, _ = blocking_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -288,7 +288,7 @@ block_size = 2
     def test_output_file_written(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from breadboard.cli import app
+        from conduit.cli import app
 
         config_path, out_path = blocking_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -298,7 +298,7 @@ block_size = 2
         import xarray as xr
         from typer.testing import CliRunner
 
-        from breadboard.cli import app
+        from conduit.cli import app
 
         config_path, out_path = blocking_config_toml
         # Run with blocking.
@@ -306,9 +306,9 @@ block_size = 2
         blocked_ds = xr.open_dataset(out_path)
 
         # Run without blocking for reference.
-        from breadboard.config import load_config
-        from breadboard.dag.driver import build_driver
-        from breadboard.io import get_outputs, load_inputs
+        from conduit.config import load_config
+        from conduit.dag.driver import build_driver
+        from conduit.io import get_outputs, load_inputs
 
         parsed = load_config(config_path)
         parsed.blocking_spec = None

@@ -1,8 +1,8 @@
-# `breadboard`
+# `conduit`
 
 Turn a working research script into a **unit-safe, reproducible, scalable** pipeline —
 without a rewrite. You keep writing plain, typed [xarray](https://xarray.dev) functions;
-breadboard adds two things that are hard to get any other way:
+conduit adds two things that are hard to get any other way:
 
 - **Static dimensional checking across the whole pipeline.** Units are validated *before
   any compute runs* — the entire DAG is proven dimensionally consistent from your type
@@ -15,12 +15,12 @@ Under the hood it composes [Apache Hamilton](https://github.com/DAGWorks-Inc/ham
 (the DAG), xarray (labelled N-D arrays), and [pint](https://pint.readthedocs.io) /
 [cf-xarray](https://cf-xarray.readthedocs.io) (units) — but the point is to let you *not*
 have to learn them: you write ordinary annotated functions and describe how they wire
-together, and breadboard handles the rest. It is domain-agnostic (originally built for
+together, and conduit handles the rest. It is domain-agnostic (originally built for
 geoscience and environmental science, but nothing carbon- or grid-specific is baked in).
 
 This is a work in progress - expect **very** sharp edges.
 
-For usage instructions see the [documentation](https://NERC-CEH.github.io/breadboard) (this is also WIP!)
+For usage instructions see the [documentation](https://NERC-CEH.github.io/conduit) (this is also WIP!)
 
 ## Developer instructions
 
@@ -36,8 +36,8 @@ This project uses **[uv](https://docs.astral.sh/uv/)** for dependency management
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/NERC-CEH/breadboard.git
-cd breadboard
+git clone https://github.com/NERC-CEH/conduit.git
+cd conduit
 ```
 
 
@@ -104,18 +104,18 @@ just export-all  # export all example notebooks
 
 ## CLI use
 
-Installing `breadboard` will install the `breadboard` command.
+Installing `conduit` will install the `conduit` command.
 You can explore the documentation using the `-h` or `--help` flags, e.g.
 
 ```bash
-breadboard -h  # help for the base command
-breadboard graph -h  # help for the 'graph' subcommand
+conduit -h  # help for the base command
+conduit graph -h  # help for the 'graph' subcommand
 ```
 
 ### Generate a visualisation of the DAG
 
 ```bash
-breadboard graph config.toml --pdf  # or --png
+conduit graph config.toml --pdf  # or --png
 ```
 
 > [!NOTE]
@@ -125,7 +125,7 @@ breadboard graph config.toml --pdf  # or --png
 
 ```bash
 mkdir outputs
-breadboard run config.toml
+conduit run config.toml
 ```
 
 This will produce three netcdf files in `outputs/`, for daily, weekly and monthly output data.

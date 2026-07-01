@@ -11,11 +11,11 @@ from hamilton import driver
 from hamilton.function_modifiers import extract_fields
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from breadboard import UnitsWarning, units
-from breadboard.config import NodeSpec, ResampleSpec
-from breadboard.dag._utils import declare_units
-from breadboard.dag.driver import build_driver
-from breadboard.dag.unit_check import check_dag_units
+from conduit import UnitsWarning, units
+from conduit.config import NodeSpec, ResampleSpec
+from conduit.dag._utils import declare_units
+from conduit.dag.driver import build_driver
+from conduit.dag.unit_check import check_dag_units
 
 
 def _da():
@@ -80,7 +80,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from breadboard.dag._utils import declare_units\n"
+        "from conduit.dag._utils import declare_units\n"
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -104,7 +104,7 @@ def _bare_producer(unit: str, name: str = "flux"):
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"
-        "from breadboard.dag._utils import declare_units\n"
+        "from conduit.dag._utils import declare_units\n"
         "@declare_units\n"
         f"def {name}() -> Annotated[xr.DataArray, {unit!r}]:\n"
         "    return xr.DataArray([1.0])\n"
@@ -124,7 +124,7 @@ def _plain_consumer(name: str = "plain_cons", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from breadboard.dag._utils import declare_units\n"
+        "from conduit.dag._utils import declare_units\n"
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -428,7 +428,7 @@ class TestNodePropagation:
 class TestUnitsWarningQualname:
     """The node function's qualname appears in UnitsWarning messages emitted by
     the @declare_units runtime wrapper, making the source of the warning clear
-    without requiring the user to inspect the breadboard call stack."""
+    without requiring the user to inspect the conduit call stack."""
 
     def test_missing_units_warning_includes_qualname(self):
         from typing import Annotated

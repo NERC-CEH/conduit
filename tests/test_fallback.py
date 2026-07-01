@@ -1,4 +1,4 @@
-"""Tests for breadboard.setup_utils.data_gen.fallback."""
+"""Tests for conduit.setup_utils.data_gen.fallback."""
 
 import types
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from breadboard.setup_utils.data_gen.fallback import (
+from conduit.setup_utils.data_gen.fallback import (
     _infer_fallback_type,
     _make_daily_fallback,
     _make_static_fallback,

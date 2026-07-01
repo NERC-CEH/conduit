@@ -12,9 +12,9 @@ import sys
 import numpy as np
 import xarray as xr
 
-from breadboard.config import IOSpec, load_config
-from breadboard.dag.driver import build_driver
-from breadboard.io import effective_suffix, get_final_vars, get_outputs, load_inputs
+from conduit.config import IOSpec, load_config
+from conduit.dag.driver import build_driver
+from conduit.io import effective_suffix, get_final_vars, get_outputs, load_inputs
 
 
 def _write_scene(path) -> None:
@@ -88,8 +88,8 @@ class TestNonTemporalPipeline:
 
 class TestBlockingArbitraryDim:
     def test_blocked_matches_unblocked_over_location(self, tmp_path):
-        from breadboard.config import BlockingSpec
-        from breadboard.dag.blocking import execute_blocked
+        from conduit.config import BlockingSpec
+        from conduit.dag.blocking import execute_blocked
 
         _write_scene(tmp_path / "scene.nc")
         cfg = tmp_path / "config.toml"
@@ -119,8 +119,8 @@ def test_no_geospatial_deps_imported_without_crs(tmp_path):
     path = str(tmp_path / "scene.nc")
     script = f"""\
 import sys
-from breadboard.config import IOSpec
-from breadboard.io import load_inputs
+from conduit.config import IOSpec
+from conduit.io import load_inputs
 load_inputs({{"scene": IOSpec(path={path!r}, vars=["reflectance"])}})
 assert "rioxarray" not in sys.modules, "rioxarray was imported"
 assert "pyproj" not in sys.modules, "pyproj was imported"

@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from breadboard.config import IOSpec, SubsetSpec
-from breadboard.io import (
+from conduit.config import IOSpec, SubsetSpec
+from conduit.io import (
     create_output_store,
     flatten_pixel_index,
     get_final_vars,
@@ -281,7 +281,7 @@ class TestCLIParallelWorkflow:
     ):
         from typer.testing import CliRunner
 
-        from breadboard.cli import app
+        from conduit.cli import app
 
         store = tmp_path / "weekly.zarr"
         runner = CliRunner()
@@ -334,7 +334,7 @@ class TestConcurrentZarrWrites:
     """Mirror the real deployment: N OS processes writing disjoint regions at once.
 
     The sequential tests validate correctness but not concurrency safety. Here we
-    launch genuinely independent ``breadboard run`` processes (as ``parallel breadboard
+    launch genuinely independent ``conduit run`` processes (as ``parallel conduit
     run`` would) against one shared store and assert no writes are lost.
     """
 
@@ -346,7 +346,7 @@ class TestConcurrentZarrWrites:
 
         from typer.testing import CliRunner
 
-        from breadboard.cli import app
+        from conduit.cli import app
 
         store = tmp_path / "weekly.zarr"
 
@@ -376,7 +376,7 @@ class TestConcurrentZarrWrites:
                 [
                     sys.executable,
                     "-c",
-                    "from breadboard.cli import app; app()",
+                    "from conduit.cli import app; app()",
                     "run",
                     str(cfg),
                 ],

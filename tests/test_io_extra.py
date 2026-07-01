@@ -14,8 +14,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from breadboard.config import IOSpec
-from breadboard.io import (
+from conduit.config import IOSpec
+from conduit.io import (
     _save_netcdf,
     _validate_dates,
     _validate_temporal_alignment,

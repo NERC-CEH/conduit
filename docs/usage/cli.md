@@ -5,14 +5,14 @@ icon: lucide/terminal
 
 # Using the command-line interface
 
-breadboard provides a `breadboard` command for running pipelines from the terminal.
+conduit provides a `conduit` command for running pipelines from the terminal.
 This guide walks through a typical workflow.
 
-For a complete reference of all commands, arguments, and options, see the [CLI Reference](../api/breadboard.cli/index.md).
+For a complete reference of all commands, arguments, and options, see the [CLI Reference](../api/conduit.cli/index.md).
 
 ## The workflow
 
-A typical breadboard CLI workflow is:
+A typical conduit CLI workflow is:
 
 ```
 write a config.toml → graph → run
@@ -20,18 +20,18 @@ write a config.toml → graph → run
 
 1. **Describe the pipeline** in a TOML config (see the [Quickstart](../getting_started/quickstart.md)
    and [Configuration reference](config.md)).
-2. **Visualise the pipeline** with `breadboard graph`.
-3. **Execute the pipeline** with `breadboard run`.
+2. **Visualise the pipeline** with `conduit graph`.
+3. **Execute the pipeline** with `conduit run`.
 
 The other commands — `create-store` and `merge` — support parallel subset runs over Zarr;
-see the [CLI Reference](../api/breadboard.cli/index.md).
+see the [CLI Reference](../api/conduit.cli/index.md).
 
 ## Visualise the pipeline
 
 Before running, inspect the DAG to verify the structure looks correct:
 
 ```sh
-breadboard graph config.toml --pdf
+conduit graph config.toml --pdf
 ```
 
 This produces `pipeline.pdf` showing all nodes and their dependencies. Each node
@@ -52,7 +52,7 @@ edges are coloured by frequency and nodes are grouped into dashed
 You can also output as PNG:
 
 ```sh
-breadboard graph config.toml --png
+conduit graph config.toml --png
 ```
 
 ### Customising the styling
@@ -62,10 +62,10 @@ defaults — colours, layout, the legend, or even a custom style function. Keepi
 it in its own file means one style can be reused across many pipelines:
 
 ```sh
-breadboard graph config.toml --style examples/graphviz.toml --pdf
+conduit graph config.toml --style examples/graphviz.toml --pdf
 ```
 
-See the commented [`examples/graphviz.toml`](https://github.com/NERC-CEH/breadboard/blob/main/examples/graphviz.toml)
+See the commented [`examples/graphviz.toml`](https://github.com/NERC-CEH/conduit/blob/main/examples/graphviz.toml)
 template for the full set of keys (`palette`, `graph_attr`/`node_attr`/`edge_attr`,
 `show_legend`, `cluster_by_frequency`, and `style_function`).
 
@@ -80,7 +80,7 @@ Requires [graphviz](https://graphviz.org/) to be installed.
 Execute the pipeline:
 
 ```sh
-breadboard run config.toml
+conduit run config.toml
 ```
 
 This reads the config, builds the DAG, executes all required nodes in dependency order, and writes output files as specified in the `[outputs.*]` sections.
@@ -90,7 +90,7 @@ This reads the config, builds the DAG, executes all required nodes in dependency
 Before committing to a long run, you can pre-flight a config with `--dry-run`:
 
 ```sh
-breadboard run config.toml --dry-run
+conduit run config.toml --dry-run
 ```
 
 This performs every check a real run depends on, but executes no node and writes no output. It validates, in order:
@@ -115,7 +115,7 @@ To reuse unchanged intermediate results between runs, enable caching — either 
 | `--cache-dir` | Directory for the cache store (implies `--cache`). |
 
 ```sh
-breadboard run config.toml --cache --cache-dir runs/cache
+conduit run config.toml --cache --cache-dir runs/cache
 ```
 
 This is especially useful for calibration loops that re-run the pipeline while
@@ -137,9 +137,9 @@ print(ds)
 Every command supports `-h` / `--help`:
 
 ```sh
-breadboard -h
-breadboard run -h
-breadboard graph -h
+conduit -h
+conduit run -h
+conduit graph -h
 ```
 
-For detailed documentation on each CLI module's functions and parameters, see the [CLI Reference](../api/breadboard.cli/index.md).
+For detailed documentation on each CLI module's functions and parameters, see the [CLI Reference](../api/conduit.cli/index.md).

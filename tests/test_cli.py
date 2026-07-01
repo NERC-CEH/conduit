@@ -1,4 +1,4 @@
-"""Tests for the breadboard CLI commands."""
+"""Tests for the conduit CLI commands."""
 
 import shutil
 from types import SimpleNamespace
@@ -8,9 +8,9 @@ import pytest
 import xarray as xr
 from typer.testing import CliRunner
 
-from breadboard._version import __version__
-from breadboard.cli import app
-from breadboard.cli.graph import (
+from conduit._version import __version__
+from conduit.cli import app
+from conduit.cli.graph import (
     _import_style_function,
     cluster_nodes_by_frequency,
     color_edges_by_frequency,
@@ -18,8 +18,8 @@ from breadboard.cli.graph import (
     make_style_function,
     relabel_with_units,
 )
-from breadboard.cli.graph_style import DEFAULT_PALETTE, GraphvizSpec, load_graphviz_spec
-from breadboard.config import load_config
+from conduit.cli.graph_style import DEFAULT_PALETTE, GraphvizSpec, load_graphviz_spec
+from conduit.config import load_config
 
 runner = CliRunner()
 
@@ -150,7 +150,7 @@ class TestCustomStyleFunction:
         return make_style_function(GraphvizSpec(), set(output_vars))
 
     def test_static_input_gets_static_colour(self):
-        node = self._mock_node(tags={"module": "breadboard.inputs.static"})
+        node = self._mock_node(tags={"module": "conduit.inputs.static"})
         style, _, label = self._style()(node=node, node_class="default")
         assert style["fillcolor"] == DEFAULT_PALETTE["static"]
         assert label == "static input"

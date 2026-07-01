@@ -1,14 +1,14 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
-#   "breadboard==0.1.0",
+#   "conduit==0.1.0",
 #   "marimo",
 #   "numpy==2.4.4",
 #   "xarray==2026.4.0",
 # ]
 #
 # [tool.uv.sources]
-# breadboard = { path = ".." }
+# conduit = { path = ".." }
 # ///
 
 import marimo
@@ -22,9 +22,9 @@ def _(mo):
     mo.md(r"""
     # Unit-safe pipelines
 
-    breadboard's flagship feature is **unit validation**, built on
+    conduit's flagship feature is **unit validation**, built on
     [pint](https://pint.readthedocs.io) and [cf-xarray](https://cf-xarray.readthedocs.io).
-    A node declares the units it expects and produces via type annotations; breadboard then
+    A node declares the units it expects and produces via type annotations; conduit then
     *converts* compatible inputs, *rejects* incompatible ones, and *stamps* the declared
     unit onto outputs — so a `"g m-2 d-1"` can never be silently fed where a `"kg"` is
     expected.
@@ -38,7 +38,7 @@ def _():
     import numpy as np
     import xarray as xr
 
-    from breadboard import declare_units, units
+    from conduit import declare_units, units
 
     return declare_units, mo, np, units, xr
 
@@ -73,7 +73,7 @@ def _(mo):
     mo.md(r"""
     ## Automatic conversion
 
-    Our input is in **hectopascals**, but the node declares **pascals**. breadboard converts
+    Our input is in **hectopascals**, but the node declares **pascals**. conduit converts
     it (×100) and stamps the declared unit — no manual bookkeeping.
     """)
     return
@@ -127,16 +127,16 @@ def _(mo):
     mo.md(r"""
     ## Validation modes and build-time checks
 
-    The active mode is process-wide (`breadboard.units.set_mode(...)`, the
-    `BREADBOARD_UNITS_MODE` env var, or the `[units]` config section):
+    The active mode is process-wide (`conduit.units.set_mode(...)`, the
+    `CONDUIT_UNITS_MODE` env var, or the `[units]` config section):
 
     - **`strict`** — missing/unparseable units raise; dimensional mismatches always raise.
     - **`warn`** (default) — missing units warn (`UnitsWarning`) but don't fail.
     - **`off`** — skip validation entirely.
 
     The same declarations also power *build-time* checks: when you `build_driver(...)`,
-    breadboard verifies that every edge's producer and consumer units agree, and
-    `breadboard run --dry-run` validates your input files' units — all before a single node
+    conduit verifies that every edge's producer and consumer units agree, and
+    `conduit run --dry-run` validates your input files' units — all before a single node
     executes.
     """)
     return

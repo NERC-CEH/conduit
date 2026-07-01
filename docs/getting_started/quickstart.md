@@ -5,17 +5,17 @@ icon: lucide/rocket
 
 # Quickstart: your first pipeline
 
-Get a breadboard pipeline running in a few minutes. This guide builds a minimal pipeline
+Get a conduit pipeline running in a few minutes. This guide builds a minimal pipeline
 that derives a temperature anomaly from an input field — no domain models, no geospatial
 setup.
 
 ## Prerequisites
 
-Follow the [Installation guide](installation.md) to install breadboard.
+Follow the [Installation guide](installation.md) to install conduit.
 
 ## Step 1: Create some input data
 
-breadboard reads the xarray-friendly formats you already use (NetCDF, Zarr, CSV, Parquet,
+conduit reads the xarray-friendly formats you already use (NetCDF, Zarr, CSV, Parquet,
 JSON). Here we make a small NetCDF input:
 
 ```python
@@ -60,7 +60,7 @@ vars = ["temperature_anomaly"]
 ## Step 3: Visualise the pipeline
 
 ```sh
-breadboard graph config.toml --pdf
+conduit graph config.toml --pdf
 ```
 
 This produces `pipeline.pdf` showing the nodes and their dependencies. (Requires the
@@ -69,7 +69,7 @@ This produces `pipeline.pdf` showing the nodes and their dependencies. (Requires
 ## Step 4: Run the pipeline
 
 ```sh
-breadboard run config.toml
+conduit run config.toml
 ```
 
 This loads the input, executes the DAG, and writes `anomaly.nc`.

@@ -8,9 +8,9 @@ import pint
 import pytest
 import xarray as xr
 
-from breadboard import units
-from breadboard.config import Config
-from breadboard.dag._utils import declare_units
+from conduit import units
+from conduit.config import Config
+from conduit.dag._utils import declare_units
 
 
 def _da(values, unit=None):
@@ -527,7 +527,7 @@ class TestModelNodeEndToEnd:
     def _model():
         from typing import Annotated, TypedDict
 
-        from breadboard.dag._utils import declare_units
+        from conduit.dag._utils import declare_units
 
         class Out(TypedDict):
             gpp_weekly: Annotated[xr.DataArray, "g m-2 d-1"]

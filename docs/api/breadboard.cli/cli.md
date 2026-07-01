@@ -1,3 +1,0 @@
-# `breadboard.cli`
-
-::: breadboard.cli

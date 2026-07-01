@@ -5,10 +5,10 @@ icon: lucide/code-2
 
 # Python API
 
-breadboard can be driven from any Python script or notebook using the Python API.
+conduit can be driven from any Python script or notebook using the Python API.
 This gives you fine-grained control: you can inspect individual nodes, plot
 intermediate results, or skip writing outputs to disk entirely. The CLI
-(`breadboard run`) is a thin wrapper over the same API, useful when you just want
+(`conduit run`) is a thin wrapper over the same API, useful when you just want
 to run a config file end-to-end.
 
 This page walks through the key steps — building a config, parsing it, loading
@@ -20,8 +20,8 @@ inputs, building the driver, and executing the pipeline.
 All examples on this page assume the following imports:
 
 ```python
-from breadboard import build_driver, get_final_vars, get_outputs, load_inputs
-from breadboard.config import Config
+from conduit import build_driver, get_final_vars, get_outputs, load_inputs
+from conduit.config import Config
 ```
 ///
 
@@ -30,7 +30,7 @@ from breadboard.config import Config
 ## Step 1: Build a config
 
 A pipeline is described by a configuration — a Python dictionary with the same
-structure as a breadboard [TOML configuration](config.md) file. You can pass this
+structure as a conduit [TOML configuration](config.md) file. You can pass this
 dict directly to `Config` instead of writing a TOML file to disk.
 
 ```python
@@ -176,7 +176,7 @@ datasets = get_outputs(results, parsed.output_specs)
 To write the outputs to disk, call `save_outputs()`:
 
 ```python
-from breadboard import save_outputs
+from conduit import save_outputs
 
 save_outputs(datasets, parsed.output_specs)
 ```
@@ -196,8 +196,8 @@ use with `xarray`'s plotting methods, `matplotlib`, or any other library.
 Here is a complete script that ties all the steps together:
 
 ```python
-from breadboard import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
-from breadboard.config import Config
+from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
+from conduit.config import Config
 
 # 1. Build config
 config_data = {

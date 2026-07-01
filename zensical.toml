@@ -2,13 +2,13 @@
 
 use_directory_urls = false
 
-site_name = "breadboard"
+site_name = "conduit"
 site_description = "An opinionated Hamilton + xarray + pint foundation for geoscientific data pipelines."
 site_author = "Joe Marsh Rossney"
-site_url = "https://NERC-CEH.github.io/breadboard"
+site_url = "https://NERC-CEH.github.io/conduit"
 
-repo_name = "NERC-CEH/breadboard"
-repo_url = "https://github.com/NERC-CEH/breadboard"
+repo_name = "NERC-CEH/conduit"
+repo_url = "https://github.com/NERC-CEH/conduit"
 
 copyright = "Copyright &copy; 2026 The authors"
 
@@ -33,18 +33,18 @@ nav = [
       "examples/unit_safe_pipelines.md",
   ]},
   { "API Reference" = [
-      "api/breadboard.cli/index.md",
-      "api/breadboard.cli/cli.md",
-      "api/breadboard.cli/graph.md",
-      "api/breadboard.cli/run.md",
-      "api/breadboard.cli/version.md",
-      "api/breadboard.config.md",
-      "api/breadboard.dag.driver.md",
-      "api/breadboard.dag/node.md",
-      "api/breadboard.dag/resample.md",
-      "api/breadboard.setup_utils/data_gen/coords.md",
-      "api/breadboard.setup_utils/data_gen/fallback.md",
-      "api/breadboard.setup_utils/data_gen/generate.md",
+      "api/conduit.cli/index.md",
+      "api/conduit.cli/cli.md",
+      "api/conduit.cli/graph.md",
+      "api/conduit.cli/run.md",
+      "api/conduit.cli/version.md",
+      "api/conduit.config.md",
+      "api/conduit.dag.driver.md",
+      "api/conduit.dag/node.md",
+      "api/conduit.dag/resample.md",
+      "api/conduit.setup_utils/data_gen/coords.md",
+      "api/conduit.setup_utils/data_gen/fallback.md",
+      "api/conduit.setup_utils/data_gen/generate.md",
   ]},
 ]
 

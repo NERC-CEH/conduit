@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-breadboard is in **alpha** with no external users. It was extracted from the
+conduit is in **alpha** with no external users. It was extracted from the
 (now-archived) `satterc` terrestrial-carbon framework to become a general-purpose,
 domain-agnostic foundation for data pipelines and forward models. Backwards
 compatibility is *not* a constraint: prefer the cleanest design and make breaking
@@ -15,7 +15,7 @@ The refactor is **phased**: Phase 1 (done) renamed the package and stripped all
 carbon-domain models. Phase 2 (done) generalised the I/O layer: input section
 labels may be arbitrary (not just daily/weekly/monthly/static), the
 frequency-suffix naming is opt-out (`IOSpec.suffix`; see
-`breadboard.io.effective_suffix`), a `time` dimension is auto-detected (frequency
+`conduit.io.effective_suffix`), a `time` dimension is auto-detected (frequency
 *validation* only for known labels), the geospatial layer (CRS stacking +
 lat/lon) is opt-in and lazily imports the optional `geo` extra
 (`rioxarray`/`pyproj`) only when CRS metadata is present, and `[blocking]` can
@@ -27,7 +27,7 @@ convention. Phase 3 (jax-readiness, design-only) was skipped. See the plan file.
 
 ## Guiding philosophy
 
-breadboard is an opinionated integration of Apache Hamilton (DAG), xarray (+ dask
+conduit is an opinionated integration of Apache Hamilton (DAG), xarray (+ dask
 for scaling), and pint/cf-xarray/pint-xarray (units validation), driven by a TOML
 spec that can describe a whole DAG — including dynamically generated nodes — in
 plain text. Its value is the *integration*; favour **exposing** Hamilton and xarray
@@ -63,19 +63,19 @@ Pre-commit hooks run `uv-lock`, `pyright`, and `ruff` on every commit — not th
 
 ## Architecture
 
-breadboard uses [Hamilton](https://github.com/DAGWorks-Inc/hamilton) to define
+conduit uses [Hamilton](https://github.com/DAGWorks-Inc/hamilton) to define
 computational DAGs that transform xarray inputs through user-supplied modules into
 outputs, with a TOML configuration spec and runtime/build-time unit validation.
 
 ### Core modules
 
-**`src/breadboard/config.py`** — parses TOML config files into a `ParsedConfig` dataclass. Recognised top-level sections: `[inputs.*]`, `[outputs.*]`, `[grid]` (silently accepted — grid computation is in `io.py`), `[[node]]`, `[[resample]]`, `[cache]`, `[blocking]`, `[subset]`, `[units]`. **Any other section is treated as a user module and must include `_import_path = "pkg.module"`** — there is no special "models" namespace; user models are just modules. Key types exported: `Config`, `ParsedConfig`, `IOSpec`, `ResampleSpec`, `NodeSpec`, `CacheSpec`, `BlockingSpec`, `SubsetSpec`.
+**`src/conduit/config.py`** — parses TOML config files into a `ParsedConfig` dataclass. Recognised top-level sections: `[inputs.*]`, `[outputs.*]`, `[grid]` (silently accepted — grid computation is in `io.py`), `[[node]]`, `[[resample]]`, `[cache]`, `[blocking]`, `[subset]`, `[units]`. **Any other section is treated as a user module and must include `_import_path = "pkg.module"`** — there is no special "models" namespace; user models are just modules. Key types exported: `Config`, `ParsedConfig`, `IOSpec`, `ResampleSpec`, `NodeSpec`, `CacheSpec`, `BlockingSpec`, `SubsetSpec`.
 
-**`src/breadboard/dag/driver.py`** — builds Hamilton `Driver` objects from a `ParsedConfig`. The `MODULES` dict maps the two built-in short names (`"node"`, `"resample"`) to importable paths; every other module identifier is a dotted `_import_path` imported directly. `build_driver` also runs the build-time unit check (`check_dag_units`).
+**`src/conduit/dag/driver.py`** — builds Hamilton `Driver` objects from a `ParsedConfig`. The `MODULES` dict maps the two built-in short names (`"node"`, `"resample"`) to importable paths; every other module identifier is a dotted `_import_path` imported directly. `build_driver` also runs the build-time unit check (`check_dag_units`).
 
-**`src/breadboard/units.py` + `dag/unit_check.py` + `dag/_utils.py`** — the units subsystem (the flagship feature). `units.py` wires pint/cf-xarray/pint-xarray (UDUNITS registry) and provides the `Annotated[DataArray, "<unit>"]` signature convention plus strict/warn/off modes (env vars `BREADBOARD_UNITS_MODE`/`BREADBOARD_UNITS_EXACT`). `_utils.py:declare_units` enforces units at runtime; `unit_check.py` adds build-time (`check_dag_units`) and dry-run input (`check_input_units`) checks.
+**`src/conduit/units.py` + `dag/unit_check.py` + `dag/_utils.py`** — the units subsystem (the flagship feature). `units.py` wires pint/cf-xarray/pint-xarray (UDUNITS registry) and provides the `Annotated[DataArray, "<unit>"]` signature convention plus strict/warn/off modes (env vars `CONDUIT_UNITS_MODE`/`CONDUIT_UNITS_EXACT`). `_utils.py:declare_units` enforces units at runtime; `unit_check.py` adds build-time (`check_dag_units`) and dry-run input (`check_input_units`) checks.
 
-**`src/breadboard/io.py`** — all I/O lives here, outside the Hamilton DAG. Key public functions:
+**`src/conduit/io.py`** — all I/O lives here, outside the Hamilton DAG. Key public functions:
 - `load_inputs(input_specs)` — reads NetCDF/Zarr/CSV/Parquet/JSON/TOML files; returns a flat dict of named `DataArray`s following Hamilton naming conventions (`{var}_{freq}`, `dates_{freq}`, `latitude`, `longitude`)
 - `get_outputs(results, output_specs)` — assembles Hamilton execute results into per-frequency `Dataset`s
 - `save_outputs(output_datasets, output_specs)` — writes datasets to disk
@@ -84,7 +84,7 @@ outputs, with a TOML configuration spec and runtime/build-time unit validation.
 
 (Note: io.py's frequency vocabulary and stacked-`pixel`/CRS geospatial model are the main domain-flavoured conventions still baked in; later phases make them opt-in.)
 
-**`src/breadboard/dag/`** — the built-in Hamilton DAG modules:
+**`src/conduit/dag/`** — the built-in Hamilton DAG modules:
 - `resample.py` — temporal resampling (daily ↔ weekly ↔ monthly), driven by `resample_specs` in driver config; unit-preserving
 - `node.py` — dynamically generates Hamilton-compatible modules from `[[node]]` config entries using `exec()`; supports inline expressions or import-path + function name, with optional declared `units`. This is the "user model in TOML" path.
 - `caching.py` — registers a content-based fingerprint for `xarray.DataArray` and applies `Builder.with_cache()` from a `CacheSpec`
@@ -110,7 +110,7 @@ The built-ins `node` and `resample` are addressable by their short names.
 
 ### CLI
 
-The `typer`-based CLI (`src/breadboard/cli/`) has commands: `run`, `graph`
+The `typer`-based CLI (`src/conduit/cli/`) has commands: `run`, `graph`
 (visualise DAG as PDF/PNG/DOT), `version`, `create-store` and `merge` (for parallel
 subset runs). All are model-agnostic.
 
@@ -121,7 +121,7 @@ Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF dat
 ### Examples
 
 `examples/` holds two marimo notebooks — `getting_started.py` (end-to-end pipeline) and
-`unit_safe_pipelines.py` (the units feature) — each pinning `breadboard==<version>` in its
+`unit_safe_pipelines.py` (the units feature) — each pinning `conduit==<version>` in its
 inline `# /// script` block (update on a version bump, then `just export-all`). It also
-holds `graphviz.toml`, a commented `breadboard graph --style` template (a user-facing
+holds `graphviz.toml`, a commented `conduit graph --style` template (a user-facing
 reference, not loaded by any tooling).

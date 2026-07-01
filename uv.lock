@@ -89,127 +89,6 @@ wheels = [
 ]
 
 [[package]]
-name = "breadboard"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "apache-hamilton" },
-    { name = "cf-xarray" },
-    { name = "dask" },
-    { name = "netcdf4" },
-    { name = "numpy" },
-    { name = "pint" },
-    { name = "pint-xarray" },
-    { name = "pyarrow" },
-    { name = "tomli-w" },
-    { name = "typer" },
-    { name = "xarray" },
-    { name = "zarr" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "apache-hamilton", extra = ["visualization"] },
-    { name = "pyproj" },
-    { name = "rioxarray" },
-]
-geo = [
-    { name = "pyproj" },
-    { name = "rioxarray" },
-]
-viz = [
-    { name = "apache-hamilton", extra = ["visualization"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "breadboard", extra = ["geo", "viz"] },
-    { name = "coverage" },
-    { name = "marimo" },
-    { name = "marimo-md-export" },
-    { name = "matplotlib" },
-    { name = "mkdocstrings-python" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "rust-just" },
-    { name = "zensical" },
-]
-docs = [
-    { name = "breadboard", extra = ["viz"] },
-    { name = "marimo" },
-    { name = "marimo-md-export" },
-    { name = "matplotlib" },
-    { name = "mkdocstrings-python" },
-    { name = "zensical" },
-]
-examples = [
-    { name = "matplotlib" },
-]
-test = [
-    { name = "breadboard", extra = ["geo", "viz"] },
-    { name = "coverage" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "apache-hamilton", specifier = ">=1.90.0" },
-    { name = "apache-hamilton", extras = ["visualization"], marker = "extra == 'viz'", specifier = ">=1.90.0" },
-    { name = "breadboard", extras = ["viz", "geo"], marker = "extra == 'all'" },
-    { name = "cf-xarray", specifier = ">=0.11.3" },
-    { name = "dask", specifier = ">=2025.1.0" },
-    { name = "netcdf4", specifier = ">=1.7.4" },
-    { name = "numpy", specifier = ">=2.4.2" },
-    { name = "pint", specifier = ">=0.25.3" },
-    { name = "pint-xarray", specifier = ">=0.6.1" },
-    { name = "pyarrow", specifier = ">=10.0" },
-    { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.7.2" },
-    { name = "rioxarray", marker = "extra == 'geo'", specifier = ">=0.22.0" },
-    { name = "tomli-w", specifier = ">=1.2.0" },
-    { name = "typer", specifier = ">=0.24.1" },
-    { name = "xarray", specifier = ">=2026.2.0" },
-    { name = "zarr", specifier = ">=3.2.1" },
-]
-provides-extras = ["viz", "geo", "all"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "breadboard", extras = ["viz"] },
-    { name = "breadboard", extras = ["viz", "geo"] },
-    { name = "coverage", specifier = ">=7.13.5" },
-    { name = "marimo", specifier = ">=0.23.0" },
-    { name = "marimo-md-export", specifier = ">=0.5.2" },
-    { name = "matplotlib", specifier = ">=3.10.8" },
-    { name = "mkdocstrings-python", specifier = ">=2.0.3" },
-    { name = "pre-commit", specifier = ">=4.5.1" },
-    { name = "pyright", specifier = ">=1.1.409" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "ruff", specifier = ">=0.15.4" },
-    { name = "rust-just", specifier = ">=1.46.0" },
-    { name = "zensical", specifier = ">=0.0.24" },
-]
-docs = [
-    { name = "breadboard", extras = ["viz"] },
-    { name = "marimo", specifier = ">=0.23.0" },
-    { name = "marimo-md-export", specifier = ">=0.5.2" },
-    { name = "matplotlib", specifier = ">=3.10.8" },
-    { name = "mkdocstrings-python", specifier = ">=2.0.3" },
-    { name = "zensical", specifier = ">=0.0.24" },
-]
-examples = [{ name = "matplotlib", specifier = ">=3.10.8" }]
-test = [
-    { name = "breadboard", extras = ["viz", "geo"] },
-    { name = "coverage", specifier = ">=7.13.5" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-]
-
-[[package]]
 name = "certifi"
 version = "2026.4.22"
 source = { registry = "https://pypi.org/simple" }
@@ -355,6 +234,127 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "conduit"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "apache-hamilton" },
+    { name = "cf-xarray" },
+    { name = "dask" },
+    { name = "netcdf4" },
+    { name = "numpy" },
+    { name = "pint" },
+    { name = "pint-xarray" },
+    { name = "pyarrow" },
+    { name = "tomli-w" },
+    { name = "typer" },
+    { name = "xarray" },
+    { name = "zarr" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "apache-hamilton", extra = ["visualization"] },
+    { name = "pyproj" },
+    { name = "rioxarray" },
+]
+geo = [
+    { name = "pyproj" },
+    { name = "rioxarray" },
+]
+viz = [
+    { name = "apache-hamilton", extra = ["visualization"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "conduit", extra = ["geo", "viz"] },
+    { name = "coverage" },
+    { name = "marimo" },
+    { name = "marimo-md-export" },
+    { name = "matplotlib" },
+    { name = "mkdocstrings-python" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "rust-just" },
+    { name = "zensical" },
+]
+docs = [
+    { name = "conduit", extra = ["viz"] },
+    { name = "marimo" },
+    { name = "marimo-md-export" },
+    { name = "matplotlib" },
+    { name = "mkdocstrings-python" },
+    { name = "zensical" },
+]
+examples = [
+    { name = "matplotlib" },
+]
+test = [
+    { name = "conduit", extra = ["geo", "viz"] },
+    { name = "coverage" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "apache-hamilton", specifier = ">=1.90.0" },
+    { name = "apache-hamilton", extras = ["visualization"], marker = "extra == 'viz'", specifier = ">=1.90.0" },
+    { name = "cf-xarray", specifier = ">=0.11.3" },
+    { name = "conduit", extras = ["viz", "geo"], marker = "extra == 'all'" },
+    { name = "dask", specifier = ">=2025.1.0" },
+    { name = "netcdf4", specifier = ">=1.7.4" },
+    { name = "numpy", specifier = ">=2.4.2" },
+    { name = "pint", specifier = ">=0.25.3" },
+    { name = "pint-xarray", specifier = ">=0.6.1" },
+    { name = "pyarrow", specifier = ">=10.0" },
+    { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.7.2" },
+    { name = "rioxarray", marker = "extra == 'geo'", specifier = ">=0.22.0" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
+    { name = "typer", specifier = ">=0.24.1" },
+    { name = "xarray", specifier = ">=2026.2.0" },
+    { name = "zarr", specifier = ">=3.2.1" },
+]
+provides-extras = ["viz", "geo", "all"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "conduit", extras = ["viz"] },
+    { name = "conduit", extras = ["viz", "geo"] },
+    { name = "coverage", specifier = ">=7.13.5" },
+    { name = "marimo", specifier = ">=0.23.0" },
+    { name = "marimo-md-export", specifier = ">=0.5.2" },
+    { name = "matplotlib", specifier = ">=3.10.8" },
+    { name = "mkdocstrings-python", specifier = ">=2.0.3" },
+    { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "pyright", specifier = ">=1.1.409" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "ruff", specifier = ">=0.15.4" },
+    { name = "rust-just", specifier = ">=1.46.0" },
+    { name = "zensical", specifier = ">=0.0.24" },
+]
+docs = [
+    { name = "conduit", extras = ["viz"] },
+    { name = "marimo", specifier = ">=0.23.0" },
+    { name = "marimo-md-export", specifier = ">=0.5.2" },
+    { name = "matplotlib", specifier = ">=3.10.8" },
+    { name = "mkdocstrings-python", specifier = ">=2.0.3" },
+    { name = "zensical", specifier = ">=0.0.24" },
+]
+examples = [{ name = "matplotlib", specifier = ">=3.10.8" }]
+test = [
+    { name = "conduit", extras = ["viz", "geo"] },
+    { name = "coverage", specifier = ">=7.13.5" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
 ]
 
 [[package]]

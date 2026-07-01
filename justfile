@@ -22,7 +22,7 @@ test:
 
 # Run tests with coverage report.
 test-cov:
-  pytest --cov=breadboard --cov-report=term-missing --cov-fail-under=90
+  pytest --cov=conduit --cov-report=term-missing --cov-fail-under=90
 
 # Build the documentation using Zensical.
 docs:

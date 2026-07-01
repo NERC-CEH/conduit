@@ -9,9 +9,9 @@ Common issues and their solutions.
 
 ## Installation
 
-### `graphviz` not found when running `breadboard graph`
+### `graphviz` not found when running `conduit graph`
 
-The `breadboard graph` command requires the system `graphviz` binary, not just the Python package.
+The `conduit graph` command requires the system `graphviz` binary, not just the Python package.
 
 ```sh
 # Ubuntu/Debian
@@ -64,7 +64,7 @@ time,precipitation,temperature
 
 ### NetCDF file has wrong spatial dimensions
 
-breadboard expects gridded NetCDF files to have a CRS (Coordinate Reference System) attribute. If your file uses non-standard dimension names, you may need to set the CRS:
+conduit expects gridded NetCDF files to have a CRS (Coordinate Reference System) attribute. If your file uses non-standard dimension names, you may need to set the CRS:
 
 ```python
 import xarray as xr
@@ -76,7 +76,7 @@ ds.to_netcdf("data_with_crs.nc")
 
 ### Time index frequency mismatch
 
-For input sections whose label is a recognised frequency, breadboard validates that the
+For input sections whose label is a recognised frequency, conduit validates that the
 time index matches it:
 
 - **daily** must have frequency `"D"` (one entry per calendar day)
@@ -119,7 +119,7 @@ ratio = "compress"
 Or visualise a sub-DAG in Python:
 
 ```python
-from breadboard import build_driver, load_config
+from conduit import build_driver, load_config
 
 parsed = load_config("config.toml")
 dr = build_driver(modules=parsed.modules, config=parsed.driver_config)

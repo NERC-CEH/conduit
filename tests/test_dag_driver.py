@@ -1,10 +1,10 @@
-"""Tests for breadboard.dag.driver — build_driver wiring."""
+"""Tests for conduit.dag.driver — build_driver wiring."""
 
 import pytest
 from hamilton import driver
 
-from breadboard.config import NodeSpec, ResampleSpec
-from breadboard.dag.driver import build_driver
+from conduit.config import NodeSpec, ResampleSpec
+from conduit.dag.driver import build_driver
 
 
 class TestBuildDriverReturnType:
@@ -44,7 +44,7 @@ class TestBuildDriverReturnType:
 
     def test_importable_custom_module(self):
         """A dotted import path to a real module loads like any built-in."""
-        dr = build_driver(["breadboard.dag.resample"], {})
+        dr = build_driver(["conduit.dag.resample"], {})
         assert isinstance(dr, driver.Driver)
 
 

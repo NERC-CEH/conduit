@@ -1,10 +1,10 @@
-"""Unit tests for breadboard.config."""
+"""Unit tests for conduit.config."""
 
 from pathlib import Path
 
 import pytest
 
-from breadboard.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
+from conduit.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -157,7 +157,7 @@ class TestValidation:
         config = Config({"mymodel": {"_import_path": "no_such_pkg.mod"}})
 
         def _build():
-            from breadboard.dag.driver import build_driver
+            from conduit.dag.driver import build_driver
 
             parsed = config.parse()
             build_driver(parsed.modules, parsed.driver_config)
@@ -250,7 +250,7 @@ class TestResample:
         assert "resample" not in parsed.modules
 
     def test_resample_specs_in_driver_config(self):
-        from breadboard.config import ResampleSpec
+        from conduit.config import ResampleSpec
 
         config = Config(
             {

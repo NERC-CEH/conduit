@@ -1,3 +1,0 @@
-# `config`
-
-::: breadboard.config

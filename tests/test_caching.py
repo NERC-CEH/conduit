@@ -9,12 +9,12 @@ import pytest
 import xarray as xr
 from hamilton.caching import fingerprinting
 
-import breadboard.dag.caching  # noqa: F401  (registers the xarray fingerprint)
-from breadboard import CacheSpec
-from breadboard.cli.run import _resolve_cache
-from breadboard.config import Config, IOSpec, load_config
-from breadboard.dag.driver import build_driver
-from breadboard.io import get_final_vars
+import conduit.dag.caching  # noqa: F401  (registers the xarray fingerprint)
+from conduit import CacheSpec
+from conduit.cli.run import _resolve_cache
+from conduit.config import Config, IOSpec, load_config
+from conduit.dag.driver import build_driver
+from conduit.io import get_final_vars
 
 
 class TestCacheConfig:
@@ -123,7 +123,7 @@ class TestDataArrayFingerprint:
 
 def _make_counting_module(counter: list) -> types.ModuleType:
     """Build a one-node Hamilton module that records each real computation."""
-    mod = types.ModuleType("breadboard_test_cache_mod")
+    mod = types.ModuleType("conduit_test_cache_mod")
 
     def expensive(source: xr.DataArray) -> xr.DataArray:
         counter.append(1)

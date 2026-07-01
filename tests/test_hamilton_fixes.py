@@ -1,4 +1,4 @@
-"""Tests for breadboard.dag._hamilton_fixes."""
+"""Tests for conduit.dag._hamilton_fixes."""
 
 import sys
 import types
@@ -8,7 +8,7 @@ from hamilton import driver
 from hamilton.function_modifiers.base import InvalidDecoratorException
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from breadboard.dag._hamilton_fixes import NoOpDecorator
+from conduit.dag._hamilton_fixes import NoOpDecorator
 
 
 class TestNoOpDecorator:
