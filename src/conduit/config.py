@@ -90,7 +90,7 @@ class NodeSpec:
         units = entry.get("units")
         if units is not None:
             # Fail fast on a malformed/unknown unit, at parse time.
-            from .units import assert_valid_unit
+            from xarray_annotated.units import assert_valid_unit
 
             assert_valid_unit(units, f"node '{entry.get('name')}' units")
         return cls(
@@ -230,8 +230,9 @@ class ParsedConfig:
     cache_spec: "CacheSpec | None" = None
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
-    units_mode: str | None = None
-    units_exact: bool | None = None
+    units_enabled: bool | None = None
+    units_on_missing: str | None = None
+    units_on_inexact: str | None = None
 
 
 class Config:
@@ -397,25 +398,40 @@ class Config:
             return None
         return SubsetSpec.from_config(entry)
 
-    def _parse_units(self, data: dict) -> tuple[str | None, bool | None]:
+    def _parse_units(self, data: dict) -> tuple[bool | None, str | None, str | None]:
         """Handle the [units] section.
 
-        Returns ``(mode, exact)``: the validation mode string (or ``None``) and
-        the exact-unit-match flag for the build-time check (or ``None`` when not
-        given). Both are ``None`` if there is no [units] section.
+        Returns ``(enabled, on_missing, on_inexact)`` mapping the old
+        ``mode`` / ``exact`` keys to the xarray-annotated policy axes.
+        ``None`` axes defer to the process-wide default.
+        All are ``None`` if there is no [units] section.
         """
         entry = data.pop("units", None)
         if entry is None:
-            return None, None
+            return None, None, None
+        enabled: bool | None = None
+        on_missing: str | None = None
+        on_inexact: str | None = None
         mode = entry.get("mode")
-        if mode is not None and mode not in ("strict", "warn", "off"):
-            raise ValueError(
-                f"[units] 'mode' must be one of 'strict', 'warn', 'off', got {mode!r}."
-            )
+        if mode is not None:
+            if mode == "off":
+                enabled = False
+            elif mode == "strict":
+                on_missing = "error"
+            elif mode == "warn":
+                on_missing = "warn"
+            else:
+                raise ValueError(
+                    f"[units] 'mode' must be one of 'strict', 'warn', 'off', "
+                    f"got {mode!r}."
+                )
         exact = entry.get("exact")
-        if exact is not None and not isinstance(exact, bool):
-            raise ValueError(f"[units] 'exact' must be a boolean, got {exact!r}.")
-        return mode, exact
+        if exact is not None:
+            if not isinstance(exact, bool):
+                raise ValueError(f"[units] 'exact' must be a boolean, got {exact!r}.")
+            if exact:
+                on_inexact = "error"
+        return enabled, on_missing, on_inexact
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
         """Handle remaining sections as external modules."""
@@ -472,7 +488,7 @@ class Config:
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data)
         subset_spec = self._parse_subset(data)
-        units_mode, units_exact = self._parse_units(data)
+        units_enabled, units_on_missing, units_on_inexact = self._parse_units(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
             modules=modules,
@@ -482,8 +498,9 @@ class Config:
             cache_spec=cache_spec,
             blocking_spec=blocking_spec,
             subset_spec=subset_spec,
-            units_mode=units_mode,
-            units_exact=units_exact,
+            units_enabled=units_enabled,
+            units_on_missing=units_on_missing,
+            units_on_inexact=units_on_inexact,
         )
 
 

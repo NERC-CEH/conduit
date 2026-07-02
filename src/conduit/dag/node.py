@@ -7,8 +7,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Annotated, Any
 
 import xarray as xr
-
-from ._utils import declare_units
+from xarray_annotated.units import declare_units
 
 if TYPE_CHECKING:
     from conduit.config import NodeSpec

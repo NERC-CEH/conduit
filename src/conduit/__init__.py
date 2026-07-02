@@ -1,5 +1,7 @@
 """conduit: an opinionated Hamilton + xarray + pint foundation for data pipelines."""
 
+from xarray_annotated.units import UnitsWarning, declare_units, use_cf_units
+
 from ._version import __version__
 from .config import (
     BlockingSpec,
@@ -10,7 +12,6 @@ from .config import (
     SubsetSpec,
     load_config,
 )
-from .dag._utils import declare_units
 from .dag.driver import build_driver
 from .io import (
     create_output_store,
@@ -20,7 +21,8 @@ from .io import (
     merge_subset_outputs,
     save_outputs,
 )
-from .units import UnitsWarning
+
+use_cf_units()
 
 __all__ = [
     "BlockingSpec",

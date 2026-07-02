@@ -37,10 +37,11 @@ def _():
     import marimo as mo
     import numpy as np
     import xarray as xr
+    from xarray_annotated.units import policy
 
-    from conduit import declare_units, units
+    from conduit import declare_units
 
-    return declare_units, mo, np, units, xr
+    return declare_units, mo, np, policy, xr
 
 
 @app.cell(hide_code=True)
@@ -87,7 +88,7 @@ def _(mean_pressure, np, units, xr):
         coords={"time": np.arange(3), "site": ["a", "b"]},
         attrs={"units": "hPa"},
     )
-    with units.mode("strict"):
+    with policy(on_missing="error"):
         converted = mean_pressure(pressure_hpa)
     converted  # ~101325 Pa, units attribute == "Pa"
     return
@@ -113,7 +114,7 @@ def _(mean_pressure, np, units, xr):
         attrs={"units": "kg"},  # not a pressure!
     )
     try:
-        with units.mode("strict"):
+        with policy(on_missing="error"):
             mean_pressure(pressure_wrong)
         message = "no error (unexpected)"
     except Exception as exc:
@@ -125,18 +126,22 @@ def _(mean_pressure, np, units, xr):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Validation modes and build-time checks
+    ## Validation policies and build-time checks
 
-    The active mode is process-wide (`conduit.units.set_mode(...)`, the
-    `CONDUIT_UNITS_MODE` env var, or the `[units]` config section):
+    The validation policy is process-wide (`xarray_annotated.units.set_policy(...)`, the
+    ``XARRAY_ANNOTATED_ENABLED``, ``XARRAY_ANNOTATED_UNITS_ON_MISSING``, and
+    ``XARRAY_ANNOTATED_UNITS_ON_INEXACT`` env vars, or the traditional ``[units]`` config
+    section):
 
-    - **`strict`** — missing/unparseable units raise; dimensional mismatches always raise.
-    - **`warn`** (default) — missing units warn (`UnitsWarning`) but don't fail.
-    - **`off`** — skip validation entirely.
+    - **on_missing=`"error"`** — missing/unparseable units raise.
+    - **on_missing=`"warn"`** (default) — missing units warn (`UnitsWarning`) but
+      don't fail.
+    - **on_inexact=`"error"`** — value-changing conversions (e.g. hPa → Pa) raise.
+    - **enabled=`False`** — skip validation entirely.
 
     The same declarations also power *build-time* checks: when you `build_driver(...)`,
     conduit verifies that every edge's producer and consumer units agree, and
-    `conduit run --dry-run` validates your input files' units — all before a single node
+    ``conduit run --dry-run`` validates your input files' units — all before a single node
     executes.
     """)
     return

@@ -4,10 +4,10 @@ import sys
 import types
 
 import xarray as xr
+from xarray_annotated.units import policy, units_from_signature
 
 from conduit.config import NodeSpec
 from conduit.dag.node import _build_fn_code, make_node_module
-from conduit.units import units_from_signature
 
 
 def _expr_spec(name, inputs, expression, units=None):
@@ -129,7 +129,8 @@ class TestNodeUnits:
 
     def test_units_stamped_on_output_at_runtime(self):
         mod = make_node_module([_expr_spec("scaled", ["a"], "a", units="t ha-1")])
-        out = mod.scaled(xr.DataArray([1.0, 2.0]))
+        with policy(enabled=True):
+            out = mod.scaled(xr.DataArray([1.0, 2.0]))
         assert out.attrs["units"] == "t ha-1"
 
     def test_declared_units_reachable_for_static_check(self):

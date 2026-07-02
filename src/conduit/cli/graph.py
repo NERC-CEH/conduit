@@ -6,16 +6,16 @@ import re
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, get_args, get_origin
 
 import typer
 import xarray as xr
 from hamilton import graph_types
+from xarray_annotated.units import units_from_signature
 
 from ..config import load_config
 from ..dag.driver import build_driver
 from ..io import get_final_vars
-from ..units import units_from_signature, unwrap_annotated
 from .graph_style import GraphvizSpec, load_graphviz_spec
 
 if TYPE_CHECKING:
@@ -37,6 +37,11 @@ def _frequency(name: str) -> str | None:
     return None
 
 
+def _unwrap_annotated(hint):
+    """Return the underlying type of an ``Annotated`` hint, else the hint itself."""
+    return get_args(hint)[0] if get_origin(hint) is Annotated else hint
+
+
 def make_style_function(spec: GraphvizSpec, output_vars: set[str]) -> StyleFunction:
     """Build the default ``custom_style_function`` for ``display_all_functions``.
 
@@ -53,7 +58,7 @@ def make_style_function(spec: GraphvizSpec, output_vars: set[str]) -> StyleFunct
     ) -> tuple[dict, str | None, str | None]:
         # Signature-native unit declarations make some node types
         # ``Annotated[DataArray, "<unit>"]``; unwrap before comparing.
-        node_type = unwrap_annotated(node.type)
+        node_type = _unwrap_annotated(node.type)
         freq = _frequency(node.name) if node_type is xr.DataArray else None
 
         fill: str | None = None
@@ -122,7 +127,7 @@ def _node_maps(dr: "Driver") -> tuple[dict[str, str], dict[str, str]]:
     freq_map: dict[str, str] = {}
     for var in dr.list_available_variables():
         freq = _frequency(var.name)
-        if freq is not None and unwrap_annotated(var.type) is xr.DataArray:
+        if freq is not None and _unwrap_annotated(var.type) is xr.DataArray:
             freq_map[var.name] = freq
     return unit_map, freq_map
 

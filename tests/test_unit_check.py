@@ -10,10 +10,9 @@ import xarray as xr
 from hamilton import driver
 from hamilton.function_modifiers import extract_fields
 from hamilton.settings import ENABLE_POWER_USER_MODE
+from xarray_annotated.units import declare_units, policy
 
-from conduit import UnitsWarning, units
 from conduit.config import NodeSpec, ResampleSpec
-from conduit.dag._utils import declare_units
 from conduit.dag.driver import build_driver
 from conduit.dag.unit_check import check_dag_units
 
@@ -80,7 +79,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from conduit.dag._utils import declare_units\n"
+        "from xarray_annotated.units import declare_units\n"
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -104,7 +103,7 @@ def _bare_producer(unit: str, name: str = "flux"):
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"
-        "from conduit.dag._utils import declare_units\n"
+        "from xarray_annotated.units import declare_units\n"
         "@declare_units\n"
         f"def {name}() -> Annotated[xr.DataArray, {unit!r}]:\n"
         "    return xr.DataArray([1.0])\n"
@@ -124,7 +123,7 @@ def _plain_consumer(name: str = "plain_cons", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from conduit.dag._utils import declare_units\n"
+        "from xarray_annotated.units import declare_units\n"
         f"class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -144,58 +143,65 @@ def _plain_consumer(name: str = "plain_cons", in_name: str = "gpp_weekly"):
 
 class TestDimensionalMismatch:
     def _dr(self, register):
-        # producer emits 'g m-2 d-1'; consumer declares 'kg' (incompatible).
         prod = register("uc_prod", _producer("g m-2 d-1"))
         cons = register("uc_cons", _consumer("kg"))
         return _build(prod, cons)
 
     def test_strict_raises(self, register):
         dr = self._dr(register)
-        with pytest.raises(ValueError, match="dimensionally incompatible"):
-            check_dag_units(dr, mode="strict")
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="dimensionally incompatible"),
+        ):
+            check_dag_units(dr)
 
-    def test_warn_warns(self, register):
+    def test_warn_also_raises(self, register):
         dr = self._dr(register)
-        with pytest.warns(UnitsWarning, match="dimensionally incompatible"):
-            check_dag_units(dr, mode="warn")
+        with (
+            policy(enabled=True, on_missing="warn"),
+            pytest.raises(ValueError, match="dimensionally incompatible"),
+        ):
+            check_dag_units(dr)
 
     def test_off_is_silent(self, register):
         dr = self._dr(register)
-        with warnings.catch_warnings():
+        with policy(enabled=False), warnings.catch_warnings():
             warnings.simplefilter("error")
-            check_dag_units(dr, mode="off")  # returns without raising/warning
+            check_dag_units(dr)
 
     def test_message_names_node_and_units(self, register):
         dr = self._dr(register)
-        with pytest.raises(ValueError, match="gpp_weekly") as exc:
-            check_dag_units(dr, mode="strict")
+        with policy(enabled=True), pytest.raises(ValueError, match="gpp_weekly") as exc:
+            check_dag_units(dr)
         msg = str(exc.value)
         assert "'g m-2 d-1'" in msg
         assert "'kg'" in msg
 
 
 # ---------------------------------------------------------------------------
-# Exact-string mismatch (only when exact is enabled)
+# Exact-string mismatch (only when on_inexact is "error")
 # ---------------------------------------------------------------------------
 
 
 class TestExactMatch:
     def _dr(self, register):
-        # Dimensionally compatible but not identical: 'Pa' produced, 'hPa' consumed.
         prod = register("ue_prod", _producer("Pa"))
         cons = register("ue_cons", _consumer("hPa"))
         return _build(prod, cons)
 
-    def test_compatible_passes_when_exact_off(self, register):
+    def test_compatible_passes_when_convert(self, register):
         dr = self._dr(register)
-        with warnings.catch_warnings():
+        with policy(enabled=True, on_inexact="convert"), warnings.catch_warnings():
             warnings.simplefilter("error")
-            check_dag_units(dr, mode="strict", exact=False)
+            check_dag_units(dr)
 
-    def test_compatible_flagged_when_exact_on(self, register):
+    def test_compatible_flagged_when_error(self, register):
         dr = self._dr(register)
-        with pytest.raises(ValueError, match="exact match required"):
-            check_dag_units(dr, mode="strict", exact=True)
+        with (
+            policy(enabled=True, on_inexact="error"),
+            pytest.raises(ValueError, match="exact match required"),
+        ):
+            check_dag_units(dr)
 
 
 # ---------------------------------------------------------------------------
@@ -208,8 +214,11 @@ class TestSharedInputConflict:
         a = register("us_a", _consumer("Pa", name="consumer_a"))
         b = register("us_b", _consumer("kg", name="consumer_b"))
         dr = _build(a, b)
-        with pytest.raises(ValueError, match="dimensionally incompatible"):
-            check_dag_units(dr, mode="strict")
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="dimensionally incompatible"),
+        ):
+            check_dag_units(dr)
 
 
 # ---------------------------------------------------------------------------
@@ -232,20 +241,28 @@ class TestBareReturnProducer:
 
     def test_incompatible_raises(self, register):
         dr = self._dr(register, "g m-2 d-1", "kg")
-        with pytest.raises(ValueError, match="dimensionally incompatible"):
-            check_dag_units(dr, mode="strict")
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="dimensionally incompatible"),
+        ):
+            check_dag_units(dr)
 
     def test_compatible_passes_under_exact(self, register):
         dr = self._dr(register, "g m-2 d-1", "g m-2 d-1")
-        with warnings.catch_warnings():
+        with (
+            policy(enabled=True, on_inexact="error"),
+            warnings.catch_warnings(),
+        ):
             warnings.simplefilter("error")
-            check_dag_units(dr, mode="strict", exact=True)
+            check_dag_units(dr)
 
     def test_exact_string_mismatch_flagged(self, register):
-        # Bare-return producer 'Pa' feeding a consumer 'hPa': value-changing.
         dr = self._dr(register, "Pa", "hPa")
-        with pytest.raises(ValueError, match="exact match required"):
-            check_dag_units(dr, mode="strict", exact=True)
+        with (
+            policy(enabled=True, on_inexact="error"),
+            pytest.raises(ValueError, match="exact match required"),
+        ):
+            check_dag_units(dr)
 
 
 class TestOptInContract:
@@ -254,45 +271,48 @@ class TestOptInContract:
     partially-annotated future models never trigger false positives."""
 
     def test_unannotated_consumer_of_typed_producer_not_checked(self, register):
-        # Producer declares 'Pa'; consumer declares nothing. Even an "exact"
-        # strict check must stay silent — there is nothing to compare against.
         prod = register("oc_prod", _producer("Pa"))
         cons = register("oc_cons", _plain_consumer())
         dr = _build(prod, cons)
-        with warnings.catch_warnings():
+        with (
+            policy(enabled=True, on_inexact="error"),
+            warnings.catch_warnings(),
+        ):
             warnings.simplefilter("error")
-            check_dag_units(dr, mode="strict", exact=True)
+            check_dag_units(dr)
 
 
 class TestDefaultResolution:
-    """``check_dag_units`` resolves ``mode``/``exact`` from the global state when
-    its arguments are left as ``None`` (the path ``build_driver`` relies on)."""
+    """``check_dag_units`` resolves ``on_inexact`` from the global state when
+    its argument is left as ``None`` (the path ``build_driver`` relies on)."""
 
-    def test_mode_resolves_from_global_when_none(self, register):
+    def test_dimension_mismatch_raises_when_enabled(self, register):
         prod = register("dm_prod", _producer("g m-2 d-1"))
         cons = register("dm_cons", _consumer("kg"))
         dr = _build(prod, cons)
-        with units.mode("strict"), pytest.raises(ValueError, match="incompatible"):
-            check_dag_units(dr)  # mode=None -> global "strict"
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="incompatible"),
+        ):
+            check_dag_units(dr)
 
-    def test_off_global_skips_when_mode_none(self, register):
+    def test_off_global_skips(self, register):
         prod = register("dm2_prod", _producer("g m-2 d-1"))
         cons = register("dm2_cons", _consumer("kg"))
         dr = _build(prod, cons)
-        with units.mode("off"), warnings.catch_warnings():
+        with policy(enabled=False), warnings.catch_warnings():
             warnings.simplefilter("error")
-            check_dag_units(dr)  # global "off" -> silent despite mismatch
+            check_dag_units(dr)
 
-    def test_exact_resolves_from_global_when_none(self, register):
+    def test_on_inexact_resolves_from_global(self, register):
         prod = register("de_prod", _producer("Pa"))
         cons = register("de_cons", _consumer("hPa"))
         dr = _build(prod, cons)
-        units.set_exact_match(True)
-        try:
-            with pytest.raises(ValueError, match="exact match required"):
-                check_dag_units(dr, mode="strict")  # exact=None -> global True
-        finally:
-            units.set_exact_match(None)
+        with (
+            policy(enabled=True, on_inexact="error"),
+            pytest.raises(ValueError, match="exact match required"),
+        ):
+            check_dag_units(dr)
 
 
 class TestConsistent:
@@ -300,39 +320,41 @@ class TestConsistent:
         prod = register("uk_prod", _producer("Pa"))
         cons = register("uk_cons", _consumer("Pa"))
         dr = _build(prod, cons)
-        with warnings.catch_warnings():
+        with (
+            policy(enabled=True, on_inexact="error"),
+            warnings.catch_warnings(),
+        ):
             warnings.simplefilter("error")
-            check_dag_units(dr, mode="strict", exact=True)
+            check_dag_units(dr)
 
     def test_producer_consumer_same_unit_clean(self, register):
-        # Producer and consumer of gpp_weekly declare identical units: clean
-        # even under exact matching.
         register("clean_prod", _producer("g m-2 d-1"))
         register("clean_cons", _consumer("g m-2 d-1"))
-        dr = build_driver(["clean_prod", "clean_cons"], {})
-        check_dag_units(dr, mode="strict", exact=True)
+        with policy(enabled=True, on_inexact="error"):
+            dr = build_driver(["clean_prod", "clean_cons"], {})
+        check_dag_units(dr, on_inexact="error")
 
 
 # ---------------------------------------------------------------------------
-# build_driver invokes the check (gated by the global mode)
+# build_driver invokes the check (gated by the global policy)
 # ---------------------------------------------------------------------------
 
 
 class TestBuildDriverIntegration:
-    def test_build_driver_runs_check_in_strict(self, register):
+    def test_build_driver_runs_check_when_enabled(self, register):
         register("ub_prod", _producer("g m-2 d-1"))
         register("ub_cons", _consumer("kg"))
         with (
-            units.mode("strict"),
+            policy(enabled=True, on_inexact="error"),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
             build_driver(["ub_prod", "ub_cons"], {})
 
-    def test_build_driver_skips_in_off(self, register):
+    def test_build_driver_skips_when_disabled(self, register):
         register("ub2_prod", _producer("g m-2 d-1"))
         register("ub2_cons", _consumer("kg"))
-        with units.mode("off"):
-            build_driver(["ub2_prod", "ub2_cons"], {})  # no raise despite mismatch
+        with policy(enabled=False):
+            build_driver(["ub2_prod", "ub2_cons"], {})
 
 
 # ---------------------------------------------------------------------------
@@ -357,14 +379,14 @@ class TestResamplePropagation:
 
     def test_incompatible_consumer_of_resampled_var_raises(self, register):
         with (
-            units.mode("strict"),
+            policy(enabled=True),
             pytest.raises(ValueError, match="gpp_monthly"),
         ):
             self._build(register, "kg")
 
     def test_compatible_consumer_of_resampled_var_passes(self, register):
-        with units.mode("strict"):
-            self._build(register, "g m-2 d-1")  # matches propagated unit
+        with policy(enabled=True):
+            self._build(register, "g m-2 d-1")
 
     def test_chained_resample_propagates_through_multiple_hops(self, register):
         """The unit must propagate across a *chain* of resamples
@@ -385,7 +407,10 @@ class TestResamplePropagation:
             ResampleSpec(vars=["gpp"], source_freq="daily", target_freq="weekly"),
             ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly"),
         ]
-        with units.mode("strict"), pytest.raises(ValueError, match="gpp_monthly"):
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="gpp_monthly"),
+        ):
             build_driver(
                 ["crp_prod", "resample", "crp_cons"], {"resample_specs": specs}
             )
@@ -412,11 +437,14 @@ class TestNodePropagation:
         return build_driver(["node", "dv_cons"], {"node_specs": specs})
 
     def test_incompatible_consumer_of_node_var_raises(self, register):
-        with units.mode("strict"), pytest.raises(ValueError, match="flux"):
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="flux"),
+        ):
             self._build(register, "kg")
 
     def test_compatible_consumer_of_node_var_passes(self, register):
-        with units.mode("strict"):
+        with policy(enabled=True):
             self._build(register, "g m-2 d-1")
 
 
@@ -433,13 +461,15 @@ class TestUnitsWarningQualname:
     def test_missing_units_warning_includes_qualname(self):
         from typing import Annotated
 
+        from xarray_annotated.units import UnitsWarning
+
         @declare_units
         def my_model_node(vpd: Annotated[xr.DataArray, "Pa"]) -> xr.DataArray:
             return vpd
 
         da = xr.DataArray([1.0])  # no 'units' attr
         with (
-            units.mode("warn"),
+            policy(enabled=True, on_missing="warn"),
             pytest.warns(UnitsWarning, match=r"\[.*my_model_node\].*unvalidated"),
         ):
             my_model_node(vpd=da)
@@ -447,13 +477,15 @@ class TestUnitsWarningQualname:
     def test_unparseable_units_warning_includes_qualname(self):
         from typing import Annotated
 
+        from xarray_annotated.units import UnitsWarning
+
         @declare_units
         def another_node(vpd: Annotated[xr.DataArray, "Pa"]) -> xr.DataArray:
             return vpd
 
         da = xr.DataArray([1.0], attrs={"units": "fraction"})
         with (
-            units.mode("warn"),
+            policy(enabled=True, on_missing="warn"),
             pytest.warns(UnitsWarning, match=r"\[.*another_node\].*unparseable"),
         ):
             another_node(vpd=da)

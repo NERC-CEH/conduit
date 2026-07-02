@@ -3,7 +3,7 @@
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 
@@ -63,15 +63,22 @@ def run(
     """Execute a pipeline defined in a configuration file."""
     parsed = load_config(config_file)
 
-    if parsed.units_mode is not None:
-        from ..units import set_mode
+    if parsed.units_enabled is not None:
+        from xarray_annotated.units import set_policy
 
-        set_mode(parsed.units_mode)
+        set_policy(enabled=parsed.units_enabled)
 
-    if parsed.units_exact is not None:
-        from ..units import set_exact_match
+    if parsed.units_on_missing is not None:
+        from xarray_annotated.units import set_policy
+        from xarray_annotated.units._config import OnMissing
 
-        set_exact_match(parsed.units_exact)
+        set_policy(on_missing=cast(OnMissing, parsed.units_on_missing))
+
+    if parsed.units_on_inexact is not None:
+        from xarray_annotated.units import set_policy
+        from xarray_annotated.units._config import OnInexact
+
+        set_policy(on_inexact=cast(OnInexact, parsed.units_on_inexact))
 
     if dry_run:
         _dry_run(parsed, config_file, allow_overrides)
@@ -112,8 +119,9 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
     (non-zero exit); unit issues follow the active ``units_mode`` (warnings stay
     warnings). No model runs and nothing is written.
     """
+    from xarray_annotated.units import get_policy
+
     from ..dag.unit_check import check_input_units
-    from ..units import get_mode
 
     typer.echo(f"Dry run for {config_file}")
     typer.echo("  ✓ config parsed")
@@ -148,13 +156,22 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         check_input_units(dr, inputs)
-    mode = get_mode()
+    pol = get_policy()
     if caught:
-        typer.echo(f"  ✓ input units checked (mode={mode}, {len(caught)} warning(s)):")
+        typer.echo(
+            f"  ✓ input units checked (enabled={pol.enabled}, "
+            f"on_missing={pol.on_missing}, "
+            f"on_inexact={pol.on_inexact}, "
+            f"{len(caught)} warning(s)):"
+        )
         for w in caught:
             typer.echo(f"      ! {w.message}")
     else:
-        typer.echo(f"  ✓ input units validated (mode={mode})")
+        typer.echo(
+            f"  ✓ input units validated (enabled={pol.enabled}, "
+            f"on_missing={pol.on_missing}, "
+            f"on_inexact={pol.on_inexact})"
+        )
 
     if parsed.output_specs:
         assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)

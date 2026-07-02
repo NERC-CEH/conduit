@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 import xarray as xr
+from xarray_annotated.units import set_policy
 
-from conduit import units
 from conduit.config import load_config
 from conduit.dag.driver import build_driver
 from conduit.io import load_inputs
 from conduit.setup_utils.data_gen import generate_synthetic_data
 
-units.set_mode("off")
+set_policy(enabled=False)
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 

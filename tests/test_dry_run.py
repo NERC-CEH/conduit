@@ -17,8 +17,8 @@ import pint
 import pytest
 import xarray as xr
 from typer.testing import CliRunner
+from xarray_annotated.units import UnitsWarning, policy
 
-from conduit import UnitsWarning
 from conduit.cli import app
 from conduit.config import IOSpec, ResampleSpec, SubsetSpec
 from conduit.dag.driver import build_driver
@@ -60,7 +60,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from conduit.dag._utils import declare_units\n"
+        "from xarray_annotated.units import declare_units\n"
         "class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -93,50 +93,66 @@ class TestCheckInputUnitsDirect:
         return build_driver(["vpd_cons"], {})
 
     def test_matching_units_pass(self, dr):
-        check_input_units(dr, {"vpd_weekly": _input("Pa")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"vpd_weekly": _input("Pa")})
 
     def test_compatible_units_convert_without_error(self, dr):
-        # hPa <-> Pa is a valid, intentional conversion; must not fail.
-        check_input_units(dr, {"vpd_weekly": _input("hPa")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"vpd_weekly": _input("hPa")})
 
     def test_exact_match_rejects_compatible_but_different(self, dr):
-        with pytest.raises(ValueError, match="exact"):
-            check_input_units(
-                dr, {"vpd_weekly": _input("hPa")}, mode="strict", exact=True
-            )
+        with (
+            policy(enabled=True, on_missing="error", on_inexact="error"),
+            pytest.raises(ValueError, match="on_inexact"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("hPa")})
 
     def test_incompatible_units_raise(self, dr):
-        with pytest.raises(pint.DimensionalityError):
-            check_input_units(dr, {"vpd_weekly": _input("kg")}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(pint.DimensionalityError),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("kg")})
 
     def test_missing_units_strict_raises(self, dr):
-        with pytest.raises(ValueError, match="no 'units' attribute"):
-            check_input_units(dr, {"vpd_weekly": _input(None)}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(ValueError, match="no 'units' attribute"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input(None)})
 
     def test_missing_units_warn_warns(self, dr):
-        with pytest.warns(UnitsWarning, match="unvalidated"):
-            check_input_units(dr, {"vpd_weekly": _input(None)}, mode="warn")
+        with (
+            policy(enabled=True, on_missing="warn"),
+            pytest.warns(UnitsWarning, match="unvalidated"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input(None)})
 
     def test_unparseable_units_strict_raises(self, dr):
-        # A present-but-unparseable units string is as un-validatable as a missing
-        # one; in strict mode it raises a clear error rather than an opaque one.
-        with pytest.raises(ValueError, match="unparseable"):
-            check_input_units(dr, {"vpd_weekly": _input("fraction")}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(ValueError, match="unparseable"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("fraction")})
 
     def test_unparseable_units_warn_warns(self, dr):
-        with pytest.warns(UnitsWarning, match="unparseable"):
-            check_input_units(dr, {"vpd_weekly": _input("fraction")}, mode="warn")
+        with (
+            policy(enabled=True, on_missing="warn"),
+            pytest.warns(UnitsWarning, match="unparseable"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("fraction")})
 
     def test_off_mode_skips_everything(self, dr):
-        # Even a dimensionally incompatible unit is ignored in 'off' mode.
-        check_input_units(dr, {"vpd_weekly": _input("kg")}, mode="off")
+        with policy(enabled=False):
+            check_input_units(dr, {"vpd_weekly": _input("kg")})
 
     def test_input_without_declared_consumer_ignored(self, dr):
-        # An input the DAG does not consume with a declared unit is left alone.
-        check_input_units(dr, {"some_other_var": _input("kg")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"some_other_var": _input("kg")})
 
     def test_non_dataarray_inputs_ignored(self, dr):
-        check_input_units(dr, {"vpd_weekly": 3.0}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"vpd_weekly": 3.0})
 
 
 # ---------------------------------------------------------------------------
@@ -155,13 +171,16 @@ class TestCheckInputUnitsPropagation:
 
     def test_resample_routed_input_is_validated(self, register):
         dr = self._resample_driver(register)
-        # Wrong units on the raw weekly input are caught via backward propagation.
-        with pytest.raises(pint.DimensionalityError):
-            check_input_units(dr, {"gpp_weekly": _input("kg")}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(pint.DimensionalityError),
+        ):
+            check_input_units(dr, {"gpp_weekly": _input("kg")})
 
     def test_resample_routed_input_passes_when_correct(self, register):
         dr = self._resample_driver(register)
-        check_input_units(dr, {"gpp_weekly": _input("g m-2 d-1")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"gpp_weekly": _input("g m-2 d-1")})
 
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
@@ -180,8 +199,8 @@ class TestCheckInputUnitsPropagation:
             )
         ]
         dr = build_driver(["node", "dv_cons"], {"node_specs": specs})
-        # Raw inputs 'a'/'b' carry no derivable expectation -> not checked.
-        check_input_units(dr, {"a": _input("kg"), "b": _input("kg")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"a": _input("kg"), "b": _input("kg")})
 
 
 # ---------------------------------------------------------------------------

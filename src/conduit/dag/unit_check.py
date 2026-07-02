@@ -1,14 +1,14 @@
 r"""Build-time (static) unit-consistency check for the Hamilton DAG.
 
-The runtime check (``declare_units`` → ``check_units``) only fires when a node
+The runtime check (``declare_units`` \u2192 ``check_units``) only fires when a node
 executes. `check_dag_units` adds the complementary guarantee at *build*
 time: every internal edge whose producer and consumer both declare a unit is
 verified for consistency, so a mismatch surfaces as soon as the driver is built
 rather than part way through a run.
 
 Declarations are read from each node's public function signature via
-`conduit.units.units_from_signature` — the same single source the runtime
-check uses. Hamilton unifies nodes by name, so a node name that is both
+`xarray_annotated.units.units_from_signature` \u2014 the same single source the
+runtime check uses. Hamilton unifies nodes by name, so a node name that is both
 *produced* with a declared unit (a ``TypedDict`` field or bare ``Annotated``
 return) and *consumed* with a declared unit (an ``Annotated`` parameter) is a
 genuine edge in the built graph; no edge walking is required.
@@ -24,28 +24,18 @@ fallback for **external file inputs**: it validates the ``units`` attribute of t
 actually-loaded input ``DataArray``\\ s against the units declared by the nodes that
 consume them. This is the only data-dependent part of unit validation (every
 internal edge's unit is fixed by declarations/stamping), so it can run without
-executing any node — the basis of ``conduit run --dry-run``. Inputs routed through
+executing any node \u2014 the basis of ``conduit run --dry-run``. Inputs routed through
 a unit-preserving ``resample`` node before reaching a declaring consumer are covered
 via backward propagation; inputs routed through a ``[[node]]`` module are *not*,
 since a node can transform units arbitrarily and would have to actually run.
 """
 
-import warnings
 from typing import TYPE_CHECKING
 
 import xarray as xr
 from hamilton import graph_types
-
-from ..units import (
-    Mode,
-    UnitsWarning,
-    check_units,
-    get_exact_match,
-    get_mode,
-    units_compatible,
-    units_equal,
-    units_from_signature,
-)
+from xarray_annotated.units import check_units, get_policy, units_from_signature
+from xarray_annotated.units._check import units_compatible, units_equal
 
 if TYPE_CHECKING:
     from typing import Any
@@ -70,7 +60,6 @@ def _collect_unit_maps(
     """
     hg = graph_types.HamiltonGraph.from_graph(dr.graph)
 
-    # Distinct public node functions present in this pipeline (dedup by identity).
     seen: set[int] = set()
     funcs = []
     for node in hg.nodes:
@@ -89,7 +78,6 @@ def _collect_unit_maps(
             for name, unit in out_units.items():
                 produced[name] = (unit, fn_name)
         elif isinstance(out_units, str):
-            # Single-output node: the node name equals the function name.
             produced[fn_name] = (out_units, fn_name)
         for name, unit in in_units.items():
             consumed.setdefault(name, []).append((unit, fn_name))
@@ -107,8 +95,7 @@ def _collect_unit_maps(
 def check_dag_units(
     dr: "driver.Driver",
     *,
-    mode: Mode | None = None,
-    exact: bool | None = None,
+    on_inexact: str | None = None,
 ) -> None:
     """Verify declared units are consistent across the built DAG's edges.
 
@@ -119,24 +106,22 @@ def check_dag_units(
     - dimensionally **incompatible** units (e.g. a mass where a pressure is
       declared) are always reported;
     - dimensionally compatible but **non-identical** strings (e.g. ``"Pa"`` vs
-      ``"hPa"``) are reported only when ``exact`` is enabled.
+      ``"hPa"``) are reported only when ``on_inexact`` resolves to ``"error"``.
 
-    Behaviour follows the active validation mode (resolved from
-    `conduit.units.get_mode` when ``mode`` is ``None``): ``off`` skips the
-    check entirely, ``warn`` emits a warning listing the findings, ``strict``
-    raises `ValueError`. ``exact`` defaults to
-    `conduit.units.get_exact_match`.
+    DAG-level unit mismatches always raise `ValueError` (they represent
+    genuine pipeline definition errors). Skips when
+    `xarray_annotated.units.get_policy().enabled` is ``False``.
+
+    ``on_inexact`` defaults from the active policy when ``None``.
     """
-    mode = mode or get_mode()
-    if mode == "off":
+    pol = get_policy()
+    if not pol.enabled:
         return
-    exact = get_exact_match() if exact is None else exact
+    if on_inexact is None:
+        on_inexact = pol.on_inexact
 
     produced, consumed, resample_edges = _collect_unit_maps(dr)
 
-    # Resampling is unit-preserving (the node copies the source's `units` attr),
-    # so a resample target's unit equals its source's. Propagate to a fixpoint so
-    # resampled edges become checkable; chained resamples resolve over iterations.
     changed = True
     while changed:
         changed = False
@@ -153,7 +138,7 @@ def check_dag_units(
             candidates.append((unit, f"output of {who}"))
         candidates.extend((unit, f"input of {who}") for unit, who in consumers)
         if len(candidates) < 2:
-            continue  # external input / single consumer — nothing to compare
+            continue
 
         base_unit, base_src = candidates[0]
         for unit, src in candidates[1:]:
@@ -162,7 +147,7 @@ def check_dag_units(
                     f"  {name!r}: {base_src} declares {base_unit!r} but {src} "
                     f"declares {unit!r} (dimensionally incompatible)"
                 )
-            elif exact and not units_equal(base_unit, unit):
+            elif on_inexact == "error" and not units_equal(base_unit, unit):
                 findings.append(
                     f"  {name!r}: {base_src} declares {base_unit!r} but {src} "
                     f"declares {unit!r} (units differ; exact match required)"
@@ -170,51 +155,38 @@ def check_dag_units(
 
     if not findings:
         return
-    message = "unit declaration mismatch(es) in DAG:\n" + "\n".join(findings)
-    if mode == "strict":
-        raise ValueError(message)
-    warnings.warn(message, UnitsWarning, stacklevel=2)
+    raise ValueError("unit declaration mismatch(es) in DAG:\n" + "\n".join(findings))
 
 
 def check_input_units(
     dr: "driver.Driver",
     inputs: "dict[str, Any]",
-    *,
-    mode: Mode | None = None,
-    exact: bool | None = None,
 ) -> None:
     """Validate loaded input data's ``units`` against the units declared for them.
 
     This is the *runtime* leg of unit validation that cannot be done statically: it
     reads the ``units`` attribute of each actually-loaded input ``DataArray`` and
-    checks it against the unit declared by the node(s) that consume it, via the same
-    `conduit.units.check_units` the executing DAG uses — so it raises/warns
-    identically (``strict`` raises, ``warn`` warns, ``off`` is skipped; dimensional
-    incompatibility always raises; ``exact`` forbids value-changing conversions). No
-    node is executed, which makes this suitable as a ``run --dry-run`` pre-flight.
+    checks it against the unit declared by the node(s) that consume it, via
+    `check_units` which follows the active `Policy`. No node is executed, which
+    makes this suitable as a ``run --dry-run`` pre-flight.
 
     An input that feeds a unit-preserving ``resample`` node before reaching a
     declaring consumer is validated against that consumer's unit (the declared unit
     is propagated *backward* through resample edges to a fixpoint). An input routed
-    through a ``[[node]]`` module first is *not* validated here — a node can transform
-    units arbitrarily, so its consumer's declared unit says nothing about the raw
-    input and only a real run could check it.
+    through a ``[[node]]`` module first is *not* validated here \u2014 a node can
+    transform units arbitrarily, so its consumer's declared unit says nothing
+    about the raw input and only a real run could check it.
     """
-    mode = mode or get_mode()
-    if mode == "off":
+    pol = get_policy()
+    if not pol.enabled:
         return
-    exact = get_exact_match() if exact is None else exact
 
     _, consumed, resample_edges = _collect_unit_maps(dr)
 
-    # Units a name is expected to carry, gathered from its declaring consumers.
     expected: dict[str, set[str]] = {}
     for name, consumers in consumed.items():
         expected.setdefault(name, set()).update(unit for unit, _ in consumers)
 
-    # Resampling preserves units, so a resample target's expectation also applies to
-    # its source input. Propagate backward (target -> source) to a fixpoint so that a
-    # raw input feeding a model only via resample is still validated.
     changed = True
     while changed:
         changed = False
@@ -230,4 +202,4 @@ def check_input_units(
         if not declared_units or not isinstance(value, xr.DataArray):
             continue
         for declared in sorted(declared_units):
-            check_units(value, declared, name, mode, exact)
+            check_units(value, declared, name)

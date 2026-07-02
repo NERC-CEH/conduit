@@ -15,16 +15,14 @@ license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
     "apache-hamilton>=1.90.0",
-    "cf-xarray>=0.11.3",
     "dask>=2025.1.0",
     "netcdf4>=1.7.4",
     "numpy>=2.4.2",
-    "pint>=0.25.3",
-    "pint-xarray>=0.6.1",
     "pyarrow>=10.0",
     "tomli-w>=1.2.0",
     "typer>=0.24.1",
     "xarray>=2026.2.0",
+    "xarray-annotated[cf] @ git+https://github.com/jmarshrossney/xarray-annotated.git",
     "zarr>=3.2.1",
 ]
 
@@ -109,7 +107,7 @@ select = [
 # may have unused variables from exploratory cells (F841),
 # use scientific notation with Greek letters (RUF003),
 # and are exploratory notebooks without module docstrings (D100, D401).
-"examples/**" = ["B018", "E501", "F841", "RUF001", "RUF003", "D100", "D401"]
+"examples/**" = ["B018", "E501", "F841", "RUF001", "RUF003", "D100", "D401", "F821"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
