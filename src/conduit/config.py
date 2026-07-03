@@ -24,6 +24,11 @@ _VALID_AGGFUNCS: frozenset[str] = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# Spec dataclasses (the parsed data model)
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class ResampleSpec:
     """Specification for a single [[resample]] entry.
@@ -138,57 +143,6 @@ class NodeSpec:
             coords=entry.get("coords"),
             passthrough=bool(entry.get("passthrough", False)),
         )
-
-
-def expand_node_entries(entries: list[dict]) -> list[dict]:
-    """Expand ``for_each`` fan-out entries into concrete per-variable node entries.
-
-    An entry with ``for_each = ["a", "b"]`` produces one entry per value, with
-    every ``{var}`` in its string fields (``name``, ``inputs``, ``expression``)
-    substituted. Entries without ``for_each`` pass through unchanged. This is the
-    config-level equivalent of Hamilton's ``@parameterize``.
-    """
-    out: list[dict] = []
-    for entry in entries:
-        for_each = entry.get("for_each")
-        if not for_each:
-            out.append(entry)
-            continue
-        for var in for_each:
-            out.append(
-                {k: _subst_var(v, var) for k, v in entry.items() if k != "for_each"}
-            )
-    return out
-
-
-def _subst_var(value: Any, var: str) -> Any:
-    """Substitute ``{var}`` in a string, or each string in a list."""
-    if isinstance(value, str):
-        return value.replace("{var}", var)
-    if isinstance(value, list):
-        return [x.replace("{var}", var) if isinstance(x, str) else x for x in value]
-    return value
-
-
-def resample_to_node_entry(spec: ResampleSpec) -> dict:
-    """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
-
-    Each variable ``v`` becomes a node ``{v}_{target_freq}`` that applies
-    `conduit.transforms.resample` to ``{v}_{source_freq}``; the node is a
-    passthrough (unit/dim preserving), so the contract check propagates the
-    source's declared contract across it.
-    """
-    src = f"{{var}}_{spec.source_freq}"
-    return {
-        "for_each": list(spec.vars),
-        "name": f"{{var}}_{spec.target_freq}",
-        "inputs": [src],
-        "expression": (
-            f"__transforms.resample({src}, freq={spec.offset!r}, "
-            f"aggfunc={spec.aggfunc!r})"
-        ),
-        "passthrough": True,
-    }
 
 
 @dataclass
@@ -355,6 +309,67 @@ class ParsedConfig:
     units_on_missing: str | None = None
     units_on_inexact: str | None = None
     schema_on_mismatch: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Fan-out / desugaring helpers ([[node]] for_each + [[resample]] preset)
+# ---------------------------------------------------------------------------
+
+
+def expand_node_entries(entries: list[dict]) -> list[dict]:
+    """Expand ``for_each`` fan-out entries into concrete per-variable node entries.
+
+    An entry with ``for_each = ["a", "b"]`` produces one entry per value, with
+    every ``{var}`` in its string fields (``name``, ``inputs``, ``expression``)
+    substituted. Entries without ``for_each`` pass through unchanged. This is the
+    config-level equivalent of Hamilton's ``@parameterize``.
+    """
+    out: list[dict] = []
+    for entry in entries:
+        for_each = entry.get("for_each")
+        if not for_each:
+            out.append(entry)
+            continue
+        for var in for_each:
+            out.append(
+                {k: _subst_var(v, var) for k, v in entry.items() if k != "for_each"}
+            )
+    return out
+
+
+def _subst_var(value: Any, var: str) -> Any:
+    """Substitute ``{var}`` in a string, or each string in a list."""
+    if isinstance(value, str):
+        return value.replace("{var}", var)
+    if isinstance(value, list):
+        return [x.replace("{var}", var) if isinstance(x, str) else x for x in value]
+    return value
+
+
+def resample_to_node_entry(spec: ResampleSpec) -> dict:
+    """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
+
+    Each variable ``v`` becomes a node ``{v}_{target_freq}`` that applies
+    `conduit.transforms.resample` to ``{v}_{source_freq}``; the node is a
+    passthrough (unit/dim preserving), so the contract check propagates the
+    source's declared contract across it.
+    """
+    src = f"{{var}}_{spec.source_freq}"
+    return {
+        "for_each": list(spec.vars),
+        "name": f"{{var}}_{spec.target_freq}",
+        "inputs": [src],
+        "expression": (
+            f"__transforms.resample({src}, freq={spec.offset!r}, "
+            f"aggfunc={spec.aggfunc!r})"
+        ),
+        "passthrough": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# The parser: raw TOML dict -> ParsedConfig
+# ---------------------------------------------------------------------------
 
 
 class Config:
@@ -642,6 +657,11 @@ class Config:
             units_on_inexact=units_on_inexact,
             schema_on_mismatch=schema_on_mismatch,
         )
+
+
+# ---------------------------------------------------------------------------
+# Module-level entry point + path/param utilities
+# ---------------------------------------------------------------------------
 
 
 def load_config(config_path: str | Path) -> ParsedConfig:

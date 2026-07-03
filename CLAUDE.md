@@ -86,13 +86,12 @@ Core `io` is CRS/pixel-free: it delegates the gridded path to `conduit.gridded` 
 
 **`src/conduit/gridded/`** — optional geospatial + parallel-Zarr layer (behind the `geo` extra). `spatial.py` + `io.py`: CRS-aware `(y,x)`↔`pixel` stacking, `latitude`/`longitude` reprojection, `MisalignedGridError`, and the subset/Zarr-region parallel-write path (`create_output_store`, `save_zarr_region`, `merge_subset_outputs`). `cli.py`: the nested `conduit gridded` commands.
 
-**`src/conduit/transforms/`** — reusable annotation-preserving DAG transforms referenced from config (currently `resample`); wired in as passthrough nodes by the `[[resample]]` preset.
+**`src/conduit/transforms.py`** — reusable annotation-preserving DAG transforms referenced from config (currently just `resample`); wired in as passthrough nodes by the `[[resample]]` preset. (A single module for now; promote to a package if a second transform needs its own file.)
 
 **`src/conduit/dag/`** — other built-in DAG machinery:
 - `node.py` — generates Hamilton modules from `[[node]]` entries via `exec()`: inline expressions or import-path + function, optional declared `units`/`dims`/`dtype`/`coords`, `for_each` fan-out, and passthrough tagging. The "user model in TOML" path.
 - `caching.py` — content-based fingerprint for `xarray.DataArray` + `Builder.with_cache()` from a `CacheSpec`
 - `blocking.py` — blocked driver execution over a partition dim (default `pixel`)
-- `_hamilton_fixes.py` — workarounds for Hamilton edge cases
 
 ### Hamilton DAG conventions (for user-defined modules)
 
