@@ -120,7 +120,7 @@ model-agnostic.
 
 ### Testing
 
-Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF data once (`tests/conftest.py`) via `setup_utils/data_gen` — a generic, name-heuristic synthetic-data generator (`coords.py` + `fallback.py`, no domain semantics). The session pipeline (`tests/test_config.toml`) is model-free: a single `[[node]]` derived variable stands in for a model. Coverage gate is 90% (`just test-cov`).
+Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF data once (`tests/conftest.py`) via `tests/synthetic_data.py` — a small, plain-numpy/xarray helper (`write_synthetic_inputs`) that writes four gridded files (daily/weekly/monthly/static) on a lat/lon grid using a domain-neutral geophysical vocabulary with explicit per-variable value shapes (gaussian/positive/bounded/integer). It lives under `tests/` (not the shipped package) and reuses only `conduit.gridded.io.unstack_if_gridded` so the on-disk grid/CRS layout matches what `load_inputs` reads back. The session pipeline (`tests/test_config.toml`) is model-free: a single `[[node]]` derived variable stands in for a model. Coverage gate is 90% (`just test-cov`).
 
 ### Examples
 

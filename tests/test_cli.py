@@ -34,7 +34,7 @@ def config_toml(tmp_path, synthetic_data_dir):
     """Config TOML pointing to session-scoped synthetic NetCDF files."""
     content = f"""\
 [[node]]
-name = "mean_growth_temperature_weekly"
+name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
 units = "degC"
@@ -43,11 +43,11 @@ units = "degC"
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["precipitation", "sunshine_fraction", "temperature", "lai", "gpp"]
+vars = ["temperature", "precipitation", "humidity", "wind_speed", "cloud_fraction"]
 
 [inputs.weekly]
 path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
+vars = ["pressure", "radiation", "albedo", "snow_depth", "aerosol"]
 
 [inputs.monthly]
 path = "{synthetic_data_dir / "monthly.nc"}"
@@ -56,9 +56,8 @@ vars = ["dummy_variable"]
 [inputs.static]
 path = "{synthetic_data_dir / "static.nc"}"
 vars = [
-  "elevation", "plant_type", "max_soil_moisture", "clay_content",
-  "soil_depth", "organic_carbon_stocks", "root_pool_init",
-  "leaf_pool_init", "stem_pool_init",
+  "elevation", "surface_type", "roughness", "soil_moisture",
+  "land_fraction",
 ]
 """
     p = tmp_path / "config.toml"
@@ -115,7 +114,7 @@ class TestGraphCommand:
         node_line = next(
             line
             for line in text.splitlines()
-            if line.strip().startswith("mean_growth_temperature_weekly ")
+            if line.strip().startswith("mean_temperature_weekly ")
         )
         assert "<i>degC</i>" in node_line
         assert "DataArray" not in node_line
@@ -257,7 +256,7 @@ class TestGraphPostProcessing:
             body=[
                 "\tgpp_weekly [label=<<b>gpp_weekly</b>>]\n",
                 "\ttemperature_daily [label=<<b>temperature_daily</b>>]\n",
-                "\tplant_type [label=<<b>plant_type</b>>]\n",  # ungrouped
+                "\tsurface_type [label=<<b>surface_type</b>>]\n",  # ungrouped
                 "\t_gpp_weekly_inputs [label=<<table></table>>]\n",  # joins weekly
                 "\ttemperature_daily -> gpp_weekly\n",
                 "\t_gpp_weekly_inputs -> gpp_weekly\n",
@@ -278,7 +277,7 @@ class TestGraphPostProcessing:
         assert "_gpp_weekly_inputs" in weekly
         assert "gpp_weekly [label" in weekly
         # ungrouped nodes stay outside any cluster
-        plant_idx = source.index("plant_type [label")
+        plant_idx = source.index("surface_type [label")
         assert plant_idx > source.index("}")  # after the last cluster brace
         # every node is declared before any edge (clustering pitfall guard)
         assert source.index("gpp_weekly [label") < source.index(" -> ")

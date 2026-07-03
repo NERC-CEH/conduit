@@ -21,7 +21,7 @@ from conduit.io import (
     save_outputs,
 )
 
-VAR = "mean_growth_temperature"
+VAR = "mean_temperature"
 
 
 def _output_specs(path) -> dict[str, IOSpec]:
@@ -165,7 +165,7 @@ class TestZarrSubset:
         """create-store + region writes cover several frequencies, incl. static."""
         specs = {
             "daily": IOSpec(path=str(tmp_path / "daily.zarr"), vars=["temperature"]),
-            "static": IOSpec(path=str(tmp_path / "static.zarr"), vars=["clay_content"]),
+            "static": IOSpec(path=str(tmp_path / "static.zarr"), vars=["roughness"]),
         }
 
         created = create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
@@ -191,10 +191,10 @@ class TestZarrSubset:
 
         # Static output is pixel-only (no time dimension).
         static = xr.open_zarr(tmp_path / "static.zarr", consolidated=False).compute()
-        assert set(static["clay_content"].dims) == {"pixel"}
+        assert set(static["roughness"].dims) == {"pixel"}
         np.testing.assert_allclose(
-            static["clay_content"].values,
-            ref["static"]["clay_content"].compute().values,
+            static["roughness"].values,
+            ref["static"]["roughness"].compute().values,
             equal_nan=True,
         )
 
@@ -239,7 +239,7 @@ class TestZarrSubset:
 def _config_text(synthetic_data_dir, out_path, subset=None, block_size=2):
     blocks = f"""\
 [[node]]
-name = "mean_growth_temperature_weekly"
+name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
 
@@ -247,11 +247,11 @@ expression = "temperature_daily.resample(time='7D').mean()"
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["precipitation", "sunshine_fraction", "temperature", "lai", "gpp"]
+vars = ["temperature", "precipitation", "humidity", "wind_speed", "cloud_fraction"]
 
 [inputs.weekly]
 path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
+vars = ["pressure", "radiation", "albedo", "snow_depth", "aerosol"]
 
 [inputs.monthly]
 path = "{synthetic_data_dir / "monthly.nc"}"
@@ -260,9 +260,8 @@ vars = ["dummy_variable"]
 [inputs.static]
 path = "{synthetic_data_dir / "static.nc"}"
 vars = [
-  "elevation", "plant_type", "max_soil_moisture", "clay_content",
-  "soil_depth", "organic_carbon_stocks", "root_pool_init",
-  "leaf_pool_init", "stem_pool_init",
+  "elevation", "surface_type", "roughness", "soil_moisture",
+  "land_fraction",
 ]
 
 [outputs.weekly]

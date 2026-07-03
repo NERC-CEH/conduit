@@ -22,10 +22,10 @@ class TestCacheConfig:
 
     def test_parses_spec(self):
         parsed = Config.loads(
-            '[cache]\npath = "mycache"\nrecompute = ["mean_growth_temperature"]\n'
+            '[cache]\npath = "mycache"\nrecompute = ["mean_temperature"]\n'
         ).parse()
         assert parsed.cache_spec == CacheSpec(
-            path="mycache", recompute=["mean_growth_temperature"]
+            path="mycache", recompute=["mean_temperature"]
         )
 
     def test_defaults_when_minimal(self):
@@ -192,7 +192,7 @@ class TestPipelineWithCache:
         # A genuinely computed node that is satisfiable from synthetic inputs
         # (resamples temperature_daily).
         final_vars = get_final_vars(
-            {"weekly": IOSpec(path="", vars=["mean_growth_temperature"])}
+            {"weekly": IOSpec(path="", vars=["mean_temperature"])}
         )
         spec = CacheSpec(path=str(tmp_path / "cache"))
 

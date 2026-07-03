@@ -10,9 +10,7 @@ from conduit.config import Config, IOSpec, SubsetSpec
 from conduit.dag.driver import build_driver
 from conduit.io import get_final_vars, load_inputs
 
-_FINAL_VARS = get_final_vars(
-    {"weekly": IOSpec(path="", vars=["mean_growth_temperature"])}
-)
+_FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +138,7 @@ class TestCLISubset:
         out_path = tmp_path / "outputs.nc"
         content = f"""\
 [[node]]
-name = "mean_growth_temperature_weekly"
+name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
 
@@ -148,11 +146,11 @@ expression = "temperature_daily.resample(time='7D').mean()"
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["precipitation", "sunshine_fraction", "temperature", "lai", "gpp"]
+vars = ["temperature", "precipitation", "humidity", "wind_speed", "cloud_fraction"]
 
 [inputs.weekly]
 path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
+vars = ["pressure", "radiation", "albedo", "snow_depth", "aerosol"]
 
 [inputs.monthly]
 path = "{synthetic_data_dir / "monthly.nc"}"
@@ -161,14 +159,13 @@ vars = ["dummy_variable"]
 [inputs.static]
 path = "{synthetic_data_dir / "static.nc"}"
 vars = [
-  "elevation", "plant_type", "max_soil_moisture", "clay_content",
-  "soil_depth", "organic_carbon_stocks", "root_pool_init",
-  "leaf_pool_init", "stem_pool_init",
+  "elevation", "surface_type", "roughness", "soil_moisture",
+  "land_fraction",
 ]
 
 [outputs.weekly]
 path = "{out_path}"
-vars = ["mean_growth_temperature"]
+vars = ["mean_temperature"]
 
 [subset]
 pixel_start = 0

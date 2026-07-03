@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 import xarray as xr
+from synthetic_data import write_synthetic_inputs
 from xarray_annotated.units import set_policy
 
 from conduit.config import load_config
 from conduit.dag.driver import build_driver
 from conduit.io import load_inputs
-from conduit.setup_utils.data_gen import generate_synthetic_data
 
 set_policy(enabled=False)
 
@@ -23,15 +23,13 @@ def synthetic_data_dir(tmp_path_factory):
     """Generate synthetic data once per test session."""
     data_dir = tmp_path_factory.mktemp("synthetic_data")
 
-    config = load_config(TEST_CONFIG_PATH)
-
-    config.input_specs["daily"].path = str(data_dir / "daily.nc")
-    config.input_specs["weekly"].path = str(data_dir / "weekly.nc")
-    config.input_specs["monthly"].path = str(data_dir / "monthly.nc")
-    config.input_specs["static"].path = str(data_dir / "static.nc")
-
-    generate_synthetic_data(
-        config=config,
+    write_synthetic_inputs(
+        paths={
+            "daily": str(data_dir / "daily.nc"),
+            "weekly": str(data_dir / "weekly.nc"),
+            "monthly": str(data_dir / "monthly.nc"),
+            "static": str(data_dir / "static.nc"),
+        },
         grid=GRID,
         n_days=N_DAYS,
         seed=SEED,

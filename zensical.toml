@@ -50,9 +50,6 @@ nav = [
       "api/conduit.gridded/spatial.md",
       "api/conduit.gridded/io.md",
       "api/conduit.gridded/cli.md",
-      "api/conduit.setup_utils/data_gen/coords.md",
-      "api/conduit.setup_utils/data_gen/fallback.md",
-      "api/conduit.setup_utils/data_gen/generate.md",
   ]},
 ]
 

@@ -1,9 +1,9 @@
 # Generic model-free test pipeline. The single derived node stands in for the
 # domain models that used to live here: it produces a weekly DataArray
-# (`mean_growth_temperature`) from the daily temperature input, exercising
+# (`mean_temperature`) from the daily temperature input, exercising
 # config-driven node generation, resampling and the [inputs.*] frequency model.
 [[node]]
-name = "mean_growth_temperature_weekly"
+name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
 
@@ -12,21 +12,21 @@ expression = "temperature_daily.resample(time='7D').mean()"
 [inputs.daily]
 path = "daily.nc"
 vars = [
-  "precipitation",
-  "sunshine_fraction",
   "temperature",
-  "lai",
-  "gpp",
+  "precipitation",
+  "humidity",
+  "wind_speed",
+  "cloud_fraction",
 ]
 
 [inputs.weekly]
 path = "weekly.nc"
 vars = [
-  "co2",
-  "fapar",
-  "ppfd",
   "pressure",
-  "vpd",
+  "radiation",
+  "albedo",
+  "snow_depth",
+  "aerosol",
 ]
 
 [inputs.monthly]
@@ -39,12 +39,8 @@ vars = [
 path = "static.nc"
 vars = [
   "elevation",
-  "plant_type",
-  "max_soil_moisture",
-  "clay_content",
-  "soil_depth",
-  "organic_carbon_stocks",
-  "root_pool_init",
-  "leaf_pool_init",
-  "stem_pool_init",
+  "surface_type",
+  "roughness",
+  "soil_moisture",
+  "land_fraction",
 ]

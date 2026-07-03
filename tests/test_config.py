@@ -66,12 +66,12 @@ class TestInputSpecs:
         vars_ = parsed_config.input_specs["daily"].vars
         assert "temperature" in vars_
         assert "precipitation" in vars_
-        assert "sunshine_fraction" in vars_
+        assert "humidity" in vars_
 
     def test_static_input_vars(self, parsed_config):
         vars_ = parsed_config.input_specs["static"].vars
         assert "elevation" in vars_
-        assert "clay_content" in vars_
+        assert "roughness" in vars_
 
     def test_input_paths_are_absolute(self, parsed_config):
         for freq, spec in parsed_config.input_specs.items():
@@ -120,9 +120,7 @@ class TestDriverConfig:
     def test_node_specs_stashed_in_driver_config(self, parsed_config):
         dc = parsed_config.driver_config
         assert "node_specs" in dc
-        assert [spec.name for spec in dc["node_specs"]] == [
-            "mean_growth_temperature_weekly"
-        ]
+        assert [spec.name for spec in dc["node_specs"]] == ["mean_temperature_weekly"]
 
     def test_module_params_merged_into_driver_config(self):
         config = Config(
@@ -370,10 +368,10 @@ class TestNode:
             {
                 "node": [
                     {
-                        "name": "mean_growth_temperature_weekly",
+                        "name": "mean_temperature_weekly",
                         "inputs": ["temperature_daily"],
                         "_import_path": "mypackage.met_utils",
-                        "function": "mean_growth_temperature",
+                        "function": "mean_temperature",
                     }
                 ]
             }
@@ -383,7 +381,7 @@ class TestNode:
         assert isinstance(spec, NodeSpec)
         assert spec.expression is None
         assert spec.import_path == "mypackage.met_utils"
-        assert spec.function == "mean_growth_temperature"
+        assert spec.function == "mean_temperature"
 
     def test_node_units_parsed(self):
         config = Config(
