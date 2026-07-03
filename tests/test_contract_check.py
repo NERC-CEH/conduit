@@ -368,20 +368,26 @@ class TestBuildDriverIntegration:
 # ---------------------------------------------------------------------------
 
 
+def _resample_node_specs(*specs):
+    """Desugar ResampleSpecs into fan-out passthrough node specs (as config does)."""
+    from conduit.config import expand_node_entries, resample_to_node_entry
+
+    entries = [resample_to_node_entry(s) for s in specs]
+    return [NodeSpec.from_config(e) for e in expand_node_entries(entries)]
+
+
 class TestResamplePropagation:
-    """A producer emits ``gpp_weekly`` ('g m-2 d-1'); resampling to
+    """A producer emits ``gpp_weekly`` ('g m-2 d-1'); a passthrough resample to
     ``gpp_monthly`` should propagate that unit so a downstream consumer is
     checked against it."""
 
     def _build(self, register, consumer_unit):
         register("rs_prod", _producer("g m-2 d-1"))  # produces gpp_weekly
         register("rs_cons", _consumer(consumer_unit, in_name="gpp_monthly"))
-        specs = [
+        specs = _resample_node_specs(
             ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly")
-        ]
-        return build_driver(
-            ["rs_prod", "resample", "rs_cons"], {"resample_specs": specs}
         )
+        return build_driver(["rs_prod", "node", "rs_cons"], {"node_specs": specs})
 
     def test_incompatible_consumer_of_resampled_var_raises(self, register):
         with (
@@ -409,17 +415,15 @@ class TestResamplePropagation:
 
         register("crp_prod", prod)
         register("crp_cons", _consumer("kg", in_name="gpp_monthly"))
-        specs = [
+        specs = _resample_node_specs(
             ResampleSpec(vars=["gpp"], source_freq="daily", target_freq="weekly"),
             ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly"),
-        ]
+        )
         with (
             policy(enabled=True),
             pytest.raises(ValueError, match="gpp_monthly"),
         ):
-            build_driver(
-                ["crp_prod", "resample", "crp_cons"], {"resample_specs": specs}
-            )
+            build_driver(["crp_prod", "node", "crp_cons"], {"node_specs": specs})
 
 
 # ---------------------------------------------------------------------------

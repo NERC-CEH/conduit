@@ -245,9 +245,9 @@ class TestGrid:
 
 
 class TestResample:
-    """Tests for [[resample]] section parsing."""
+    """Tests for [[resample]] preset parsing (desugars to fan-out node specs)."""
 
-    def test_resample_adds_resample_module(self):
+    def test_resample_adds_node_module(self):
         config = Config(
             {
                 "resample": [
@@ -256,16 +256,15 @@ class TestResample:
             }
         )
         parsed = config.parse()
-        assert "resample" in parsed.modules
+        assert parsed.modules == ["node"]
+        assert "resample_specs" not in parsed.driver_config
 
-    def test_no_resample_omits_resample_module(self):
+    def test_no_resample_omits_node_module(self):
         config = Config({"grid": {}})
         parsed = config.parse()
-        assert "resample" not in parsed.modules
+        assert "node" not in parsed.modules
 
-    def test_resample_specs_in_driver_config(self):
-        from conduit.config import ResampleSpec
-
+    def test_resample_desugars_to_passthrough_node_specs(self):
         config = Config(
             {
                 "resample": [
@@ -273,13 +272,29 @@ class TestResample:
                 ],
             }
         )
-        parsed = config.parse()
-        specs = parsed.driver_config["resample_specs"]
-        assert len(specs) == 1
-        assert isinstance(specs[0], ResampleSpec)
-        assert specs[0].vars == ["gpp", "npp"]
-        assert specs[0].source_freq == "daily"
-        assert specs[0].target_freq == "weekly"
+        specs = config.parse().driver_config["node_specs"]
+        by_name = {s.name: s for s in specs}
+        assert set(by_name) == {"gpp_weekly", "npp_weekly"}
+        assert by_name["gpp_weekly"].inputs == ["gpp_daily"]
+        assert by_name["gpp_weekly"].passthrough is True
+        assert "freq='7D'" in by_name["gpp_weekly"].expression
+
+    def test_explicit_freq_in_expression(self):
+        config = Config(
+            {
+                "resample": [
+                    {
+                        "vars": ["gpp"],
+                        "from_freq": "daily",
+                        "to_freq": "tenday",
+                        "freq": "10D",
+                    }
+                ],
+            }
+        )
+        spec = config.parse().driver_config["node_specs"][0]
+        assert spec.name == "gpp_tenday"
+        assert "freq='10D'" in spec.expression
 
     def test_duplicate_resample_output_raises(self):
         config = Config(
@@ -290,7 +305,7 @@ class TestResample:
                 ],
             }
         )
-        with pytest.raises(ValueError, match="Duplicate resample output"):
+        with pytest.raises(ValueError, match="Duplicate node name"):
             config.parse()
 
     def test_unsupported_freq_pair_raises(self):
@@ -301,7 +316,7 @@ class TestResample:
                 ],
             }
         )
-        with pytest.raises(ValueError, match="Unsupported resample direction"):
+        with pytest.raises(ValueError, match="No default offset"):
             config.parse()
 
 

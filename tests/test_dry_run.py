@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 from xarray_annotated.units import UnitsWarning, policy
 
 from conduit.cli import app
-from conduit.config import IOSpec, ResampleSpec, SubsetSpec
+from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec
 from conduit.dag.contract_check import check_input_units
 from conduit.dag.driver import build_driver
 from conduit.io import assert_output_paths_writable
@@ -162,12 +162,15 @@ class TestCheckInputUnitsDirect:
 
 class TestCheckInputUnitsPropagation:
     def _resample_driver(self, register):
-        """External ``gpp_weekly`` -> resample -> ``gpp_monthly`` consumed as a rate."""
+        """External ``gpp_weekly`` -> passthrough resample -> ``gpp_monthly`` (rate)."""
+        from conduit.config import expand_node_entries, resample_to_node_entry
+
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
-        specs = [
+        entry = resample_to_node_entry(
             ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly")
-        ]
-        return build_driver(["resample", "rs_cons"], {"resample_specs": specs})
+        )
+        specs = [NodeSpec.from_config(e) for e in expand_node_entries([entry])]
+        return build_driver(["node", "rs_cons"], {"node_specs": specs})
 
     def test_resample_routed_input_is_validated(self, register):
         dr = self._resample_driver(register)

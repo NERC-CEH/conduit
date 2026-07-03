@@ -8,12 +8,15 @@ from typing import Any, Self
 
 import tomli_w
 
+# Default pandas offset for a (from, to) frequency direction. The ``[[resample]]``
+# preset falls back to this when no explicit ``freq`` is given; ``conduit.io`` also
+# uses it as the cross-frequency temporal-alignment convention. It is a *default
+# convention*, not a hard requirement — any direction is allowed with an explicit
+# ``freq`` offset.
 RESAMPLE_FREQ_MAP: dict[tuple[str, str], str] = {
     ("daily", "weekly"): "7D",
     ("daily", "monthly"): "1ME",
     ("weekly", "monthly"): "1ME",
-    # TODO: expose frequency strings as config options to support e.g. "W" (week-ending
-    # Sunday) vs "7D" (rolling 7-day), or "MS" (month-start) vs "1ME" (month-end)
 }
 
 _VALID_AGGFUNCS: frozenset[str] = frozenset(
@@ -23,47 +26,65 @@ _VALID_AGGFUNCS: frozenset[str] = frozenset(
 
 @dataclass
 class ResampleSpec:
-    """Specification for a single [[resample]] entry."""
+    """Specification for a single [[resample]] entry.
+
+    ``[[resample]]`` is a thin *preset* over the fan-out ``[[node]]`` mechanism: it
+    desugars to one passthrough node per variable that applies
+    `conduit.transforms.resample` (see `resample_to_node_entry`). ``freq`` is the
+    pandas offset alias passed to that transform; when omitted it defaults from
+    `RESAMPLE_FREQ_MAP` for the ``source_freq -> target_freq`` direction.
+    """
 
     vars: list[str]
     source_freq: str
     target_freq: str
     aggfunc: str = "mean"
+    freq: str | None = None
 
     @property
-    def freq(self) -> str:
-        """Return xarray resample frequency string from source/target freq pair."""
-        return RESAMPLE_FREQ_MAP[(self.source_freq, self.target_freq)]
+    def offset(self) -> str:
+        """The resolved pandas offset: explicit ``freq`` or the direction default."""
+        if self.freq is not None:
+            return self.freq
+        try:
+            return RESAMPLE_FREQ_MAP[(self.source_freq, self.target_freq)]
+        except KeyError:
+            raise ValueError(
+                f"No default offset for resample direction '{self.source_freq}' → "
+                f"'{self.target_freq}'. Supported defaults: "
+                f"{sorted(RESAMPLE_FREQ_MAP)}. Specify an explicit 'freq' "
+                f"(pandas offset alias) instead."
+            ) from None
 
     @classmethod
     def from_config(cls, entry: dict) -> "ResampleSpec":
         """Construct and validate from a raw [[resample]] TOML entry."""
-        source_freq = entry["from_freq"]
-        target_freq = entry["to_freq"]
         aggfunc = entry.get("aggfunc", "mean")
-        vars_ = entry["vars"]
-
-        if (source_freq, target_freq) not in RESAMPLE_FREQ_MAP:
-            raise ValueError(
-                f"Unsupported resample direction '{source_freq}' → '{target_freq}'. "
-                f"Supported: {sorted(RESAMPLE_FREQ_MAP)}"
-            )
         if aggfunc not in _VALID_AGGFUNCS:
             raise ValueError(
                 f"Unsupported aggfunc '{aggfunc}'. Supported: {sorted(_VALID_AGGFUNCS)}"
             )
-
-        return cls(
-            vars=vars_,
-            source_freq=source_freq,
-            target_freq=target_freq,
+        spec = cls(
+            vars=entry["vars"],
+            source_freq=entry["from_freq"],
+            target_freq=entry["to_freq"],
             aggfunc=aggfunc,
+            freq=entry.get("freq"),
         )
+        _ = spec.offset  # validate the direction resolves (raises a clear message)
+        return spec
 
 
 @dataclass
 class NodeSpec:
-    """Specification for a single [[node]] entry."""
+    """Specification for a single (already fan-out-expanded) [[node]] entry.
+
+    ``units`` / ``dims`` / ``dtype`` / ``coords`` declare the node's output contract
+    (read by the build-time contract check and stamped/validated at runtime). A
+    ``passthrough`` node instead declares *no* fixed output contract and is tagged so
+    the contract check propagates its input's declaration across it — the shape the
+    ``[[resample]]`` preset generates.
+    """
 
     name: str
     inputs: list[str]
@@ -71,20 +92,25 @@ class NodeSpec:
     import_path: str | None
     function: str | None
     units: str | None = None
+    dims: list[str] | None = None
+    dtype: str | None = None
+    coords: list[str] | None = None
+    passthrough: bool = False
 
     @classmethod
     def from_config(cls, entry: dict) -> "NodeSpec":
-        """Construct and validate from a raw [[node]] TOML entry."""
+        """Construct and validate from a raw (expanded) [[node]] TOML entry."""
+        name = entry.get("name")
         has_expression = "expression" in entry
         has_function = "_import_path" in entry or "function" in entry
         if has_expression and has_function:
             raise ValueError(
-                f"Node entry for '{entry.get('name')}' must specify either "
+                f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function'), not both."
             )
         if not has_expression and not has_function:
             raise ValueError(
-                f"Node entry for '{entry.get('name')}' must specify either "
+                f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function')."
             )
         units = entry.get("units")
@@ -92,7 +118,15 @@ class NodeSpec:
             # Fail fast on a malformed/unknown unit, at parse time.
             from xarray_annotated.units import assert_valid_unit
 
-            assert_valid_unit(units, f"node '{entry.get('name')}' units")
+            assert_valid_unit(units, f"node '{name}' units")
+        dtype = entry.get("dtype")
+        if dtype is not None:
+            import numpy as np
+
+            try:
+                np.dtype(dtype)
+            except TypeError as exc:
+                raise ValueError(f"node '{name}' has invalid dtype {dtype!r}.") from exc
         return cls(
             name=entry["name"],
             inputs=entry["inputs"],
@@ -100,7 +134,62 @@ class NodeSpec:
             import_path=entry.get("_import_path"),
             function=entry.get("function"),
             units=units,
+            dims=entry.get("dims"),
+            dtype=dtype,
+            coords=entry.get("coords"),
+            passthrough=bool(entry.get("passthrough", False)),
         )
+
+
+def expand_node_entries(entries: list[dict]) -> list[dict]:
+    """Expand ``for_each`` fan-out entries into concrete per-variable node entries.
+
+    An entry with ``for_each = ["a", "b"]`` produces one entry per value, with
+    every ``{var}`` in its string fields (``name``, ``inputs``, ``expression``)
+    substituted. Entries without ``for_each`` pass through unchanged. This is the
+    config-level equivalent of Hamilton's ``@parameterize``.
+    """
+    out: list[dict] = []
+    for entry in entries:
+        for_each = entry.get("for_each")
+        if not for_each:
+            out.append(entry)
+            continue
+        for var in for_each:
+            out.append(
+                {k: _subst_var(v, var) for k, v in entry.items() if k != "for_each"}
+            )
+    return out
+
+
+def _subst_var(value: Any, var: str) -> Any:
+    """Substitute ``{var}`` in a string, or each string in a list."""
+    if isinstance(value, str):
+        return value.replace("{var}", var)
+    if isinstance(value, list):
+        return [x.replace("{var}", var) if isinstance(x, str) else x for x in value]
+    return value
+
+
+def resample_to_node_entry(spec: ResampleSpec) -> dict:
+    """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
+
+    Each variable ``v`` becomes a node ``{v}_{target_freq}`` that applies
+    `conduit.transforms.resample` to ``{v}_{source_freq}``; the node is a
+    passthrough (unit/dim preserving), so the contract check propagates the
+    source's declared contract across it.
+    """
+    src = f"{{var}}_{spec.source_freq}"
+    return {
+        "for_each": list(spec.vars),
+        "name": f"{{var}}_{spec.target_freq}",
+        "inputs": [src],
+        "expression": (
+            f"__transforms.resample({src}, freq={spec.offset!r}, "
+            f"aggfunc={spec.aggfunc!r})"
+        ),
+        "passthrough": True,
+    }
 
 
 @dataclass
@@ -365,33 +454,24 @@ class Config:
                 suffix=params.get("suffix"),
             )
 
-    def _parse_resample(self, data: dict, driver_config: dict) -> list[str]:
-        """Handle [[resample]] section."""
-        seen_outputs: set[str] = set()
-        specs: list[ResampleSpec] = []
-        for entry in data.pop("resample", []):
-            spec = ResampleSpec.from_config(entry)
-            for var in spec.vars:
-                out = f"{var}_{spec.target_freq}"
-                if out in seen_outputs:
-                    raise ValueError(
-                        f"Duplicate resample output '{out}' in [[resample]]"
-                    )
-                seen_outputs.add(out)
-            specs.append(spec)
-        if specs:
-            driver_config["resample_specs"] = specs
-            return ["resample"]
-        return []
+    def _parse_nodes(self, data: dict, driver_config: dict) -> list[str]:
+        """Handle [[node]] and [[resample]] — both generate ``node`` module specs.
 
-    def _parse_node(self, data: dict, driver_config: dict) -> list[str]:
-        """Handle [[node]] section."""
+        ``[[resample]]`` is desugared to fan-out passthrough node entries
+        (`resample_to_node_entry`), then all entries — inline and desugared — are
+        fan-out-expanded (`expand_node_entries`) and built into `NodeSpec`s, with a
+        single node-name-uniqueness check across the combined set.
+        """
+        entries: list[dict] = list(data.pop("node", []))
+        for entry in data.pop("resample", []):
+            entries.append(resample_to_node_entry(ResampleSpec.from_config(entry)))
+
         seen_names: set[str] = set()
         specs: list[NodeSpec] = []
-        for entry in data.pop("node", []):
-            spec = NodeSpec.from_config(entry)
+        for concrete in expand_node_entries(entries):
+            spec = NodeSpec.from_config(concrete)
             if spec.name in seen_names:
-                raise ValueError(f"Duplicate node name '{spec.name}' in [[node]]")
+                raise ValueError(f"Duplicate node name '{spec.name}'")
             seen_names.add(spec.name)
             specs.append(spec)
         if specs:
@@ -517,8 +597,8 @@ class Config:
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [grid]          — silently accepted (grid computation is now in load_inputs())
         - [graphviz]      — silently ignored (DAG styling is a `graph --style` file)
-        - [[node]]        — config-driven custom nodes
-        - [[resample]]    — temporal resampling module
+        - [[node]]        — config-driven custom nodes (supports for_each fan-out)
+        - [[resample]]    — preset desugaring to fan-out passthrough nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — pixel-blocked execution (block_size)
         - [subset]        — spatial pixel slice (pixel_start, pixel_end)
@@ -539,8 +619,7 @@ class Config:
         self._parse_graphviz(data, driver_config)
         self._parse_inputs(data, driver_config, input_specs)
         self._parse_outputs(data, driver_config, output_specs)
-        modules += self._parse_node(data, driver_config)
-        modules += self._parse_resample(data, driver_config)
+        modules += self._parse_nodes(data, driver_config)
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data)
         subset_spec = self._parse_subset(data)

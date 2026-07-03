@@ -9,12 +9,12 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 if TYPE_CHECKING:
     from conduit.config import CacheSpec
 
-# Built-in DAG modules addressable by a short name in config. Every other
-# section is loaded by its dotted `_import_path`, so user-defined modules are
-# first-class and treated no differently from these built-ins.
+# Built-in DAG module addressable by a short name in config. Every other section
+# is loaded by its dotted `_import_path`, so user-defined modules are first-class
+# and treated no differently. ("node" is handled specially in build_driver, which
+# generates it from the config's node_specs; [[resample]] desugars to node specs.)
 MODULES: dict[str, str] = {
     "node": "conduit.dag.node",
-    "resample": "conduit.dag.resample",
 }
 
 
@@ -29,8 +29,8 @@ def build_driver(
     Parameters
     ----------
     modules
-        List of module identifiers: a built-in short name ("node", "resample")
-        or a dotted import path to a user module (e.g. "mypkg.mymodel").
+        List of module identifiers: the built-in short name "node" or a dotted
+        import path to a user module (e.g. "mypkg.mymodel").
     config
         Configuration dict passed to the Hamilton driver.
     allow_module_overrides

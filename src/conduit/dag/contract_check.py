@@ -37,12 +37,14 @@ different dtype kinds). Compatible-but-inexact declarations are flagged only whe
 the facet's policy demands it (units ``on_inexact="error"``). This preserves the
 opt-in contract: partially-annotated pipelines never trigger false positives.
 
-**Limitation.** Edges routed through resample/node modules, or fed by external
-files, have no statically declared producer contract. Resample is unit-preserving,
-so a declared unit is propagated across resample edges (forward for the DAG check,
-backward for the input check); other facets and ``[[node]]`` modules are not
-propagated and fall back to the runtime check. (Phase D replaces this special-case
-with transforms that declare their own passthrough.)
+**Passthrough propagation.** A node with no statically declared producer contract
+(fed by an external file, or a ``[[node]]`` that transforms its input) breaks the
+edge chain. But a node tagged *passthrough* (`conduit.dag.node.PASSTHROUGH_TAG`,
+e.g. a ``[[resample]]`` node) preserves its input's contract, so a declared unit is
+propagated across it — forward for the DAG check, backward for the input check.
+This is generic: any passthrough-tagged node participates, with no module
+special-cased. Non-passthrough ``[[node]]`` modules can transform units arbitrarily
+and so are not propagated; they fall back to the runtime check.
 """
 
 from collections.abc import Callable
@@ -127,8 +129,8 @@ class _Facet:
     edge: Callable[[Any, Any, Any], str | None] | None
     #: Marker(s)-vs-array runtime check for `check_input_contracts`.
     runtime_check: Callable[[xr.DataArray, list, str], None]
-    #: Whether a resample node preserves this facet (so it can be propagated).
-    resample_preserving: bool
+    #: Whether a passthrough node preserves this facet (so it can be propagated).
+    passthrough_preserving: bool
 
 
 _FACETS: tuple[_Facet, ...] = (
@@ -162,12 +164,20 @@ def _originating_functions(hg: "graph_types.HamiltonGraph") -> list[Any]:
     return funcs
 
 
-def _resample_edges(hg: "graph_types.HamiltonGraph") -> dict[str, str]:
-    """Resample target name -> its single source name (resampling preserves units)."""
+def _passthrough_edges(hg: "graph_types.HamiltonGraph") -> dict[str, str]:
+    """Passthrough node name -> its single source name.
+
+    A passthrough node (tagged ``conduit_passthrough``, e.g. a ``[[resample]]``
+    node) preserves its input's declared contract, so the source's declaration is
+    propagated across it. Any node so tagged with exactly one dependency qualifies —
+    no module is special-cased.
+    """
+    from conduit.dag.node import PASSTHROUGH_TAG
+
     return {
         node.name: next(iter(node.required_dependencies))
         for node in hg.nodes
-        if node.tags.get("module") == "conduit.dag.resample"
+        if node.tags.get(PASSTHROUGH_TAG) == "true"
         and len(node.required_dependencies) == 1
     }
 
@@ -214,7 +224,7 @@ def _record_schema(maps: _Maps, fn_name: str, in_map: dict, out: Any) -> None:
 def _collect_contract_maps(dr: "driver.Driver") -> tuple[_Maps, dict[str, str]]:
     """Read declared contracts off the built DAG's node signatures, per facet.
 
-    Returns ``(maps, resample_edges)`` where ``maps[facet]`` is
+    Returns ``(maps, passthrough_edges)`` where ``maps[facet]`` is
     ``(produced, consumed)`` — the shared source for both the build-time
     (`check_dag_contracts`) and runtime (`check_input_contracts`) checks.
     """
@@ -226,33 +236,33 @@ def _collect_contract_maps(dr: "driver.Driver") -> tuple[_Maps, dict[str, str]]:
         _record_units(maps, fn_name, u_in, u_out)
         s_in, s_out = schema_from_signature(fn)
         _record_schema(maps, fn_name, s_in, s_out)
-    return maps, _resample_edges(hg)
+    return maps, _passthrough_edges(hg)
 
 
 # ---------------------------------------------------------------------------
-# Propagation across (unit-preserving) resample edges
+# Propagation across (unit-preserving) passthrough edges
 # ---------------------------------------------------------------------------
 
 
-def _propagate_forward(produced: _Produced, resample_edges: dict[str, str]) -> None:
-    """Give each resample target its source's declaration (to a fixpoint)."""
+def _propagate_forward(produced: _Produced, passthrough_edges: dict[str, str]) -> None:
+    """Give each passthrough target its source's declaration (to a fixpoint)."""
     changed = True
     while changed:
         changed = False
-        for target, source in resample_edges.items():
+        for target, source in passthrough_edges.items():
             if target not in produced and source in produced:
-                produced[target] = (produced[source][0], f"resample of {source}")
+                produced[target] = (produced[source][0], f"passthrough of {source}")
                 changed = True
 
 
 def _propagate_backward(
-    expected: dict[str, list], resample_edges: dict[str, str]
+    expected: dict[str, list], passthrough_edges: dict[str, str]
 ) -> None:
-    """Push each resample target's expected declarations onto its source."""
+    """Push each passthrough target's expected declarations onto its source."""
     changed = True
     while changed:
         changed = False
-        for target, source in resample_edges.items():
+        for target, source in passthrough_edges.items():
             if target not in expected:
                 continue
             dst = expected.setdefault(source, [])
@@ -274,7 +284,7 @@ def _check_dag(
     facets: tuple[_Facet, ...],
     on_inexact: str | None,
 ) -> None:
-    maps, resample_edges = _collect_contract_maps(dr)
+    maps, passthrough_edges = _collect_contract_maps(dr)
     findings: list[str] = []
     for facet in facets:
         pol = facet.get_policy()
@@ -283,8 +293,8 @@ def _check_dag(
         if facet.name == "units" and on_inexact is not None:
             pol = replace(pol, on_inexact=on_inexact)
         produced, consumed = maps[facet.name]
-        if facet.resample_preserving:
-            _propagate_forward(produced, resample_edges)
+        if facet.passthrough_preserving:
+            _propagate_forward(produced, passthrough_edges)
         for name, consumers in consumed.items():
             candidates: list[tuple[Any, str]] = []
             if name in produced:
@@ -310,7 +320,7 @@ def _check_dag(
 def _check_inputs(
     dr: "driver.Driver", inputs: dict[str, Any], facets: tuple[_Facet, ...]
 ) -> None:
-    maps, resample_edges = _collect_contract_maps(dr)
+    maps, passthrough_edges = _collect_contract_maps(dr)
     for facet in facets:
         if not facet.get_policy().enabled:
             continue
@@ -321,8 +331,8 @@ def _check_inputs(
             for decl, _ in consumers:
                 if decl not in dst:
                     dst.append(decl)
-        if facet.resample_preserving:
-            _propagate_backward(expected, resample_edges)
+        if facet.passthrough_preserving:
+            _propagate_backward(expected, passthrough_edges)
         for name, value in inputs.items():
             decls = expected.get(name)
             if not decls or not isinstance(value, xr.DataArray):
@@ -359,7 +369,7 @@ def check_input_contracts(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
     against the contract declared by its consumer(s). Dims/coords/dtype live in the
     file header, so — like units — this executes no node and is suitable as a
     ``run --dry-run`` pre-flight. Contracts are propagated backward through
-    unit-preserving resample edges to a fixpoint.
+    unit-preserving passthrough edges to a fixpoint.
     """
     _check_inputs(dr, inputs, _FACETS)
 

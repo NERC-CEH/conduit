@@ -3,7 +3,7 @@
 import pytest
 from hamilton import driver
 
-from conduit.config import NodeSpec, ResampleSpec
+from conduit.config import Config, NodeSpec
 from conduit.dag.driver import build_driver
 
 
@@ -11,10 +11,12 @@ class TestBuildDriverReturnType:
     def test_empty_module_list(self):
         assert isinstance(build_driver([], {}), driver.Driver)
 
-    def test_resample_module(self):
-        specs = [ResampleSpec(vars=["x"], source_freq="daily", target_freq="weekly")]
+    def test_resample_preset_builds(self):
+        parsed = Config(
+            {"resample": [{"vars": ["x"], "from_freq": "daily", "to_freq": "weekly"}]}
+        ).parse()
         assert isinstance(
-            build_driver(["resample"], {"resample_specs": specs}), driver.Driver
+            build_driver(parsed.modules, parsed.driver_config), driver.Driver
         )
 
     def test_node_module(self):
@@ -44,7 +46,7 @@ class TestBuildDriverReturnType:
 
     def test_importable_custom_module(self):
         """A dotted import path to a real module loads like any built-in."""
-        dr = build_driver(["conduit.dag.resample"], {})
+        dr = build_driver(["conduit.transforms"], {})
         assert isinstance(dr, driver.Driver)
 
 

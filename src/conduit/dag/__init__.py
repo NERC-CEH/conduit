@@ -1,5 +1,5 @@
 """Built-in DAG modules for conduit."""
 
-from . import node, resample
+from . import node
 
-__all__ = ["node", "resample"]
+__all__ = ["node"]
