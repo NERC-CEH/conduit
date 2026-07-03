@@ -81,7 +81,7 @@ def _(mo):
 
 
 @app.cell
-def _(mean_pressure, np, units, xr):
+def _(mean_pressure, np, policy, xr):
     pressure_hpa = xr.DataArray(
         np.full((3, 2), 1013.25),
         dims=("time", "site"),
@@ -106,7 +106,7 @@ def _(mo):
 
 
 @app.cell
-def _(mean_pressure, np, units, xr):
+def _(mean_pressure, np, policy, xr):
     pressure_wrong = xr.DataArray(
         np.full((3, 2), 1.0),
         dims=("time", "site"),

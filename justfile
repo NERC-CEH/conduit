@@ -4,7 +4,7 @@ _: lint typecheck test
 lint:
   ruff format
   ruff check --fix
-  marimo check examples/
+  marimo check --fix examples/
 
 # Variant of `lint` that doesn't cause any changes to files.
 lint-check:
