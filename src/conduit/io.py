@@ -802,6 +802,20 @@ def assert_output_paths_writable(
             )
 
 
+def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
+    """Names of auto-derived inputs `load_inputs` emits that nodes needn't consume.
+
+    The ``dates_{label}`` time indices and the geospatial ``latitude`` /
+    ``longitude`` arrays are produced automatically from the input files, so a
+    pipeline that doesn't consume them is not misconfigured. The wiring check
+    (`conduit.dag.wiring_check.check_wiring`) excludes these from its "unused
+    input" diagnostic.
+    """
+    aux = {name for name in inputs if name.startswith("dates_")}
+    aux |= {"latitude", "longitude"} & set(inputs)
+    return aux
+
+
 def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     """Build Hamilton node names from output specifications.
 

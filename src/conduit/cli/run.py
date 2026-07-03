@@ -10,8 +10,10 @@ import typer
 from ..config import CacheSpec, load_config
 from ..dag.blocking import execute_blocked
 from ..dag.driver import build_driver
+from ..dag.wiring_check import check_wiring
 from ..io import (
     assert_output_paths_writable,
+    auxiliary_input_names,
     get_final_vars,
     get_outputs,
     load_inputs,
@@ -55,8 +57,8 @@ def run(
         bool,
         typer.Option(
             "--dry-run",
-            help="Validate config, inputs, DAG plan, units and output paths "
-            "without executing the pipeline or writing any outputs.",
+            help="Validate config, inputs, DAG plan, wiring, contracts and output "
+            "paths without executing the pipeline or writing any outputs.",
         ),
     ] = False,
 ) -> None:
@@ -103,6 +105,7 @@ def run(
 
     if parsed.output_specs:
         target_vars = get_final_vars(parsed.output_specs)
+        check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
         if parsed.blocking_spec is not None:
             results = execute_blocked(dr, inputs, target_vars, parsed.blocking_spec)
         else:
@@ -151,10 +154,17 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
 
     if parsed.output_specs:
         target_vars = get_final_vars(parsed.output_specs)
+        # Wiring check first: an unbound input raises here with a clearer message
+        # than Hamilton's; an unused input surfaces as a warning below.
+        with warnings.catch_warnings(record=True) as wiring_warnings:
+            warnings.simplefilter("always")
+            check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
         dr.validate_execution(target_vars, inputs=inputs)  # type: ignore[reportArgumentType]
         typer.echo(
             f"  ✓ execution plan valid: {len(target_vars)} output node(s) reachable"
         )
+        for w in wiring_warnings:
+            typer.echo(f"      ! {w.message}")
     else:
         typer.echo("  - execution plan: skipped (no [outputs.*] configured)")
 
