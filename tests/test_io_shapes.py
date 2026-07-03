@@ -16,8 +16,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from conduit.io import stack_if_gridded, unstack_if_gridded
-from conduit.spatial import stack_spatial_dims
+from conduit.gridded.io import stack_if_gridded, unstack_if_gridded
+from conduit.gridded.spatial import stack_spatial_dims
 
 N_TIMES = 10
 N_POINTS = 5

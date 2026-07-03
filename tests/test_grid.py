@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 
 from conduit.config import IOSpec
-from conduit.io import MisalignedGridError, _check_common_grid, load_inputs
+from conduit.gridded.io import MisalignedGridError, _check_common_grid
+from conduit.io import load_inputs
 
 
 class TestCheckCommonGrid:

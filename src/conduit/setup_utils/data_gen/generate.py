@@ -17,7 +17,8 @@ from ...config import (
     resample_to_node_entry,
 )
 from ...dag.node import make_node_module
-from ...io import dataset_to_dataframe, save_timeseries, unstack_if_gridded
+from ...gridded.io import unstack_if_gridded
+from ...io import dataset_to_dataframe, save_timeseries
 from . import coords
 from .fallback import build_fallback_module
 

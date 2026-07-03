@@ -180,7 +180,7 @@ pixel_end = 2
 
     def _subset_path(self, out_path):
         """The auto-suffixed NetCDF path a [subset] run writes to."""
-        from conduit.io import subset_suffix
+        from conduit.gridded.io import subset_suffix
 
         spec = SubsetSpec(0, 2)
         return out_path.with_name(

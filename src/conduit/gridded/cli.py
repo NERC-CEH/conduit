@@ -1,4 +1,4 @@
-"""Pre-create empty Zarr output stores for parallel subset runs."""
+"""``conduit gridded`` CLI: parallel Zarr store creation and subset merge."""
 
 from pathlib import Path
 from typing import Annotated
@@ -6,9 +6,11 @@ from typing import Annotated
 import typer
 
 from ..config import load_config
-from ..io import create_output_store
+from .io import create_output_store, merge_subset_outputs
 
-app = typer.Typer(help="Pre-create empty Zarr output stores for parallel subset runs.")
+app = typer.Typer(
+    help="Gridded (CRS/pixel) parallel Zarr I/O: pre-create stores and merge subsets."
+)
 
 
 @app.command()
@@ -54,3 +56,35 @@ def create_store(
         return
     for path in created:
         typer.echo(f"Created store: {path}")
+
+
+@app.command()
+def merge(
+    config_file: Annotated[
+        Path, typer.Argument(exists=True, file_okay=True, dir_okay=False, readable=True)
+    ],
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            "-o",
+            help="Explicit destination for the merged, gridded output. Only valid "
+            "with a single output section. Defaults to the config's path for "
+            "NetCDF and a sibling gridded store for Zarr.",
+        ),
+    ] = None,
+) -> None:
+    """Merge per-subset outputs back into a single gridded file per frequency.
+
+    NetCDF parts (``*_p<start>-<end>.nc``) are concatenated and written to the
+    config's declared path; a shared Zarr store is unstacked into a sibling
+    ``*_gridded.zarr`` store.  Use ``--out`` to override the destination.
+    """
+    parsed = load_config(config_file)
+    written = merge_subset_outputs(parsed.output_specs, out=out)
+
+    if not written:
+        typer.echo("No mergeable outputs in config.")
+        return
+    for path in written:
+        typer.echo(f"Wrote gridded output: {path}")

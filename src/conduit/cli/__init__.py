@@ -2,9 +2,8 @@
 
 import typer
 
-from .create_store import app as create_store_app
+from ..gridded.cli import app as gridded_app
 from .graph import app as graph_app
-from .merge import app as merge_app
 from .run import app as run_app
 from .version import app as version_app
 
@@ -14,8 +13,8 @@ app = typer.Typer(
 )
 app.add_typer(graph_app)
 app.add_typer(run_app)
-app.add_typer(create_store_app)
-app.add_typer(merge_app)
+# Gridded (CRS/pixel) parallel-Zarr commands are nested: `conduit gridded <cmd>`.
+app.add_typer(gridded_app, name="gridded")
 app.add_typer(version_app)
 
 

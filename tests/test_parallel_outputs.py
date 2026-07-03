@@ -7,16 +7,18 @@ import pytest
 import xarray as xr
 
 from conduit.config import IOSpec, SubsetSpec
-from conduit.io import (
+from conduit.gridded.io import (
     create_output_store,
     flatten_pixel_index,
+    merge_subset_outputs,
+    subset_suffix,
+    unstack_pixel,
+)
+from conduit.io import (
     get_final_vars,
     get_outputs,
     load_inputs,
-    merge_subset_outputs,
     save_outputs,
-    subset_suffix,
-    unstack_pixel,
 )
 
 VAR = "mean_growth_temperature"
@@ -294,7 +296,7 @@ class TestCLIParallelWorkflow:
         cfg_b.write_text(_config_text(synthetic_data_dir, store, subset=(2, 4)))
 
         # create-store derives the pixel chunk from [blocking].block_size = 2
-        r = runner.invoke(app, ["create-store", str(base)])
+        r = runner.invoke(app, ["gridded", "create-store", str(base)])
         assert r.exit_code == 0, r.output
         assert store.exists()
 
@@ -320,7 +322,7 @@ class TestCLIParallelWorkflow:
             equal_nan=True,
         )
 
-        r = runner.invoke(app, ["merge", str(base)])
+        r = runner.invoke(app, ["gridded", "merge", str(base)])
         assert r.exit_code == 0, r.output
         assert (tmp_path / "weekly_gridded.zarr").exists()
 
@@ -367,7 +369,9 @@ class TestConcurrentZarrWrites:
             shard_cfgs.append(cfg)
 
         # Create the shared store once (pixel chunk = 1) before the parallel writes.
-        r = CliRunner().invoke(app, ["create-store", str(base), "--pixel-chunk", "1"])
+        r = CliRunner().invoke(
+            app, ["gridded", "create-store", str(base), "--pixel-chunk", "1"]
+        )
         assert r.exit_code == 0, r.output
 
         # Launch all shards at once; collect output after they are all running.

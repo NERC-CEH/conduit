@@ -21,11 +21,9 @@ from .config import (
 )
 from .dag.driver import build_driver
 from .io import (
-    create_output_store,
     get_final_vars,
     get_outputs,
     load_inputs,
-    merge_subset_outputs,
     save_outputs,
 )
 
@@ -45,13 +43,11 @@ __all__ = [
     "UnitsWarning",
     "__version__",
     "build_driver",
-    "create_output_store",
     "declare_schema",
     "declare_units",
     "get_final_vars",
     "get_outputs",
     "load_config",
     "load_inputs",
-    "merge_subset_outputs",
     "save_outputs",
 ]

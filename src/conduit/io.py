@@ -10,39 +10,6 @@ import pandas as pd
 import xarray as xr
 
 from .config import RESAMPLE_FREQ_MAP, IOSpec, SubsetSpec
-from .spatial import stack_spatial_dims
-
-
-class MisalignedGridError(Exception):
-    """Raised when two datasets do not share a common CRS and coordinates."""
-
-
-def _ensure_rio() -> None:
-    """Import rioxarray (registering the ``.rio`` accessor) or raise a clear error.
-
-    The geospatial layer (CRS-aware stacking + lat/lon reprojection) is optional;
-    ``rioxarray``/``pyproj`` are only needed when CRS-bearing inputs are present.
-    """
-    try:
-        import rioxarray as rioxarray  # registers the .rio accessor
-    except ImportError as exc:  # pragma: no cover - only hit without the extra
-        raise ImportError(
-            "geospatial (CRS-bearing) inputs require the optional 'geo' extra; "
-            "install it with `pip install conduit[geo]`."
-        ) from exc
-
-
-def _has_crs(ds: xr.Dataset) -> bool:
-    """Cheaply detect CRS metadata without importing rioxarray.
-
-    Looks for the markers CF/rioxarray round-trips through NetCDF/Zarr: a ``crs``
-    global attribute, a ``spatial_ref`` grid-mapping coordinate, or a per-variable
-    ``grid_mapping`` attribute. Used to decide whether to activate the (lazy)
-    geospatial path, so non-gridded pipelines never touch rioxarray/pyproj.
-    """
-    if ds.attrs.get("crs") or "spatial_ref" in ds.coords:
-        return True
-    return any("grid_mapping" in da.attrs for da in ds.data_vars.values())
 
 
 def effective_suffix(label: str, spec: IOSpec) -> str:
@@ -163,63 +130,6 @@ def _load_raw(path: str) -> xr.Dataset:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers: stacking / unstacking
-# ---------------------------------------------------------------------------
-
-
-def stack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
-    """Stack (y, x) to pixel if CRS-bearing 2D grid; pass through otherwise."""
-    if "pixel" in ds.dims:
-        return ds
-    _ensure_rio()
-    if ds.rio.crs is not None:
-        return stack_spatial_dims(ds)
-    return ds
-
-
-def unstack_if_gridded(ds: xr.Dataset) -> xr.Dataset:
-    """Unstack pixel to (y, x) if MultiIndex; pass through otherwise."""
-    if "pixel" in ds.dims and isinstance(ds.indexes.get("pixel"), pd.MultiIndex):
-        return ds.unstack("pixel")
-    return ds
-
-
-def _pixel_level_coords(ds: xr.Dataset) -> list[str]:
-    """Names of the non-index coords that vary along ``pixel`` (the grid levels)."""
-    return [str(c) for c in ds.coords if c != "pixel" and ds[c].dims == ("pixel",)]
-
-
-def flatten_pixel_index(ds: xr.Dataset) -> xr.Dataset:
-    """Turn a (y, x) MultiIndex ``pixel`` coord into plain 1D level coords.
-
-    A pandas ``MultiIndex`` cannot be serialised to NetCDF/Zarr, so this resets
-    it: the (y, x) levels become ordinary 1D coordinate variables along ``pixel``
-    and ``pixel`` itself becomes an unlabelled dimension.  The inverse of
-    `unstack_pixel`.
-    """
-    if "pixel" in ds.dims and isinstance(ds.indexes.get("pixel"), pd.MultiIndex):
-        return ds.reset_index("pixel")
-    return ds
-
-
-def unstack_pixel(ds: xr.Dataset) -> xr.Dataset:
-    """Reconstruct a (y, x) grid from a stacked/flattened ``pixel`` dataset.
-
-    Handles both a live ``pixel`` MultiIndex and a flattened dataset (as produced
-    by `flatten_pixel_index` and read back from disk), where the grid levels
-    are stored as ordinary 1D coords along ``pixel``.
-    """
-    if "pixel" not in ds.dims:
-        return ds
-    if not isinstance(ds.indexes.get("pixel"), pd.MultiIndex):
-        levels = _pixel_level_coords(ds)
-        if not levels:
-            return ds
-        ds = ds.set_index(pixel=levels)
-    return ds.unstack("pixel")
-
-
-# ---------------------------------------------------------------------------
 # Internal helpers: datetime validation
 # ---------------------------------------------------------------------------
 
@@ -296,71 +206,6 @@ def _validate_temporal_alignment(dates: dict[str, pd.DatetimeIndex]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers: grid computation
-# ---------------------------------------------------------------------------
-
-
-def _check_common_grid(
-    ds1: xr.Dataset,
-    ds2: xr.Dataset,
-    label1: str = "ds1",
-    label2: str = "ds2",
-    atol: float = 1e-6,
-) -> None:
-    """Raise MisalignedGridError if CRS and coordinates do not match."""
-    _ensure_rio()
-    if ds1.rio.crs != ds2.rio.crs:
-        raise MisalignedGridError(
-            f"Mismatched CRS! {label1}={ds1.rio.crs} ≠ {label2}={ds2.rio.crs}"
-        )
-    x1, y1 = ds1.rio.x_dim, ds1.rio.y_dim
-    x2, y2 = ds2.rio.x_dim, ds2.rio.y_dim
-    if not (x1 == x2 and y1 == y2):
-        raise MisalignedGridError(
-            f"Mismatched dimension names: {label1}=({x1}, {y1}) ≠ {label2}=({x2}, {y2})"
-        )
-    try:
-        np.testing.assert_allclose(ds1[x1].values, ds2[x2].values, atol=atol)
-        np.testing.assert_allclose(ds1[y1].values, ds2[y2].values, atol=atol)
-    except AssertionError as e:
-        raise MisalignedGridError(
-            f"Mismatched coordinate values between {label1} and {label2}!"
-        ) from e
-
-
-def _compute_lat_lon(
-    spatial_datasets: dict[str, xr.Dataset],
-) -> tuple[xr.DataArray, xr.DataArray]:
-    """Compute stacked latitude and longitude DataArrays from CRS-bearing datasets."""
-    from pyproj import Transformer
-
-    _ensure_rio()
-    items = list(spatial_datasets.items())
-    ref_name, ref_ds = items[0]
-    for name, ds in items[1:]:
-        _check_common_grid(ref_ds, ds, label1=ref_name, label2=name)
-
-    x_dim, y_dim = ref_ds.rio.x_dim, ref_ds.rio.y_dim
-    x = ref_ds[x_dim].values
-    y = ref_ds[y_dim].values
-
-    # indexing="ij": x varies along axis 0, y along axis 1
-    x_grid, y_grid = np.meshgrid(x, y, indexing="ij")
-    transformer = Transformer.from_crs(ref_ds.rio.crs, "EPSG:4326", always_xy=True)
-    lon_grid, lat_grid = transformer.transform(x_grid, y_grid)
-
-    grid_ds = xr.Dataset(
-        data_vars={
-            "latitude": (["x", "y"], lat_grid),
-            "longitude": (["x", "y"], lon_grid),
-        },
-        coords={"x": x, "y": y},
-    )
-    stacked = stack_spatial_dims(grid_ds)
-    return stacked.latitude, stacked.longitude
-
-
-# ---------------------------------------------------------------------------
 # Internal helpers: saving datasets
 # ---------------------------------------------------------------------------
 
@@ -408,57 +253,6 @@ def _save(ds: xr.Dataset, path: str) -> None:
         save_timeseries(dataset_to_dataframe(ds), path)
 
 
-def subset_suffix(spec: SubsetSpec) -> str:
-    """Filename suffix that uniquely identifies a pixel subset, e.g. ``_p0-500``."""
-    return f"_p{spec.pixel_start}-{spec.pixel_end}"
-
-
-def _subset_path(path: str, spec: SubsetSpec) -> Path:
-    """Insert the subset suffix before the file extension."""
-    p = Path(path)
-    return p.with_name(f"{p.stem}{subset_suffix(spec)}{p.suffix}")
-
-
-def _save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
-    """Write a pixel subset into an existing Zarr store via a region write.
-
-    The store must already exist (see the ``create-store`` CLI command).  Only
-    the data variables are written; coordinates already live in the store, and
-    writing them in region mode is both unnecessary and disallowed by xarray.
-    """
-    store = Path(path)
-    if not store.exists():
-        raise FileNotFoundError(
-            f"Zarr store '{path}' does not exist. Create it once before running "
-            f"subset processes with: `conduit create-store <config>`."
-        )
-
-    template = xr.open_zarr(store, consolidated=False)
-    n_pixel = template.sizes["pixel"]
-    # Only the data variables are region-written, so their on-disk pixel chunking
-    # is what governs concurrency safety (coords are written once by create-store).
-    sample = template[next(iter(template.data_vars))]
-    chunks_enc = sample.encoding.get("chunks")
-    chunk = (
-        chunks_enc[list(sample.dims).index("pixel")]
-        if chunks_enc and "pixel" in sample.dims
-        else n_pixel
-    )
-    if spec.pixel_start % chunk != 0 or (
-        spec.pixel_end % chunk != 0 and spec.pixel_end != n_pixel
-    ):
-        raise ValueError(
-            f"[subset] range {spec.pixel_start}-{spec.pixel_end} is not aligned to "
-            f"the store's pixel chunk size ({chunk}). Concurrent region writes "
-            f"require subset boundaries to fall on chunk boundaries. Re-create the "
-            f"store with a matching --pixel-chunk, or adjust the subset range."
-        )
-
-    data_only = ds.drop_vars(list(ds.coords))
-    region = {"pixel": slice(spec.pixel_start, spec.pixel_end)}
-    data_only.to_zarr(store, region=region, consolidated=False)
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -497,13 +291,19 @@ def load_inputs(
         Force the geospatial path on (``True``) or off (``False``). When ``None``
         (default) it is auto-detected from the presence of CRS metadata.
     """
+    # The gridded (CRS/pixel) layer is optional and domain-specific; import it
+    # lazily so non-gridded pipelines never touch it. `has_crs` is a cheap,
+    # dependency-free CF-metadata check; the stacking/reprojection it guards is
+    # what pulls the optional `geo` extra, and only when CRS metadata is present.
+    from .gridded.io import compute_lat_lon, has_crs, stack_if_gridded
+
     inputs: dict[str, Any] = {}
     raw_datasets: dict[str, xr.Dataset] = {
         label: _load_raw(spec.path) for label, spec in input_specs.items()
     }
 
     if geospatial is None:
-        geospatial = any(_has_crs(ds) for ds in raw_datasets.values())
+        geospatial = any(has_crs(ds) for ds in raw_datasets.values())
 
     for label, spec in input_specs.items():
         ds_raw = raw_datasets[label]
@@ -533,9 +333,9 @@ def load_inputs(
     _validate_temporal_alignment(dates)
 
     if geospatial:
-        spatial = {label: ds for label, ds in raw_datasets.items() if _has_crs(ds)}
+        spatial = {label: ds for label, ds in raw_datasets.items() if has_crs(ds)}
         if spatial:
-            lat, lon = _compute_lat_lon(spatial)
+            lat, lon = compute_lat_lon(spatial)
             inputs["latitude"] = lat
             inputs["longitude"] = lon
 
@@ -571,6 +371,8 @@ def get_outputs(
         flattened to serialisable 1D coords) so that subset processes can write
         partial outputs that are reassembled later — see `unstack_pixel`.
     """
+    from .gridded.io import flatten_pixel_index, unstack_if_gridded
+
     transform = flatten_pixel_index if stacked else unstack_if_gridded
     out: dict[str, xr.Dataset] = {}
     for freq, spec in output_specs.items():
@@ -617,163 +419,18 @@ def save_outputs(
             _save(ds, path)
             continue
 
+        from .gridded.io import save_zarr_region, subset_path
+
         suffix = Path(path).suffix.lower()
         if suffix in (".nc", ".netcdf"):
-            _save_netcdf(ds, _subset_path(path, subset_spec))
+            _save_netcdf(ds, subset_path(path, subset_spec))
         elif suffix == ".zarr":
-            _save_zarr_region(ds, path, subset_spec)
+            save_zarr_region(ds, path, subset_spec)
         else:
             raise ValueError(
                 f"[subset] is only supported for NetCDF (.nc) and Zarr (.zarr) "
                 f"outputs, but output '{freq}' has path '{path}'."
             )
-
-
-def _pixel_template(inputs: dict[str, Any]) -> xr.Dataset:
-    """Coordinate-only Dataset capturing the full stacked ``pixel`` grid.
-
-    Derived from a representative pixel-bearing input so the level coordinates
-    match exactly what subset ``run`` processes write.  The MultiIndex is
-    flattened to serialisable 1D coords.
-    """
-    da_first = next(
-        (
-            v
-            for v in inputs.values()
-            if isinstance(v, xr.DataArray) and "pixel" in v.dims
-        ),
-        None,
-    )
-    if da_first is None:
-        raise ValueError(
-            "No pixel-bearing inputs found; cannot create a spatial output store."
-        )
-    reduced = da_first.isel({d: 0 for d in da_first.dims if d != "pixel"}, drop=True)
-    skeleton = reduced.to_dataset(name="__tmp__").drop_vars("__tmp__")
-    return flatten_pixel_index(skeleton)
-
-
-def create_output_store(
-    input_specs: dict[str, IOSpec],
-    output_specs: dict[str, IOSpec],
-    pixel_chunk: int | None = None,
-    overwrite: bool = False,
-) -> list[str]:
-    """Pre-create empty stacked Zarr stores for parallel subset runs.
-
-    For each Zarr output, build an all-NaN template with a 1D ``pixel`` layout
-    matching what subset ``run`` processes region-write, then write only the
-    metadata and coordinates (data arrays are dask-backed and deferred, so the
-    full grid is never materialised).  NetCDF/CSV/Parquet outputs are skipped —
-    they don't need a shared store.  Returns the list of store paths created.
-
-    Refuses to clobber an existing store unless ``overwrite`` is set: re-running
-    this after subset processes have populated a store would erase their data.
-    """
-    import dask.array as da
-
-    zarr_specs = {
-        freq: spec
-        for freq, spec in output_specs.items()
-        if Path(spec.path).suffix.lower() == ".zarr"
-    }
-    if not overwrite:
-        existing = [
-            spec.path for spec in zarr_specs.values() if Path(spec.path).exists()
-        ]
-        if existing:
-            raise FileExistsError(
-                f"Zarr store(s) already exist: {existing}. Re-creating them would "
-                f"erase data already written by subset processes. Pass overwrite=True "
-                f"(CLI: --overwrite) to recreate them from scratch."
-            )
-
-    inputs = load_inputs(input_specs)
-    skeleton = _pixel_template(inputs)
-    n_pixel = skeleton.sizes["pixel"]
-    chunk = pixel_chunk or n_pixel
-
-    created: list[str] = []
-    for freq, spec in zarr_specs.items():
-        coords = {name: skeleton.coords[name] for name in skeleton.coords}
-        # A section is temporal iff it contributed a ``dates_{label}`` index.
-        dates = inputs.get(f"dates_{freq}")
-        if dates is None:
-            shape, dims, chunks = (n_pixel,), ("pixel",), (chunk,)
-        else:
-            coords["time"] = dates
-            shape = (len(dates), n_pixel)
-            dims = ("time", "pixel")
-            chunks = (len(dates), chunk)
-
-        data_vars = {
-            var: (dims, da.full(shape, np.nan, chunks=chunks, dtype="float64"))
-            for var in spec.vars
-        }
-        template = xr.Dataset(data_vars=data_vars, coords=coords)
-        template.to_zarr(spec.path, compute=False, consolidated=False, mode="w")
-        created.append(spec.path)
-
-    return created
-
-
-def merge_subset_outputs(
-    output_specs: dict[str, IOSpec],
-    out: str | PathLike | None = None,
-    out_suffix: str = "_gridded",
-) -> list[str]:
-    """Reassemble stacked subset outputs into gridded files.
-
-    For NetCDF outputs, concatenates the per-subset ``*_p<start>-<end>.nc`` parts;
-    for Zarr outputs, reads the shared store.  In both cases the ``pixel`` layout
-    is unstacked back to a ``(y, x)`` grid.  Returns the list of files written.
-
-    By default NetCDF results are written to the config's declared (un-suffixed)
-    path and Zarr results to a sibling store with ``out_suffix`` appended.  Pass
-    ``out`` to write to an explicit path instead; this is only valid when there is
-    a single output section (otherwise the destination would be ambiguous).
-    """
-    if out is not None and len(output_specs) > 1:
-        raise ValueError(
-            f"'out' cannot be used with multiple [outputs.*] sections "
-            f"({sorted(output_specs)}); the destination would be ambiguous. "
-            f"Omit it to use the per-output defaults."
-        )
-
-    written: list[str] = []
-    for freq, spec in output_specs.items():
-        path = Path(spec.path)
-        suffix = path.suffix.lower()
-
-        if suffix in (".nc", ".netcdf"):
-            parts = sorted(path.parent.glob(f"{path.stem}_p*{path.suffix}"))
-            if not parts:
-                raise FileNotFoundError(
-                    f"No subset parts found matching "
-                    f"'{path.stem}_p*{path.suffix}' in {path.parent}."
-                )
-            ds = xr.open_mfdataset(
-                parts, combine="nested", concat_dim="pixel", decode_coords="all"
-            )
-            dest = Path(out) if out is not None else path
-            unstack_pixel(ds).to_netcdf(dest, engine="netcdf4")
-            written.append(str(dest))
-        elif suffix == ".zarr":
-            ds = xr.open_zarr(path, consolidated=False, decode_coords="all")
-            dest = (
-                Path(out)
-                if out is not None
-                else path.with_name(f"{path.stem}{out_suffix}{path.suffix}")
-            )
-            unstack_pixel(ds).to_zarr(dest, consolidated=False, mode="w")
-            written.append(str(dest))
-        else:
-            raise ValueError(
-                f"merge is only supported for NetCDF (.nc) and Zarr (.zarr) "
-                f"outputs, but output '{freq}' has path '{spec.path}'."
-            )
-
-    return written
 
 
 #: Output file extensions `save_outputs` knows how to write.
@@ -808,13 +465,15 @@ def assert_output_paths_writable(
 
         if subset_spec is not None:
             if suffix in (".nc", ".netcdf"):
-                path = _subset_path(spec.path, subset_spec)
+                from .gridded.io import subset_path
+
+                path = subset_path(spec.path, subset_spec)
             elif suffix == ".zarr":
                 if not Path(spec.path).exists():
                     raise FileNotFoundError(
                         f"Zarr store {spec.path!r} for output {freq!r} does not exist. "
                         f"Create it once before subset runs with "
-                        f"`conduit create-store <config>`."
+                        f"`conduit gridded create-store <config>`."
                     )
                 continue  # store exists; the region write targets it directly
             else:
