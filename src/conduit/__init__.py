@@ -1,5 +1,12 @@
 """conduit: an opinionated Hamilton + xarray + pint foundation for data pipelines."""
 
+from xarray_annotated.schema import (
+    Coords,
+    Dims,
+    Dtype,
+    SchemaWarning,
+    declare_schema,
+)
 from xarray_annotated.units import UnitsWarning, declare_units, use_cf_units
 
 from ._version import __version__
@@ -27,14 +34,19 @@ use_cf_units()
 __all__ = [
     "BlockingSpec",
     "CacheSpec",
+    "Coords",
+    "Dims",
+    "Dtype",
     "IOSpec",
     "ParsedConfig",
     "ResampleSpec",
+    "SchemaWarning",
     "SubsetSpec",
     "UnitsWarning",
     "__version__",
     "build_driver",
     "create_output_store",
+    "declare_schema",
     "declare_units",
     "get_final_vars",
     "get_outputs",

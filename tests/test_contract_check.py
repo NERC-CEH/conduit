@@ -5,16 +5,22 @@ import types
 import warnings
 from typing import Annotated, TypedDict
 
+import numpy as np
 import pytest
 import xarray as xr
 from hamilton import driver
 from hamilton.function_modifiers import extract_fields
 from hamilton.settings import ENABLE_POWER_USER_MODE
+from xarray_annotated.schema import Coords, Dims, Dtype, SchemaError
 from xarray_annotated.units import declare_units, policy
 
 from conduit.config import NodeSpec, ResampleSpec
+from conduit.dag.contract_check import (
+    check_dag_contracts,
+    check_dag_units,
+    check_input_contracts,
+)
 from conduit.dag.driver import build_driver
-from conduit.dag.unit_check import check_dag_units
 
 
 def _da():
@@ -489,3 +495,112 @@ class TestUnitsWarningQualname:
             pytest.warns(UnitsWarning, match=r"\[.*another_node\].*unparseable"),
         ):
             another_node(vpd=da)
+
+
+# ---------------------------------------------------------------------------
+# Schema facets (dims / dtype / coords): the DAG check is facet-generic
+# ---------------------------------------------------------------------------
+
+
+def _schema_producer(name: str, *markers):
+    """A single-output node producing ``name`` with the given schema markers."""
+
+    def prod() -> Annotated[(xr.DataArray, *markers)]:  # type: ignore[valid-type]
+        return _da()
+
+    prod.__name__ = name
+    return prod
+
+
+def _schema_consumer(*markers, in_name: str = "arr"):
+    """A node consuming ``in_name`` declaring the given schema markers on it."""
+    src = (
+        "from typing import Annotated\n"
+        "import xarray as xr\n"
+        f"def cons({in_name}: Annotated[(xr.DataArray, *_markers)]) -> xr.DataArray:\n"
+        f"    return {in_name}\n"
+    )
+    ns: dict = {"_markers": markers}
+    exec(src, ns)
+    return ns["cons"]
+
+
+class TestSchemaDagCheck:
+    """The build-time edge check compares dims and dtype markers, always raising
+    ``ValueError`` on a provable mismatch (a pipeline-definition error)."""
+
+    def _dr(self, register, prod_markers, cons_markers):
+        prod = register("scd_prod", _schema_producer("arr", *prod_markers))
+        cons = register("scd_cons", _schema_consumer(*cons_markers))
+        return _build(prod, cons)
+
+    def test_dim_sets_differ_raises(self, register):
+        dr = self._dr(register, [Dims("time", "x")], [Dims("time", "y")])
+        with policy(enabled=True), pytest.raises(ValueError, match="dim sets differ"):
+            check_dag_contracts(dr)
+
+    def test_dim_order_differ_raises_when_both_ordered(self, register):
+        dr = self._dr(
+            register,
+            [Dims("time", "x", ordered=True)],
+            [Dims("x", "time", ordered=True)],
+        )
+        with policy(enabled=True), pytest.raises(ValueError, match="dim order differs"):
+            check_dag_contracts(dr)
+
+    def test_same_dim_set_any_order_passes(self, register):
+        dr = self._dr(register, [Dims("time", "x")], [Dims("x", "time")])
+        with policy(enabled=True), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            check_dag_contracts(dr)
+
+    def test_dtype_kinds_differ_raises(self, register):
+        dr = self._dr(register, [Dtype("float64")], [Dtype("int32")])
+        with policy(enabled=True), pytest.raises(ValueError, match="dtype kinds"):
+            check_dag_contracts(dr)
+
+    def test_same_dtype_kind_passes(self, register):
+        dr = self._dr(register, [Dtype("float64")], [Dtype("float32")])
+        with policy(enabled=True), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            check_dag_contracts(dr)
+
+    def test_coords_are_not_checked_at_edges(self, register):
+        # Coords are lower bounds, so mismatched coord declarations never raise.
+        dr = self._dr(register, [Coords("time")], [Coords("time", "lat")])
+        with policy(enabled=True), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            check_dag_contracts(dr)
+
+    def test_disabled_skips_schema(self, register):
+        dr = self._dr(register, [Dims("time", "x")], [Dims("time", "y")])
+        with policy(enabled=False), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            check_dag_contracts(dr)
+
+
+class TestSchemaInputCheck:
+    """``check_input_contracts`` validates a loaded array's dims/dtype/coords
+    against its consumer's declaration, from file metadata alone."""
+
+    def _dr(self, register, *markers):
+        cons = register("sci_cons", _schema_consumer(*markers))
+        return _build(cons)
+
+    def test_dim_mismatch_raises(self, register):
+        dr = self._dr(register, Dims("time", "x"))
+        bad = xr.DataArray(np.zeros((2, 3)), dims=("time", "y"))
+        with policy(enabled=True), pytest.raises(SchemaError, match="dims"):
+            check_input_contracts(dr, {"arr": bad})
+
+    def test_dim_match_passes(self, register):
+        dr = self._dr(register, Dims("time", "x"))
+        good = xr.DataArray(np.zeros((2, 3)), dims=("time", "x"))
+        with policy(enabled=True):
+            check_input_contracts(dr, {"arr": good})
+
+    def test_dtype_kind_mismatch_raises(self, register):
+        dr = self._dr(register, Dtype("float64"))
+        bad = xr.DataArray(np.zeros((3,), dtype="int64"), dims=("x",))
+        with policy(enabled=True), pytest.raises(SchemaError, match="dtype"):
+            check_input_contracts(dr, {"arr": bad})

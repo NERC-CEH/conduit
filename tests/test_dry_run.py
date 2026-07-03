@@ -2,7 +2,7 @@
 
 Three layers:
 
-- direct tests of :func:`conduit.dag.unit_check.check_input_units` (the runtime,
+- direct tests of :func:`conduit.dag.contract_check.check_input_units` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
 - direct tests of :func:`conduit.io.assert_output_paths_writable`;
@@ -21,15 +21,15 @@ from xarray_annotated.units import UnitsWarning, policy
 
 from conduit.cli import app
 from conduit.config import IOSpec, ResampleSpec, SubsetSpec
+from conduit.dag.contract_check import check_input_units
 from conduit.dag.driver import build_driver
-from conduit.dag.unit_check import check_input_units
 from conduit.io import assert_output_paths_writable
 
 runner = CliRunner()
 
 
 # ---------------------------------------------------------------------------
-# Helpers (mirrors tests/test_unit_check.py: build Hamilton-scannable modules
+# Helpers (mirrors tests/test_contract_check.py: build Hamilton-scannable modules
 # from dynamically generated functions).
 # ---------------------------------------------------------------------------
 

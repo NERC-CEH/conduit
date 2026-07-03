@@ -74,10 +74,11 @@ def build_driver(
 
     built = dr.build()
 
-    # Build-time unit-consistency check; a no-op in "off" mode (the conftest
-    # default), so this does not affect builds that opt out of unit handling.
-    from conduit.dag.unit_check import check_dag_units
+    # Build-time contract-consistency check (units + dims/dtype); a no-op in
+    # "off" mode (the conftest default), so this does not affect builds that opt
+    # out of contract handling.
+    from conduit.dag.contract_check import check_dag_contracts
 
-    check_dag_units(built)
+    check_dag_contracts(built)
 
     return built

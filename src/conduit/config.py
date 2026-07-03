@@ -233,6 +233,7 @@ class ParsedConfig:
     units_enabled: bool | None = None
     units_on_missing: str | None = None
     units_on_inexact: str | None = None
+    schema_on_mismatch: str | None = None
 
 
 class Config:
@@ -398,20 +399,35 @@ class Config:
             return None
         return SubsetSpec.from_config(entry)
 
-    def _parse_units(self, data: dict) -> tuple[bool | None, str | None, str | None]:
-        """Handle the [units] section.
+    def _parse_annotations(
+        self, data: dict
+    ) -> tuple[bool | None, str | None, str | None, str | None]:
+        """Handle the [annotations] section (``[units]`` is a working alias).
 
-        Returns ``(enabled, on_missing, on_inexact)`` mapping the old
-        ``mode`` / ``exact`` keys to the xarray-annotated policy axes.
-        ``None`` axes defer to the process-wide default.
-        All are ``None`` if there is no [units] section.
+        Returns ``(enabled, on_missing, on_inexact, on_mismatch)`` mapping the
+        section's keys to the xarray-annotated policy axes:
+
+        - ``mode`` (``strict`` / ``warn`` / ``off``) and ``exact`` (bool) drive the
+          *units* policy (``enabled`` / ``on_missing`` / ``on_inexact``);
+        - ``on_mismatch`` (``error`` / ``warn`` / ``ignore``) drives the *schema*
+          (dims/coords/dtype) policy.
+
+        ``mode = "off"`` disables validation for *every* facet via the shared
+        master switch. ``None`` axes defer to the process-wide default. All are
+        ``None`` if there is neither an [annotations] nor a [units] section.
         """
-        entry = data.pop("units", None)
+        annotations = data.pop("annotations", None)
+        units = data.pop("units", None)
+        if annotations is not None and units is not None:
+            raise ValueError("Use either [annotations] or its alias [units], not both.")
+        entry = annotations if annotations is not None else units
         if entry is None:
-            return None, None, None
+            return None, None, None, None
+        label = "annotations" if annotations is not None else "units"
         enabled: bool | None = None
         on_missing: str | None = None
         on_inexact: str | None = None
+        on_mismatch: str | None = None
         mode = entry.get("mode")
         if mode is not None:
             if mode == "off":
@@ -422,16 +438,22 @@ class Config:
                 on_missing = "warn"
             else:
                 raise ValueError(
-                    f"[units] 'mode' must be one of 'strict', 'warn', 'off', "
+                    f"[{label}] 'mode' must be one of 'strict', 'warn', 'off', "
                     f"got {mode!r}."
                 )
         exact = entry.get("exact")
         if exact is not None:
             if not isinstance(exact, bool):
-                raise ValueError(f"[units] 'exact' must be a boolean, got {exact!r}.")
+                raise ValueError(f"[{label}] 'exact' must be a boolean, got {exact!r}.")
             if exact:
                 on_inexact = "error"
-        return enabled, on_missing, on_inexact
+        on_mismatch = entry.get("on_mismatch")
+        if on_mismatch is not None and on_mismatch not in ("error", "warn", "ignore"):
+            raise ValueError(
+                f"[{label}] 'on_mismatch' must be one of 'error', 'warn', "
+                f"'ignore', got {on_mismatch!r}."
+            )
+        return enabled, on_missing, on_inexact, on_mismatch
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
         """Handle remaining sections as external modules."""
@@ -467,7 +489,8 @@ class Config:
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — pixel-blocked execution (block_size)
         - [subset]        — spatial pixel slice (pixel_start, pixel_end)
-        - [units]         — unit validation mode ('strict', 'warn', 'off')
+        - [annotations]   — contract validation policy (units + schema); the
+                            legacy name [units] is a working alias
 
         All other top-level sections are treated as external modules and must
         include a '_import_path = "pkg.module"' key specifying the importable
@@ -488,7 +511,12 @@ class Config:
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data)
         subset_spec = self._parse_subset(data)
-        units_enabled, units_on_missing, units_on_inexact = self._parse_units(data)
+        (
+            units_enabled,
+            units_on_missing,
+            units_on_inexact,
+            schema_on_mismatch,
+        ) = self._parse_annotations(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
             modules=modules,
@@ -501,6 +529,7 @@ class Config:
             units_enabled=units_enabled,
             units_on_missing=units_on_missing,
             units_on_inexact=units_on_inexact,
+            schema_on_mismatch=schema_on_mismatch,
         )
 
 

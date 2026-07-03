@@ -80,6 +80,12 @@ def run(
 
         set_policy(on_inexact=cast(OnInexact, parsed.units_on_inexact))
 
+    if parsed.schema_on_mismatch is not None:
+        from xarray_annotated.schema import set_policy as set_schema_policy
+        from xarray_annotated.schema._config import OnMismatch
+
+        set_schema_policy(on_mismatch=cast(OnMismatch, parsed.schema_on_mismatch))
+
     if dry_run:
         _dry_run(parsed, config_file, allow_overrides)
         return
@@ -113,15 +119,16 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
 
     Runs the same setup as `run` up to (but excluding) execution: parse
     config, load inputs (lazily — file metadata only), build the driver (which runs
-    the build-time unit check), validate the execution plan, validate the loaded
-    inputs' units against what the DAG declares, and confirm the output
-    destinations are writable. Prints a per-stage summary. Hard failures raise
-    (non-zero exit); unit issues follow the active ``units_mode`` (warnings stay
-    warnings). No model runs and nothing is written.
+    the build-time contract check), validate the execution plan, validate the loaded
+    inputs' contracts (units + dims/coords/dtype) against what the DAG declares, and
+    confirm the output destinations are writable. Prints a per-stage summary. Hard
+    failures raise (non-zero exit); soft issues follow the active policy (warnings
+    stay warnings). No model runs and nothing is written.
     """
+    from xarray_annotated.schema import get_policy as schema_get_policy
     from xarray_annotated.units import get_policy
 
-    from ..dag.unit_check import check_input_units
+    from ..dag.contract_check import check_input_contracts
 
     typer.echo(f"Dry run for {config_file}")
     typer.echo("  ✓ config parsed")
@@ -140,7 +147,7 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
         allow_module_overrides=allow_overrides,
         cache=None,
     )
-    typer.echo("  ✓ DAG built (static unit check passed)")
+    typer.echo("  ✓ DAG built (static contract check passed)")
 
     if parsed.output_specs:
         target_vars = get_final_vars(parsed.output_specs)
@@ -151,27 +158,22 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
     else:
         typer.echo("  - execution plan: skipped (no [outputs.*] configured)")
 
-    # Capture warn-mode unit findings so they surface in the report rather than
-    # scattering across stderr; strict-mode findings raise straight out.
+    # Capture warn-mode contract findings so they surface in the report rather
+    # than scattering across stderr; strict-mode findings raise straight out.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        check_input_units(dr, inputs)
+        check_input_contracts(dr, inputs)
     pol = get_policy()
+    axes = (
+        f"enabled={pol.enabled}, on_missing={pol.on_missing}, "
+        f"on_inexact={pol.on_inexact}, on_mismatch={schema_get_policy().on_mismatch}"
+    )
     if caught:
-        typer.echo(
-            f"  ✓ input units checked (enabled={pol.enabled}, "
-            f"on_missing={pol.on_missing}, "
-            f"on_inexact={pol.on_inexact}, "
-            f"{len(caught)} warning(s)):"
-        )
+        typer.echo(f"  ✓ input contracts checked ({axes}, {len(caught)} warning(s)):")
         for w in caught:
             typer.echo(f"      ! {w.message}")
     else:
-        typer.echo(
-            f"  ✓ input units validated (enabled={pol.enabled}, "
-            f"on_missing={pol.on_missing}, "
-            f"on_inexact={pol.on_inexact})"
-        )
+        typer.echo(f"  ✓ input contracts validated ({axes})")
 
     if parsed.output_specs:
         assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)

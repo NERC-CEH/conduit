@@ -469,6 +469,37 @@ class TestMultipleFrequencies:
         assert "monthly" in parsed.output_specs
 
 
+class TestAnnotationsSection:
+    """Tests for the [annotations] section and its legacy [units] alias."""
+
+    def test_units_alias_mode_and_exact(self):
+        parsed = Config({"units": {"mode": "strict", "exact": True}}).parse()
+        assert parsed.units_on_missing == "error"
+        assert parsed.units_on_inexact == "error"
+        assert parsed.schema_on_mismatch is None
+
+    def test_mode_off_disables(self):
+        parsed = Config({"annotations": {"mode": "off"}}).parse()
+        assert parsed.units_enabled is False
+
+    def test_on_mismatch_drives_schema(self):
+        parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
+        assert parsed.schema_on_mismatch == "warn"
+
+    def test_invalid_on_mismatch_raises(self):
+        with pytest.raises(ValueError, match="on_mismatch"):
+            Config({"annotations": {"on_mismatch": "explode"}}).parse()
+
+    def test_both_sections_raise(self):
+        with pytest.raises(ValueError, match="not both"):
+            Config({"annotations": {}, "units": {}}).parse()
+
+    def test_absent_section_is_all_none(self):
+        parsed = Config({}).parse()
+        assert parsed.units_enabled is None
+        assert parsed.schema_on_mismatch is None
+
+
 class TestExternalModules:
     """Tests for external module sections."""
 
