@@ -17,3 +17,6 @@ For a step-by-step guide to using the CLI, see the [CLI Guide](../../usage/cli.m
 | [`conduit.cli.graph`](graph.md) | Visualise a pipeline as a directed graph |
 | [`conduit.cli.run`](run.md) | Execute a pipeline from a configuration file |
 | [`conduit.cli.version`](version.md) | Show the installed version |
+
+The optional gridded (parallel Zarr) commands live under the `conduit gridded` group —
+see [`conduit.gridded.cli`](../conduit.gridded/cli.md).
