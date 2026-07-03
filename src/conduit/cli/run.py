@@ -113,8 +113,22 @@ def run(
         stacked = parsed.subset_spec is not None
         output_datasets = get_outputs(results, parsed.output_specs, stacked=stacked)
         save_outputs(
-            output_datasets, parsed.output_specs, subset_spec=parsed.subset_spec
+            output_datasets,
+            parsed.output_specs,
+            subset_spec=parsed.subset_spec,
+            provenance=_config_provenance(config_file),
         )
+
+
+def _config_provenance(config_file: Path) -> dict[str, str]:
+    """Config text + its SHA-256, stamped onto outputs so a store is self-describing."""
+    import hashlib
+
+    text = Path(config_file).read_text()
+    return {
+        "conduit_config": text,
+        "conduit_config_sha256": hashlib.sha256(text.encode()).hexdigest(),
+    }
 
 
 def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -> None:

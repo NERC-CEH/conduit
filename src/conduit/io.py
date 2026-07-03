@@ -58,6 +58,25 @@ def effective_suffix(label: str, spec: IOSpec) -> str:
     return "" if label == "static" else f"_{label}"
 
 
+def var_mapping(
+    label: str, spec: IOSpec, available: "list[str] | None" = None
+) -> dict[str, str]:
+    """Resolve a section's ``node_name -> file_var`` mapping.
+
+    The single place the two `IOSpec.vars` forms are reconciled:
+
+    - a **mapping** ``{node_name: file_var}`` is used verbatim (suffix-free);
+    - a **list** yields ``{f"{var}{suffix}": var}`` using `effective_suffix`;
+    - ``vars is None`` (programmatic "load everything") maps every name in
+      ``available`` through the suffix.
+    """
+    if isinstance(spec.vars, dict):
+        return dict(spec.vars)
+    suffix = effective_suffix(label, spec)
+    names = list(available or []) if spec.vars is None else spec.vars
+    return {f"{var}{suffix}": var for var in names}
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers: opening datasets
 # ---------------------------------------------------------------------------
@@ -489,10 +508,15 @@ def load_inputs(
     for label, spec in input_specs.items():
         ds_raw = raw_datasets[label]
         ds = stack_if_gridded(ds_raw) if geospatial else ds_raw
-        suffix = effective_suffix(label, spec)
-        vars_to_load = list(ds.data_vars) if spec.vars is None else spec.vars
-        for var in vars_to_load:
-            inputs[f"{var}{suffix}"] = ds[var]
+        mapping = var_mapping(label, spec, available=[str(v) for v in ds.data_vars])
+        for node_name, file_var in mapping.items():
+            if node_name in inputs:
+                raise ValueError(
+                    f"input node name {node_name!r} (from [inputs.{label}]) collides "
+                    f"with an already-loaded input. Use distinct suffixes or an "
+                    f"explicit {{node_name = file_var}} mapping to disambiguate."
+                )
+            inputs[node_name] = ds[file_var]
 
         if "time" in ds.dims:
             inputs[f"dates_{label}"] = (
@@ -550,9 +574,11 @@ def get_outputs(
     transform = flatten_pixel_index if stacked else unstack_if_gridded
     out: dict[str, xr.Dataset] = {}
     for freq, spec in output_specs.items():
-        suffix = effective_suffix(freq, spec)
-        # (Re-)assign names to all arrays to ensure merging succeeds
-        arrays = [results[f"{var}{suffix}"].rename(var) for var in spec.vars]
+        # (Re-)assign the file variable name to each array so merging succeeds.
+        arrays = [
+            results[node].rename(file_var)
+            for node, file_var in var_mapping(freq, spec).items()
+        ]
         out[freq] = transform(xr.merge(arrays))
     return out
 
@@ -561,6 +587,7 @@ def save_outputs(
     output_datasets: dict[str, xr.Dataset],
     output_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
+    provenance: dict[str, str] | None = None,
 ) -> None:
     """Write per-frequency Datasets to disk.
 
@@ -576,9 +603,16 @@ def save_outputs(
         written so independent processes don't collide: NetCDF outputs go to a
         uniquely-suffixed file, and Zarr outputs are region-written into a
         pre-created shared store.  CSV/Parquet outputs don't support subsetting.
+    provenance:
+        Optional attributes stamped onto every written dataset (e.g. the config
+        text and its hash), so a store is self-describing. Ignored for the
+        subset/Zarr-region path, whose store attrs are written once by
+        ``create-store``.
     """
     for freq, ds in output_datasets.items():
         path = output_specs[freq].path
+        if provenance:
+            ds = ds.assign_attrs(provenance)
         if subset_spec is None:
             _save(ds, path)
             continue
@@ -835,8 +869,16 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     list[str]
         Flat list of Hamilton node names (e.g. ``["gpp_daily", ...]``).
     """
-    return [
-        f"{var}{effective_suffix(freq, spec)}"
-        for freq, spec in output_specs.items()
-        for var in spec.vars
-    ]
+    names: list[str] = []
+    seen: set[str] = set()
+    for freq, spec in output_specs.items():
+        for node in var_mapping(freq, spec):
+            if node in seen:
+                raise ValueError(
+                    f"output node name {node!r} (from [outputs.{freq}]) is requested "
+                    f"by more than one output section. Give each output a distinct "
+                    f"node name (suffix or explicit mapping)."
+                )
+            seen.add(node)
+            names.append(node)
+    return names

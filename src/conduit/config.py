@@ -206,17 +206,50 @@ class SubsetSpec:
 class IOSpec:
     """I/O specification for a single input or output section.
 
-    ``suffix`` controls how this section's variables are mapped to Hamilton node
-    names. When ``None`` (the default) the effective suffix is derived from the
-    section label: ``_<label>`` for a temporal/grouped section, or ``""`` (bare
-    names) for the conventional ``static`` label. Set ``suffix = ""`` on any
-    section for bare names, or ``suffix = "_x"`` to choose an explicit suffix.
-    See ``conduit.io.effective_suffix``.
+    ``vars`` maps this section's file variables to Hamilton node names, in one of
+    two forms:
+
+    - a **list** ``["temperature", ...]`` — the node name is derived from the file
+      variable and the section's suffix (``{var}{suffix}``), the convenient default;
+    - a **mapping** ``{node_name: file_var}`` — an explicit, suffix-free alias, e.g.
+      ``{temperature_daily = "t2m"}`` (input: read file var ``t2m`` as node
+      ``temperature_daily``) or ``{gpp_daily = "gpp"}`` (output: write node
+      ``gpp_daily`` to file var ``gpp``). Use this to decouple file naming from DAG
+      naming, or to alias a variable without renaming the file.
+
+    ``suffix`` controls the list form's node names. When ``None`` (the default) the
+    effective suffix is derived from the section label: ``_<label>`` for a
+    temporal/grouped section, or ``""`` (bare names) for the conventional ``static``
+    label. Set ``suffix = ""`` on any section for bare names, or ``suffix = "_x"``
+    to choose an explicit suffix. It is ignored for the mapping form (which is
+    already explicit). See ``conduit.io.effective_suffix``.
     """
 
     path: str
-    vars: list[str]
+    vars: list[str] | dict[str, str]
     suffix: str | None = None
+
+
+def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
+    """Validate a section's ``vars`` is a list[str] or a dict[str, str]."""
+    if isinstance(vars_, dict):
+        bad = [
+            (k, v)
+            for k, v in vars_.items()
+            if not isinstance(k, str) or not isinstance(v, str)
+        ]
+        if bad:
+            raise ValueError(
+                f"[{label}] 'vars' mapping must be {{node_name = file_var}} with "
+                f"string keys and values, got offending entries {bad!r}."
+            )
+        return dict(vars_)
+    if isinstance(vars_, list) and all(isinstance(v, str) for v in vars_):
+        return list(vars_)
+    raise ValueError(
+        f"[{label}] 'vars' must be a list of names or a {{node_name = file_var}} "
+        f"mapping, got {vars_!r}."
+    )
 
 
 @dataclass
@@ -305,7 +338,7 @@ class Config:
                 )
             input_specs[freq] = IOSpec(
                 path=params["path"],
-                vars=params.get("vars") or [],
+                vars=_validate_vars(f"inputs.{freq}", params.get("vars") or []),
                 suffix=params.get("suffix"),
             )
 
@@ -328,7 +361,7 @@ class Config:
                 )
             output_specs[freq] = IOSpec(
                 path=params["path"],
-                vars=vars_,
+                vars=_validate_vars(f"outputs.{freq}", vars_),
                 suffix=params.get("suffix"),
             )
 

@@ -83,6 +83,20 @@ class TestInputSpecs:
             == TEST_CONFIG_PATH.parent / "daily.nc"
         )
 
+    def test_vars_mapping_form_parsed(self):
+        config = Config(
+            {"inputs": {"met": {"path": "m.nc", "vars": {"temperature_daily": "t2m"}}}}
+        )
+        spec = config.parse().input_specs["met"]
+        assert spec.vars == {"temperature_daily": "t2m"}
+
+    def test_vars_mapping_non_string_raises(self):
+        config = Config(
+            {"inputs": {"met": {"path": "m.nc", "vars": {"temperature": 3}}}}
+        )
+        with pytest.raises(ValueError, match="node_name = file_var"):
+            config.parse()
+
 
 class TestOutputSpecs:
     """Tests for output_specs — empty in test config (no [outputs.*] sections)."""
