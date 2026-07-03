@@ -121,12 +121,11 @@ class NodeSpec:
             assert_valid_unit(units, f"node '{name}' units")
         dtype = entry.get("dtype")
         if dtype is not None:
-            import numpy as np
+            # Fail fast on a malformed dtype, at parse time, via the same
+            # declaration validator the schema decorator uses.
+            from xarray_annotated.schema import Dtype, assert_valid_schema
 
-            try:
-                np.dtype(dtype)
-            except TypeError as exc:
-                raise ValueError(f"node '{name}' has invalid dtype {dtype!r}.") from exc
+            assert_valid_schema(Dtype(dtype), f"node '{name}' dtype")
         return cls(
             name=entry["name"],
             inputs=entry["inputs"],
