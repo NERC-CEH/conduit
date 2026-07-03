@@ -412,7 +412,7 @@ class Config:
         """Dump config to a TOML str."""
         return tomli_w.dumps(self._data)
 
-    def _parse_grid(self, data: dict, driver_config: dict) -> list[str]:
+    def _parse_grid(self, data: dict) -> list[str]:
         """Handle [grid] section.
 
         Silently accepted; grid computation moved to load_inputs().
@@ -420,7 +420,7 @@ class Config:
         data.pop("grid", None)
         return []
 
-    def _parse_graphviz(self, data: dict, driver_config: dict) -> list[str]:
+    def _parse_graphviz(self, data: dict) -> list[str]:
         """Handle a stray [graphviz] section.
 
         DAG-visualisation styling lives in its own file passed to ``conduit
@@ -431,7 +431,7 @@ class Config:
         data.pop("graphviz", None)
         return []
 
-    def _parse_inputs(self, data: dict, driver_config: dict, input_specs: dict) -> None:
+    def _parse_inputs(self, data: dict, input_specs: dict) -> None:
         """Handle [inputs.*] sections."""
         for freq, params in data.pop("inputs", {}).items():
             if "path" not in params:
@@ -445,9 +445,7 @@ class Config:
                 suffix=params.get("suffix"),
             )
 
-    def _parse_outputs(
-        self, data: dict, driver_config: dict, output_specs: dict
-    ) -> None:
+    def _parse_outputs(self, data: dict, output_specs: dict) -> None:
         """Handle [outputs.*] sections."""
         for freq, params in data.pop("outputs", {}).items():
             vars_ = params.get("vars") or []
@@ -629,10 +627,10 @@ class Config:
         input_specs: dict[str, IOSpec] = {}
         output_specs: dict[str, IOSpec] = {}
         modules: list[str] = []
-        self._parse_grid(data, driver_config)
-        self._parse_graphviz(data, driver_config)
-        self._parse_inputs(data, driver_config, input_specs)
-        self._parse_outputs(data, driver_config, output_specs)
+        self._parse_grid(data)
+        self._parse_graphviz(data)
+        self._parse_inputs(data, input_specs)
+        self._parse_outputs(data, output_specs)
         modules += self._parse_nodes(data, driver_config)
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data)
