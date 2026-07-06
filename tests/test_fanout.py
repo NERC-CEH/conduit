@@ -1,11 +1,11 @@
 """Tests for the general fan-out [[node]] mechanism and node contract decls."""
 
 import xarray as xr
-from xarray_annotated.schema import Dims, schema_from_signature
+from xarray_annotated.schema import Dims, Dtype, schema_from_signature
 
 from conduit.config import Config, NodeSpec, expand_node_entries
 from conduit.dag.driver import build_driver
-from conduit.dag.node import PASSTHROUGH_TAG, _build_fn_code, make_node_module
+from conduit.dag.node import PASSTHROUGH_TAG, make_node_module
 
 
 def _node(name, inputs, expression, **kw):
@@ -82,13 +82,15 @@ class TestForEachExpansion:
 
 
 class TestSchemaOnNode:
-    def test_build_fn_code_emits_schema_markers_and_decorator(self):
-        code = _build_fn_code(
-            _node("f", ["a"], "a", dims=["time", "x"], dtype="float64")
+    def test_schema_markers_annotated_and_decorated(self):
+        # annotate() builds the schema return contract and declare_schema is applied,
+        # so both markers are readable off the built node's signature.
+        mod = make_node_module(
+            [_node("f", ["a"], "a", dims=["time", "x"], dtype="float64")]
         )
-        assert "@declare_schema" in code
-        assert "Dims('time', 'x')" in code
-        assert "Dtype('float64')" in code
+        _, out = schema_from_signature(mod.f)
+        # annotate() emits markers in a fixed order (unit, dims, dtype, coords).
+        assert out == [Dims("time", "x"), Dtype("float64")]
 
     def test_declared_dims_readable_from_generated_signature(self):
         mod = make_node_module([_node("f", ["a"], "a", dims=["time", "x"])])
@@ -132,7 +134,11 @@ class TestSchemaOnNode:
 
 class TestPassthroughNode:
     def test_passthrough_is_tagged_and_undeclared(self):
-        code = _build_fn_code(_node("p", ["x"], "x", passthrough=True))
-        assert f"@tag({PASSTHROUGH_TAG}='true')" in code
-        assert "@declare_units" not in code
-        assert "@declare_schema" not in code
+        mod = make_node_module([_node("p", ["x"], "x", passthrough=True)])
+        # Tagged for the contract check to propagate its input's declaration ...
+        (tag_deco,) = mod.p.__dict__["decorate_nodes"]
+        assert tag_deco.tags[PASSTHROUGH_TAG] == "true"
+        # ... and declares no contract of its own (bare DataArray return).
+        assert mod.p.__annotations__["return"] is xr.DataArray
+        _, out = schema_from_signature(mod.p)
+        assert out is None

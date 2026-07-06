@@ -71,20 +71,18 @@ def run(
         set_policy(enabled=parsed.units_enabled)
 
     if parsed.units_on_missing is not None:
-        from xarray_annotated.units import set_policy
-        from xarray_annotated.units._config import OnMissing
+        from xarray_annotated.units import OnMissing, set_policy
 
         set_policy(on_missing=cast(OnMissing, parsed.units_on_missing))
 
     if parsed.units_on_inexact is not None:
-        from xarray_annotated.units import set_policy
-        from xarray_annotated.units._config import OnInexact
+        from xarray_annotated.units import OnInexact, set_policy
 
         set_policy(on_inexact=cast(OnInexact, parsed.units_on_inexact))
 
     if parsed.schema_on_mismatch is not None:
+        from xarray_annotated.schema import OnMismatch
         from xarray_annotated.schema import set_policy as set_schema_policy
-        from xarray_annotated.schema._config import OnMismatch
 
         set_schema_policy(on_mismatch=cast(OnMismatch, parsed.schema_on_mismatch))
 

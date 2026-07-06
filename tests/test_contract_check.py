@@ -540,7 +540,7 @@ class TestSchemaDagCheck:
 
     def test_dim_sets_differ_raises(self, register):
         dr = self._dr(register, [Dims("time", "x")], [Dims("time", "y")])
-        with policy(enabled=True), pytest.raises(ValueError, match="dim sets differ"):
+        with policy(enabled=True), pytest.raises(ValueError, match="dims incompatible"):
             check_dag_contracts(dr)
 
     def test_dim_order_differ_raises_when_both_ordered(self, register):
@@ -549,7 +549,7 @@ class TestSchemaDagCheck:
             [Dims("time", "x", ordered=True)],
             [Dims("x", "time", ordered=True)],
         )
-        with policy(enabled=True), pytest.raises(ValueError, match="dim order differs"):
+        with policy(enabled=True), pytest.raises(ValueError, match="dims incompatible"):
             check_dag_contracts(dr)
 
     def test_same_dim_set_any_order_passes(self, register):
@@ -560,7 +560,10 @@ class TestSchemaDagCheck:
 
     def test_dtype_kinds_differ_raises(self, register):
         dr = self._dr(register, [Dtype("float64")], [Dtype("int32")])
-        with policy(enabled=True), pytest.raises(ValueError, match="dtype kinds"):
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="dtypes incompatible"),
+        ):
             check_dag_contracts(dr)
 
     def test_same_dtype_kind_passes(self, register):

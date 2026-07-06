@@ -16,14 +16,14 @@ units:
 - **dims**, **coords**, **dtype** — structural properties
   (`xarray_annotated.schema`).
 
-Each facet is a `_Facet` descriptor pairing that facet's declaration reader with a
-policy, a marker-vs-marker edge predicate (for the build-time check), and a
-marker-vs-array runtime check (for the input check). `xarray-annotated` ships the
-declaration readers (`units_from_signature`, `schema_from_signature`, both built on
-the shared ``walk_signature``) and the runtime checks (`check_units`,
-`check_schema`), but only *units* ships marker-vs-marker predicates
-(`units_compatible`/`units_equal`); the structural marker-vs-marker predicates are
-defined here.
+Each facet is a `_Facet` descriptor pairing a way to pull that facet off a
+`Declared` with a policy, a marker-vs-marker edge predicate (for the build-time
+check), and a marker-vs-array runtime check (for the input check). All of these
+come from `xarray-annotated`'s public API: the unified declaration reader
+(`declarations_from_signature`), the runtime checks (`check_units`,
+`check_schema`), and the marker-vs-marker predicates (units
+`units_compatible`/`units_equal`, schema `dims_compatible`/`dtype_compatible`).
+conduit only assembles them per facet.
 
 **Edge vs input.** ``coords`` declarations are lower bounds ("at least these coords
 are present"), so two coord declarations on an edge can never be *proven*
@@ -51,23 +51,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import xarray as xr
 from hamilton import graph_types
-from xarray_annotated.schema import (
-    Coords,
-    Dims,
-    Dtype,
-    check_schema,
-    schema_from_signature,
-)
+from xarray_annotated import declarations_from_signature
+from xarray_annotated.schema import check_schema, dims_compatible, dtype_compatible
 from xarray_annotated.schema import get_policy as schema_get_policy
-from xarray_annotated.units import check_units, units_from_signature
+from xarray_annotated.units import check_units, units_compatible, units_equal
 from xarray_annotated.units import get_policy as units_get_policy
-from xarray_annotated.units._check import units_compatible, units_equal
 
 if TYPE_CHECKING:
     from hamilton import driver
+    from xarray_annotated import Declared
 
 # Facet map keys, in a stable order (units first so its messages/behaviour match
 # the original units-only checker).
@@ -89,20 +83,12 @@ def _units_edge(a: str, b: str, pol: Any) -> str | None:
     return None
 
 
-def _dims_edge(a: Dims, b: Dims, _pol: Any) -> str | None:
-    if set(a.names) != set(b.names):
-        return "dim sets differ"
-    if a.ordered and b.ordered and a.names != b.names:
-        return "dim order differs"
-    return None
+def _dims_edge(a: Any, b: Any, _pol: Any) -> str | None:
+    return None if dims_compatible(a, b) else "dims incompatible"
 
 
-def _dtype_edge(a: Dtype, b: Dtype, _pol: Any) -> str | None:
-    if np.dtype(a.dtype).kind != np.dtype(b.dtype).kind:
-        return "dtype kinds differ"
-    if a.exact and b.exact and np.dtype(a.dtype) != np.dtype(b.dtype):
-        return "dtypes differ (exact required on both sides)"
-    return None
+def _dtype_edge(a: Any, b: Any, _pol: Any) -> str | None:
+    return None if dtype_compatible(a, b) else "dtypes incompatible"
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +111,11 @@ class _Facet:
 
     name: str
     get_policy: Callable[[], Any]
+    #: Pull this facet's stored value out of a `Declared`, or None if undeclared.
+    #: Units yields the unit *string* (`.unit.unit`); schema facets yield the
+    #: marker, so downstream maps keep the same value types as before the unified
+    #: reader.
+    from_declared: Callable[["Declared"], Any]
     #: Marker-vs-marker edge predicate, or None to skip the build-time edge check.
     edge: Callable[[Any, Any, Any], str | None] | None
     #: Marker(s)-vs-array runtime check for `check_input_contracts`.
@@ -134,10 +125,38 @@ class _Facet:
 
 
 _FACETS: tuple[_Facet, ...] = (
-    _Facet("units", units_get_policy, _units_edge, _units_input_check, True),
-    _Facet("dims", schema_get_policy, _dims_edge, _schema_input_check, False),
-    _Facet("coords", schema_get_policy, None, _schema_input_check, False),
-    _Facet("dtype", schema_get_policy, _dtype_edge, _schema_input_check, False),
+    _Facet(
+        "units",
+        units_get_policy,
+        lambda d: d.unit.unit if d.unit is not None else None,
+        _units_edge,
+        _units_input_check,
+        True,
+    ),
+    _Facet(
+        "dims",
+        schema_get_policy,
+        lambda d: d.dims,
+        _dims_edge,
+        _schema_input_check,
+        False,
+    ),
+    _Facet(
+        "coords",
+        schema_get_policy,
+        lambda d: d.coords,
+        None,
+        _schema_input_check,
+        False,
+    ),
+    _Facet(
+        "dtype",
+        schema_get_policy,
+        lambda d: d.dtype,
+        _dtype_edge,
+        _schema_input_check,
+        False,
+    ),
 )
 _UNITS_ONLY: tuple[_Facet, ...] = (_FACETS[0],)
 
@@ -182,43 +201,19 @@ def _passthrough_edges(hg: "graph_types.HamiltonGraph") -> dict[str, str]:
     }
 
 
-def _record_units(maps: _Maps, fn_name: str, in_map: dict, out: Any) -> None:
-    produced, consumed = maps["units"]
-    if isinstance(out, dict):
-        for name, unit in out.items():
-            produced[name] = (unit, fn_name)
-    elif isinstance(out, str):
-        produced[fn_name] = (out, fn_name)
-    for name, unit in in_map.items():
-        consumed.setdefault(name, []).append((unit, fn_name))
-
-
-_SCHEMA_FACETS = (("dims", Dims), ("coords", Coords), ("dtype", Dtype))
-
-
-def _bucket_schema(
-    maps: _Maps, name: str, markers: list, label: str, *, produced: bool
+def _record(
+    maps: _Maps, name: str, decl: "Declared", label: str, *, produced: bool
 ) -> None:
-    """Route each schema marker in ``markers`` to its facet's produced/consumed map."""
-    for facet_name, marker_type in _SCHEMA_FACETS:
-        marker = next((m for m in markers if isinstance(m, marker_type)), None)
-        if marker is None:
+    """Route each declared facet of ``decl`` into its produced/consumed map."""
+    for facet in _FACETS:
+        value = facet.from_declared(decl)
+        if value is None:
             continue
-        prod_map, cons_map = maps[facet_name]
+        prod_map, cons_map = maps[facet.name]
         if produced:
-            prod_map[name] = (marker, label)
+            prod_map[name] = (value, label)
         else:
-            cons_map.setdefault(name, []).append((marker, label))
-
-
-def _record_schema(maps: _Maps, fn_name: str, in_map: dict, out: Any) -> None:
-    if isinstance(out, dict):
-        for name, markers in out.items():
-            _bucket_schema(maps, name, markers, fn_name, produced=True)
-    elif isinstance(out, list):
-        _bucket_schema(maps, fn_name, out, fn_name, produced=True)
-    for name, markers in in_map.items():
-        _bucket_schema(maps, name, markers, fn_name, produced=False)
+            cons_map.setdefault(name, []).append((value, label))
 
 
 def _collect_contract_maps(dr: "driver.Driver") -> tuple[_Maps, dict[str, str]]:
@@ -226,16 +221,22 @@ def _collect_contract_maps(dr: "driver.Driver") -> tuple[_Maps, dict[str, str]]:
 
     Returns ``(maps, passthrough_edges)`` where ``maps[facet]`` is
     ``(produced, consumed)`` — the shared source for both the build-time
-    (`check_dag_contracts`) and runtime (`check_input_contracts`) checks.
+    (`check_dag_contracts`) and runtime (`check_input_contracts`) checks. Each
+    node's contract is read once via `declarations_from_signature` and its facets
+    routed by `_record`.
     """
     hg = graph_types.HamiltonGraph.from_graph(dr.graph)
     maps: _Maps = {name: ({}, {}) for name in _FACET_NAMES}
     for fn in _originating_functions(hg):
         fn_name = getattr(fn, "__name__", repr(fn))
-        u_in, u_out = units_from_signature(fn)
-        _record_units(maps, fn_name, u_in, u_out)
-        s_in, s_out = schema_from_signature(fn)
-        _record_schema(maps, fn_name, s_in, s_out)
+        ins, out = declarations_from_signature(fn)
+        if isinstance(out, dict):
+            for name, decl in out.items():
+                _record(maps, name, decl, fn_name, produced=True)
+        elif out is not None:
+            _record(maps, fn_name, out, fn_name, produced=True)
+        for name, decl in ins.items():
+            _record(maps, name, decl, fn_name, produced=False)
     return maps, _passthrough_edges(hg)
 
 

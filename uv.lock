@@ -2222,8 +2222,8 @@ wheels = [
 
 [[package]]
 name = "xarray-annotated"
-version = "0.2.0"
-source = { git = "https://github.com/jmarshrossney/xarray-annotated.git#e4f2ff07c5379985e85f66d38d71a85460710710" }
+version = "0.3.0"
+source = { git = "https://github.com/jmarshrossney/xarray-annotated.git#5a8e775ac3162882e8bada5ebbbcb6be5301dfef" }
 dependencies = [
     { name = "pint" },
     { name = "pint-xarray" },
