@@ -14,48 +14,56 @@ copyright = "Copyright &copy; 2026 The authors"
 
 nav = [
   { "Home" = "index.md" },
-  { "Getting Started" = [
-      "getting_started/installation.md",
-      "getting_started/quickstart.md",
-      "getting_started/concepts.md",
-      "getting_started/contributing.md",
+  { "Get started" = [
+      "get-started/install.md",
+      "get-started/first-pipeline.md",
+      "get-started/units-and-contracts.md",
   ]},
-  { "Usage" = [
-      "usage/config.md",
-      "usage/api.md",
-      "usage/cli.md",
-      "usage/data-formats.md",
-      "usage/custom-modules.md",
-      "usage/troubleshooting.md",
+  { "Concepts" = [
+      "concepts/why-conduit.md",
+      "concepts/dag-model.md",
+      "concepts/contracts.md",
+      "concepts/scaling.md",
   ]},
-  { "Examples" = [
-      "examples/getting_started.md",
-      "examples/unit_safe_pipelines.md",
+  { "Guides" = [
+      "guides/bring-your-own-module.md",
+      "guides/inline-nodes-and-fan-out.md",
+      "guides/drive-from-python.md",
+      "guides/run-and-visualise.md",
+      "guides/validate-before-running.md",
+      "guides/scale-up.md",
   ]},
-  { "API Reference" = [
-      "api/conduit.cli/index.md",
-      "api/conduit.cli/cli.md",
-      "api/conduit.cli/graph.md",
-      "api/conduit.cli/run.md",
-      "api/conduit.cli/version.md",
-      "api/conduit.config.md",
-      "api/conduit.io.md",
-      "api/conduit.transforms.md",
-      "api/conduit.dag.driver.md",
-      "api/conduit.dag/node.md",
-      "api/conduit.dag/contract_check.md",
-      "api/conduit.dag/wiring_check.md",
-      "api/conduit.dag/caching.md",
-      "api/conduit.dag/blocking.md",
-      "api/conduit.gridded/spatial.md",
-      "api/conduit.gridded/io.md",
-      "api/conduit.gridded/cli.md",
+  { "Reference" = [
+      "reference/configuration.md",
+      "reference/data-formats.md",
+      "reference/troubleshooting.md",
+      { "API" = [
+          "api/conduit.cli/index.md",
+          "api/conduit.cli/cli.md",
+          "api/conduit.cli/graph.md",
+          "api/conduit.cli/run.md",
+          "api/conduit.cli/version.md",
+          "api/conduit.config.md",
+          "api/conduit.io.md",
+          "api/conduit.transforms.md",
+          "api/conduit.dag.driver.md",
+          "api/conduit.dag/node.md",
+          "api/conduit.dag/contract_check.md",
+          "api/conduit.dag/wiring_check.md",
+          "api/conduit.dag/caching.md",
+          "api/conduit.dag/blocking.md",
+          "api/conduit.gridded/spatial.md",
+          "api/conduit.gridded/io.md",
+          "api/conduit.gridded/cli.md",
+      ]},
+  ]},
+  { "Recipes" = [
+      "recipes/index.md",
   ]},
 ]
 
 # Katex
 extra_javascript = [
-    "_static/js/marimo-button.js",
     "_static/js/katex.js",
     "https://unpkg.com/katex@0/dist/katex.min.js",
     "https://unpkg.com/katex@0/dist/contrib/auto-render.min.js"

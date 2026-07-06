@@ -28,7 +28,7 @@ conduit is currently only available from GitHub.
 This installs the `conduit` package and the `conduit` CLI command into your environment.
 
 The base install is intentionally lightweight — it includes the core engine
-(Hamilton, xarray, units checking, the config parser and the CLI). Geospatial and
+(Hamilton, xarray, contract checking, the config parser and the CLI). Geospatial and
 DAG-visualisation support are optional extras (see below).
 
 ## Optional features (extras)
@@ -60,21 +60,9 @@ Append the extra(s) in square brackets:
     uv add "conduit[all] @ git+https://github.com/NERC-CEH/conduit"
     ```
 
-## Install for development
-
-```sh
-git clone https://github.com/NERC-CEH/conduit.git
-cd conduit
-uv sync
-source .venv/bin/activate
-```
-
-`uv sync` installs every optional extra (`geo` and `viz`) along with the development
-tooling, so you don't need to request them explicitly.
-
 ## System dependencies
 
-### Graphviz (for pipeline visualization)
+### Graphviz (for pipeline visualisation)
 
 The `viz` extra installs the Python `graphviz` bindings, but `conduit graph` also
 needs the Graphviz system binaries:
@@ -92,3 +80,10 @@ brew install graphviz
 ```sh
 conduit version
 ```
+
+## Next steps
+
+- Build your first pipeline in the [Quickstart tutorial](first-pipeline.md).
+- Contributors setting up a development checkout should follow the
+  [`CONTRIBUTING.md`](https://github.com/NERC-CEH/conduit/blob/main/CONTRIBUTING.md)
+  guide instead (`git clone` + `uv sync`).

@@ -7,7 +7,7 @@ icon: lucide/terminal
 
 This section contains the auto-generated API documentation for the `conduit` command-line interface modules.
 
-For a step-by-step guide to using the CLI, see the [CLI Guide](../../usage/cli.md).
+For a step-by-step guide to using the CLI, see [Run & visualise from the CLI](../../guides/run-and-visualise.md).
 
 ## Commands
 

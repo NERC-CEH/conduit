@@ -42,11 +42,11 @@ geospatial Zarr — the primary target data type — is a first-class **optional
 
 ## Installation
 
-See the [Installation guide](getting_started/installation.md).
+See the [Installation guide](get-started/install.md).
 
 ## Quick start
 
-Get a pipeline running in a few minutes — see the [Quickstart](getting_started/quickstart.md).
+Get a pipeline running in a few minutes — see [Your first pipeline](get-started/first-pipeline.md).
 
 ## Key features
 
@@ -79,11 +79,11 @@ Get a pipeline running in a few minutes — see the [Quickstart](getting_started
 
 ## Learn more
 
-- [Quickstart](getting_started/quickstart.md) — run your first pipeline
-- [Concepts](getting_started/concepts.md) — how the DAG and config fit together
-- [Configuration](usage/config.md) — TOML config reference
-- [Custom modules](usage/custom-modules.md) — bring your own nodes
-- [Examples](examples/getting_started.md) — annotated, runnable notebooks
+- [Your first pipeline](get-started/first-pipeline.md) — run a pipeline end to end
+- [Add unit contracts](get-started/units-and-contracts.md) — the flagship feature, hands-on
+- [The DAG model](concepts/dag-model.md) — how the DAG and config fit together
+- [Configuration reference](reference/configuration.md) — every TOML section
+- [Bring your own module](guides/bring-your-own-module.md) — plug in your own nodes
 
 ## Acknowledgements
 
