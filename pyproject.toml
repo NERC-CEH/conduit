@@ -70,6 +70,13 @@ test = [
 
 [tool.pytest]
 testpaths = ["tests"]
+filterwarnings = [
+    # netCDF4 1.7.4 sets .shape on numpy arrays, deprecated in numpy>=2.5.
+    # The upstream fix belongs in netCDF4's _netCDF4.pyx (use np.reshape
+    # with copy=False instead of assigning .shape). Suppress until resolved.
+    # https://github.com/Unidata/netcdf4-python
+    "ignore:Setting the shape on a NumPy array:DeprecationWarning:xarray",
+]
 
 [tool.pyright]
 venvPath = "."

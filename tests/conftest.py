@@ -1,3 +1,4 @@
+import multiprocessing
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from conduit.config import load_config
 from conduit.dag.driver import build_driver
 from conduit.io import load_inputs
 
+multiprocessing.set_start_method("spawn", force=True)
 set_policy(enabled=False)
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"

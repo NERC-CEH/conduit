@@ -178,7 +178,8 @@ class TestPartitionInvariance:
     """Blocked runs must reproduce the unblocked result exactly, for any partition."""
 
     @pytest.fixture(scope="class")
-    def reference(self, pipeline_config, pipeline_inputs):
+    @classmethod
+    def reference(cls, pipeline_config, pipeline_inputs):
         return _run_unblocked(pipeline_config, pipeline_inputs)
 
     @pytest.mark.parametrize("block_size", [1, 2, 3, 100])
