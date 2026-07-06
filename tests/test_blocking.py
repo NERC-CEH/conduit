@@ -245,22 +245,7 @@ expression = "temperature_daily.resample(time='7D').mean()"
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["temperature", "precipitation", "humidity", "wind_speed", "cloud_fraction"]
-
-[inputs.weekly]
-path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["pressure", "radiation", "albedo", "snow_depth", "aerosol"]
-
-[inputs.monthly]
-path = "{synthetic_data_dir / "monthly.nc"}"
-vars = ["dummy_variable"]
-
-[inputs.static]
-path = "{synthetic_data_dir / "static.nc"}"
-vars = [
-  "elevation", "surface_type", "roughness", "soil_moisture",
-  "land_fraction",
-]
+vars = ["temperature"]
 
 [outputs.weekly]
 path = "{out_path}"

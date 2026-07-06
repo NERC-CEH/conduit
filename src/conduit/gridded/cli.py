@@ -13,6 +13,32 @@ app = typer.Typer(
 )
 
 
+def _require_geo_extra() -> None:
+    """Fail fast with an install hint if the optional ``geo`` extra is absent.
+
+    The gridded commands reproject through ``rioxarray``/``pyproj``. Checking at
+    the group level means ``conduit gridded <cmd>`` reports one clear, actionable
+    message up front, rather than a deep ``ImportError`` part way through a run.
+    """
+    from importlib.util import find_spec
+
+    missing = [pkg for pkg in ("rioxarray", "pyproj") if find_spec(pkg) is None]
+    if missing:
+        typer.echo(
+            f"The 'conduit gridded' commands require the optional 'geo' extra "
+            f"(missing: {', '.join(missing)}). Install it with "
+            f"`pip install conduit[geo]`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+@app.callback()
+def gridded() -> None:
+    """Validate the optional geospatial dependencies before any gridded command."""
+    _require_geo_extra()
+
+
 @app.command()
 def create_store(
     config_file: Annotated[

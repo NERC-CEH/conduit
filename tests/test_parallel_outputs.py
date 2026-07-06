@@ -247,22 +247,14 @@ expression = "temperature_daily.resample(time='7D').mean()"
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["temperature", "precipitation", "humidity", "wind_speed", "cloud_fraction"]
+vars = ["temperature"]
 
+# Loaded for its weekly time axis only (emits ``dates_weekly``, which the Zarr
+# store template needs to size the ``time`` dim); no data vars, so no unused-input
+# WiringWarning.
 [inputs.weekly]
 path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["pressure", "radiation", "albedo", "snow_depth", "aerosol"]
-
-[inputs.monthly]
-path = "{synthetic_data_dir / "monthly.nc"}"
-vars = ["dummy_variable"]
-
-[inputs.static]
-path = "{synthetic_data_dir / "static.nc"}"
-vars = [
-  "elevation", "surface_type", "roughness", "soil_moisture",
-  "land_fraction",
-]
+vars = []
 
 [outputs.weekly]
 path = "{out_path}"

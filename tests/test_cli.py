@@ -43,22 +43,7 @@ units = "degC"
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["temperature", "precipitation", "humidity", "wind_speed", "cloud_fraction"]
-
-[inputs.weekly]
-path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["pressure", "radiation", "albedo", "snow_depth", "aerosol"]
-
-[inputs.monthly]
-path = "{synthetic_data_dir / "monthly.nc"}"
-vars = ["dummy_variable"]
-
-[inputs.static]
-path = "{synthetic_data_dir / "static.nc"}"
-vars = [
-  "elevation", "surface_type", "roughness", "soil_moisture",
-  "land_fraction",
-]
+vars = ["temperature"]
 """
     p = tmp_path / "config.toml"
     p.write_text(content)
@@ -78,6 +63,27 @@ class TestVersionCommand:
     def test_shows_version_string(self):
         result = runner.invoke(app, ["version"])
         assert __version__ in result.output
+
+
+class TestGriddedGeoExtraGuard:
+    """`conduit gridded` fails fast with an install hint when `geo` is absent."""
+
+    def test_missing_extra_exits_with_hint(self, monkeypatch):
+        import importlib.util as importutil
+
+        real = importutil.find_spec
+
+        def fake_find_spec(name, *args, **kwargs):
+            if name in ("rioxarray", "pyproj"):
+                return None
+            return real(name, *args, **kwargs)
+
+        monkeypatch.setattr(importutil, "find_spec", fake_find_spec)
+
+        result = runner.invoke(app, ["gridded", "merge", "tests/test_config.toml"])
+        assert result.exit_code == 1
+        assert "conduit[geo]" in result.output
+        assert "rioxarray" in result.output
 
 
 # ---------------------------------------------------------------------------
