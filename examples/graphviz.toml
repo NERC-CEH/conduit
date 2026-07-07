@@ -1,7 +1,7 @@
-# Example styling for `satterc graph --style examples/graphviz.toml`.
+# Example styling for `conduit graph --style examples/graphviz.toml`.
 #
 # Every key is optional: omitted values fall back to the built-in defaults
-# (see `satterc.cli.graph_style.GraphvizSpec`). This file styles the DAG only;
+# (see `conduit.cli.graph_style.GraphvizSpec`). This file styles the DAG only;
 # it is kept separate from the science config so one style can be reused across
 # many pipelines.
 

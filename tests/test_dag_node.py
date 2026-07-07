@@ -1,13 +1,13 @@
-"""Tests for satterc.dag.node — runtime-generated Hamilton modules."""
+"""Tests for conduit.dag.node — runtime-generated Hamilton modules."""
 
 import sys
 import types
 
 import xarray as xr
+from xarray_annotated.units import policy, units_from_signature
 
-from satterc.config import NodeSpec
-from satterc.dag.node import _build_fn_code, make_node_module
-from satterc.units import units_from_signature
+from conduit.config import NodeSpec
+from conduit.dag.node import _build_fn_code, make_node_module
 
 
 def _expr_spec(name, inputs, expression, units=None):
@@ -47,9 +47,10 @@ class TestBuildFnCode:
         code = _build_fn_code(_expr_spec("f", ["a"], "a * 2"))
         assert "return a * 2" in code
 
-    def test_expression_return_type_annotation(self):
+    def test_expression_bare_def_has_no_return_annotation(self):
+        # The contract is attached later by make_node_module, not baked into source.
         code = _build_fn_code(_expr_spec("f", [], "0"))
-        assert "xr.DataArray" in code
+        assert "->" not in code
 
     def test_function_spec_contains_import_module_call(self):
         code = _build_fn_code(_fn_spec("result", ["x"], "math", "sqrt"))
@@ -118,18 +119,26 @@ class TestNodeUnits:
     """A declared `units` makes the node a typed, stamped producer."""
 
     def test_no_units_is_plain_passthrough(self):
-        code = _build_fn_code(_expr_spec("f", ["a"], "a"))
-        assert "-> xr.DataArray" in code
-        assert "@declare_units" not in code
+        mod = make_node_module([_expr_spec("f", ["a"], "a")])
+        # A bare DataArray return and no declared unit.
+        assert mod.f.__annotations__["return"] is xr.DataArray
+        _, out_units = units_from_signature(mod.f)
+        assert out_units is None
 
     def test_units_annotate_return_and_decorate(self):
-        code = _build_fn_code(_expr_spec("f", ["a"], "a", units="g m-2 d-1"))
-        assert "@declare_units" in code
-        assert "Annotated[xr.DataArray, 'g m-2 d-1']" in code
+        mod = make_node_module([_expr_spec("f", ["a"], "a", units="g m-2 d-1")])
+        # annotate() built the return contract, readable by the static check ...
+        _, out_units = units_from_signature(mod.f)
+        assert out_units == "g m-2 d-1"
+        # ... and declare_units stamps it on the output at runtime.
+        with policy(enabled=True):
+            out = mod.f(xr.DataArray([1.0]))
+        assert out.attrs["units"] == "g m-2 d-1"
 
     def test_units_stamped_on_output_at_runtime(self):
         mod = make_node_module([_expr_spec("scaled", ["a"], "a", units="t ha-1")])
-        out = mod.scaled(xr.DataArray([1.0, 2.0]))
+        with policy(enabled=True):
+            out = mod.scaled(xr.DataArray([1.0, 2.0]))
         assert out.attrs["units"] == "t ha-1"
 
     def test_declared_units_reachable_for_static_check(self):

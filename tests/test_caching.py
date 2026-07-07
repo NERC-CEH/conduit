@@ -9,12 +9,12 @@ import pytest
 import xarray as xr
 from hamilton.caching import fingerprinting
 
-import satterc.dag.caching  # noqa: F401  (registers the xarray fingerprint)
-from satterc import CacheSpec
-from satterc.cli.run import _resolve_cache
-from satterc.config import Config, IOSpec, load_config
-from satterc.dag.driver import build_driver
-from satterc.io import get_final_vars
+import conduit.dag.caching  # noqa: F401  (registers the xarray fingerprint)
+from conduit import CacheSpec
+from conduit.cli.run import _resolve_cache
+from conduit.config import Config, IOSpec, load_config
+from conduit.dag.driver import build_driver
+from conduit.io import get_final_vars
 
 
 class TestCacheConfig:
@@ -22,9 +22,11 @@ class TestCacheConfig:
 
     def test_parses_spec(self):
         parsed = Config.loads(
-            '[cache]\npath = "mycache"\nrecompute = ["sgam"]\n'
+            '[cache]\npath = "mycache"\nrecompute = ["mean_temperature"]\n'
         ).parse()
-        assert parsed.cache_spec == CacheSpec(path="mycache", recompute=["sgam"])
+        assert parsed.cache_spec == CacheSpec(
+            path="mycache", recompute=["mean_temperature"]
+        )
 
     def test_defaults_when_minimal(self):
         parsed = Config.loads("[cache]\n").parse()
@@ -35,7 +37,7 @@ class TestCacheConfig:
         assert parsed.cache_spec is None
 
     def test_absent_section(self):
-        parsed = Config.loads("[models.pmodel]\n").parse()
+        parsed = Config.loads("[grid]\n").parse()
         assert parsed.cache_spec is None
 
     def test_recompute_bool(self):
@@ -121,7 +123,7 @@ class TestDataArrayFingerprint:
 
 def _make_counting_module(counter: list) -> types.ModuleType:
     """Build a one-node Hamilton module that records each real computation."""
-    mod = types.ModuleType("satterc_test_cache_mod")
+    mod = types.ModuleType("conduit_test_cache_mod")
 
     def expensive(source: xr.DataArray) -> xr.DataArray:
         counter.append(1)
@@ -190,7 +192,7 @@ class TestPipelineWithCache:
         # A genuinely computed node that is satisfiable from synthetic inputs
         # (resamples temperature_daily).
         final_vars = get_final_vars(
-            {"weekly": IOSpec(path="", vars=["mean_growth_temperature"])}
+            {"weekly": IOSpec(path="", vars=["mean_temperature"])}
         )
         spec = CacheSpec(path=str(tmp_path / "cache"))
 

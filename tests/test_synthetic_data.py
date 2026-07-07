@@ -29,87 +29,63 @@ class TestSyntheticDataGeneration:
         expected_vars = {
             "temperature",
             "precipitation",
-            "sunshine_fraction",
-            "lai",
-            "gpp",
+            "humidity",
+            "wind_speed",
+            "cloud_fraction",
         }
         assert set(daily_ds.data_vars) == expected_vars
 
     def test_weekly_variables(self, weekly_ds):
         """Test weekly dataset contains expected variables."""
         expected_vars = {
-            "co2",
-            "fapar",
-            "ppfd",
             "pressure",
-            "vpd",
+            "radiation",
+            "albedo",
+            "snow_depth",
+            "aerosol",
         }
-        assert expected_vars.issubset(set(weekly_ds.data_vars))
+        assert set(weekly_ds.data_vars) == expected_vars
 
     def test_monthly_variables(self, monthly_ds):
         """Test monthly dataset contains expected variables."""
-        expected_vars = {
-            "dummy_variable",
-            "temperature",
-            "precipitation",
-        }
-        assert expected_vars.issubset(set(monthly_ds.data_vars))
+        assert set(monthly_ds.data_vars) == {"dummy_variable"}
 
     def test_static_variables(self, static_ds):
         """Test static dataset contains expected variables."""
         expected_vars = {
             "elevation",
-            "plant_type",
-            "max_soil_moisture",
-            "clay_content",
-            "soil_depth",
-            "organic_carbon_stocks",
-            "root_pool_init",
-            "leaf_pool_init",
-            "stem_pool_init",
+            "surface_type",
+            "roughness",
+            "soil_moisture",
+            "land_fraction",
         }
         assert set(static_ds.data_vars) == expected_vars
 
 
 class TestSyntheticDataValues:
-    """Tests for synthetic data values."""
+    """Tests for the fixture generator's explicit per-variable value contracts.
 
-    def test_temperature_range(self, daily_ds):
-        """Test temperature is in reasonable range for UK."""
-        temp = daily_ds.temperature.values
-        assert np.nanmin(temp) > -20
-        assert np.nanmax(temp) < 40
+    Each variable is assigned a value shape: ``humidity``/``cloud_fraction`` are
+    bounded to [0, 1]; ``precipitation``/``wind_speed`` are non-negative;
+    ``surface_type`` is integer-valued.
+    """
 
-    def test_precipitation_non_negative(self, daily_ds):
-        """Test precipitation is non-negative."""
-        precip = daily_ds.precipitation.values
-        assert np.nanmin(precip) >= 0
+    def test_bounded_vars_in_unit_interval(self, daily_ds):
+        for name in ("humidity", "cloud_fraction"):
+            assert np.nanmin(daily_ds[name].values) >= 0, name
+            assert np.nanmax(daily_ds[name].values) <= 1, name
 
-    def test_sunshine_fraction_valid(self, daily_ds):
-        """Test sunshine fraction is between 0 and 1."""
-        sunshine = daily_ds.sunshine_fraction.values
-        assert np.nanmin(sunshine) >= 0
-        assert np.nanmax(sunshine) <= 1
+    def test_positive_vars_non_negative(self, daily_ds):
+        for name in ("precipitation", "wind_speed"):
+            assert np.nanmin(daily_ds[name].values) >= 0, name
 
-    def test_lai_valid(self, daily_ds):
-        """Test LAI is non-negative."""
-        lai = daily_ds.lai.values
-        assert np.nanmin(lai) >= 0
+    def test_integer_typed_var_is_integer_valued(self, static_ds):
+        surface_type = static_ds.surface_type.values
+        assert np.all(surface_type == np.round(surface_type))
 
-    def test_gpp_non_negative(self, daily_ds):
-        """Test GPP is non-negative."""
-        gpp = daily_ds.gpp.values
-        assert np.nanmin(gpp) >= 0
-
-    def test_plant_type_valid(self, static_ds):
-        """Test plant type values are valid (1=grassland, 2=C3 crop, 3=woodland)."""
-        assert np.all(np.isin(static_ds.plant_type.values, [1, 2, 3]))
-
-    def test_elevation_reasonable(self, static_ds):
-        """Test elevation is in reasonable range."""
-        elev = static_ds.elevation.values
-        assert np.nanmin(elev) >= 0
-        assert np.nanmax(elev) < 1000
+    def test_no_nan_in_generated_data(self, daily_ds, static_ds):
+        assert not np.any(np.isnan(daily_ds.temperature.values))
+        assert not np.any(np.isnan(static_ds.elevation.values))
 
     def test_crs_metadata(self, daily_ds, static_ds):
         """Test CRS metadata is set correctly."""
