@@ -6,20 +6,22 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from satterc.config import IOSpec, SubsetSpec
-from satterc.io import (
+from conduit.config import IOSpec, SubsetSpec
+from conduit.gridded.io import (
     create_output_store,
     flatten_pixel_index,
-    get_final_vars,
-    get_outputs,
-    load_inputs,
     merge_subset_outputs,
-    save_outputs,
     subset_suffix,
     unstack_pixel,
 )
+from conduit.io import (
+    get_final_vars,
+    get_outputs,
+    load_inputs,
+    save_outputs,
+)
 
-VAR = "mean_growth_temperature"
+VAR = "mean_temperature"
 
 
 def _output_specs(path) -> dict[str, IOSpec]:
@@ -163,7 +165,9 @@ class TestZarrSubset:
         """create-store + region writes cover several frequencies, incl. static."""
         specs = {
             "daily": IOSpec(path=str(tmp_path / "daily.zarr"), vars=["temperature"]),
-            "static": IOSpec(path=str(tmp_path / "static.zarr"), vars=["clay_content"]),
+            "static": IOSpec(
+                path=str(tmp_path / "static.zarr"), vars=["roughness"], suffix=""
+            ),
         }
 
         created = create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
@@ -189,10 +193,10 @@ class TestZarrSubset:
 
         # Static output is pixel-only (no time dimension).
         static = xr.open_zarr(tmp_path / "static.zarr", consolidated=False).compute()
-        assert set(static["clay_content"].dims) == {"pixel"}
+        assert set(static["roughness"].dims) == {"pixel"}
         np.testing.assert_allclose(
-            static["clay_content"].values,
-            ref["static"]["clay_content"].compute().values,
+            static["roughness"].values,
+            ref["static"]["roughness"].compute().values,
             equal_nan=True,
         )
 
@@ -236,34 +240,23 @@ class TestZarrSubset:
 
 def _config_text(synthetic_data_dir, out_path, subset=None, block_size=2):
     blocks = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.rothc]
-n_years_spinup = 1
+[[node]]
+name = "mean_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["precipitation", "sunshine_fraction", "temperature", "lai", "gpp"]
+vars = ["temperature"]
 
+# Loaded for its weekly time axis only (emits ``dates_weekly``, which the Zarr
+# store template needs to size the ``time`` dim); no data vars, so no unused-input
+# WiringWarning.
 [inputs.weekly]
 path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
-
-[inputs.monthly]
-path = "{synthetic_data_dir / "monthly.nc"}"
-vars = ["dummy_variable"]
-
-[inputs.static]
-path = "{synthetic_data_dir / "static.nc"}"
-vars = [
-  "elevation", "plant_type", "max_soil_moisture", "clay_content",
-  "soil_depth", "organic_carbon_stocks", "root_pool_init",
-  "leaf_pool_init", "stem_pool_init",
-]
+vars = []
 
 [outputs.weekly]
 path = "{out_path}"
@@ -283,7 +276,7 @@ class TestCLIParallelWorkflow:
     ):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from conduit.cli import app
 
         store = tmp_path / "weekly.zarr"
         runner = CliRunner()
@@ -296,7 +289,7 @@ class TestCLIParallelWorkflow:
         cfg_b.write_text(_config_text(synthetic_data_dir, store, subset=(2, 4)))
 
         # create-store derives the pixel chunk from [blocking].block_size = 2
-        r = runner.invoke(app, ["create-store", str(base)])
+        r = runner.invoke(app, ["gridded", "create-store", str(base)])
         assert r.exit_code == 0, r.output
         assert store.exists()
 
@@ -322,7 +315,7 @@ class TestCLIParallelWorkflow:
             equal_nan=True,
         )
 
-        r = runner.invoke(app, ["merge", str(base)])
+        r = runner.invoke(app, ["gridded", "merge", str(base)])
         assert r.exit_code == 0, r.output
         assert (tmp_path / "weekly_gridded.zarr").exists()
 
@@ -336,7 +329,7 @@ class TestConcurrentZarrWrites:
     """Mirror the real deployment: N OS processes writing disjoint regions at once.
 
     The sequential tests validate correctness but not concurrency safety. Here we
-    launch genuinely independent ``satterc run`` processes (as ``parallel satterc
+    launch genuinely independent ``conduit run`` processes (as ``parallel conduit
     run`` would) against one shared store and assert no writes are lost.
     """
 
@@ -348,7 +341,7 @@ class TestConcurrentZarrWrites:
 
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from conduit.cli import app
 
         store = tmp_path / "weekly.zarr"
 
@@ -369,7 +362,9 @@ class TestConcurrentZarrWrites:
             shard_cfgs.append(cfg)
 
         # Create the shared store once (pixel chunk = 1) before the parallel writes.
-        r = CliRunner().invoke(app, ["create-store", str(base), "--pixel-chunk", "1"])
+        r = CliRunner().invoke(
+            app, ["gridded", "create-store", str(base), "--pixel-chunk", "1"]
+        )
         assert r.exit_code == 0, r.output
 
         # Launch all shards at once; collect output after they are all running.
@@ -378,7 +373,7 @@ class TestConcurrentZarrWrites:
                 [
                     sys.executable,
                     "-c",
-                    "from satterc.cli import app; app()",
+                    "from conduit.cli import app; app()",
                     "run",
                     str(cfg),
                 ],

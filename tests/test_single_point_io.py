@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from satterc.config import IOSpec
-from satterc.io import (
+from conduit.config import IOSpec
+from conduit.io import (
     dataset_to_dataframe,
     load_inputs,
     load_static,
@@ -271,7 +271,9 @@ class TestLoadInputs:
                 path=str(daily_path),
                 vars=["temperature", "precipitation"],
             ),
-            "static": IOSpec(path=str(static_path), vars=["elevation", "land_cover"]),
+            "static": IOSpec(
+                path=str(static_path), vars=["elevation", "land_cover"], suffix=""
+            ),
         }
         return load_inputs(specs)
 

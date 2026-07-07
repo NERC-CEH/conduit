@@ -8,23 +8,21 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from satterc.config import BlockingSpec, Config, IOSpec
-from satterc.dag.blocking import (
+from conduit.config import BlockingSpec, Config, IOSpec
+from conduit.dag.blocking import (
     _concat_results,
     _make_blocks,
     _pixel_input_names,
     execute_blocked,
 )
-from satterc.dag.driver import build_driver
-from satterc.io import get_final_vars
+from conduit.dag.driver import build_driver
+from conduit.io import get_final_vars
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_FINAL_VARS = get_final_vars(
-    {"weekly": IOSpec(path="", vars=["mean_growth_temperature"])}
-)
+_FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})
 
 
 def _run_unblocked(pipeline_config, pipeline_inputs):
@@ -167,7 +165,7 @@ class TestBlockingSpecValidation:
         assert parsed.blocking_spec == BlockingSpec(block_size=8)
 
     def test_absent_section_gives_none(self):
-        parsed = Config.loads("[models.pmodel]\n").parse()
+        parsed = Config.loads("[grid]\n").parse()
         assert parsed.blocking_spec is None
 
 
@@ -180,7 +178,8 @@ class TestPartitionInvariance:
     """Blocked runs must reproduce the unblocked result exactly, for any partition."""
 
     @pytest.fixture(scope="class")
-    def reference(self, pipeline_config, pipeline_inputs):
+    @classmethod
+    def reference(cls, pipeline_config, pipeline_inputs):
         return _run_unblocked(pipeline_config, pipeline_inputs)
 
     @pytest.mark.parametrize("block_size", [1, 2, 3, 100])
@@ -207,7 +206,7 @@ class TestCachingWithBlocking:
     def test_blocked_cached_matches_unblocked(
         self, pipeline_config, pipeline_inputs, tmp_path
     ):
-        from satterc import CacheSpec
+        from conduit import CacheSpec
 
         spec = BlockingSpec(block_size=2)
         cache = CacheSpec(path=str(tmp_path / "cache"))
@@ -232,44 +231,26 @@ class TestCachingWithBlocking:
 
 
 class TestCLIEndToEnd:
-    """satterc run with a [blocking] section exits zero and writes outputs."""
+    """conduit run with a [blocking] section exits zero and writes outputs."""
 
     @pytest.fixture
     def blocking_config_toml(self, tmp_path, synthetic_data_dir):
         out_path = tmp_path / "outputs.nc"
         content = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
-
-[models.rothc]
-n_years_spinup = 1
+[[node]]
+name = "mean_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["precipitation", "sunshine_fraction", "temperature", "lai", "gpp"]
-
-[inputs.weekly]
-path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
-
-[inputs.monthly]
-path = "{synthetic_data_dir / "monthly.nc"}"
-vars = ["dummy_variable"]
-
-[inputs.static]
-path = "{synthetic_data_dir / "static.nc"}"
-vars = [
-  "elevation", "plant_type", "max_soil_moisture", "clay_content",
-  "soil_depth", "organic_carbon_stocks", "root_pool_init",
-  "leaf_pool_init", "stem_pool_init",
-]
+vars = ["temperature"]
 
 [outputs.weekly]
 path = "{out_path}"
-vars = ["mean_growth_temperature"]
+vars = ["mean_temperature"]
 
 [blocking]
 block_size = 2
@@ -281,7 +262,7 @@ block_size = 2
     def test_exits_zero(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from conduit.cli import app
 
         config_path, _ = blocking_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -290,7 +271,7 @@ block_size = 2
     def test_output_file_written(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from conduit.cli import app
 
         config_path, out_path = blocking_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -300,7 +281,7 @@ block_size = 2
         import xarray as xr
         from typer.testing import CliRunner
 
-        from satterc.cli import app
+        from conduit.cli import app
 
         config_path, out_path = blocking_config_toml
         # Run with blocking.
@@ -308,9 +289,9 @@ block_size = 2
         blocked_ds = xr.open_dataset(out_path)
 
         # Run without blocking for reference.
-        from satterc.config import load_config
-        from satterc.dag.driver import build_driver
-        from satterc.io import get_outputs, load_inputs
+        from conduit.config import load_config
+        from conduit.dag.driver import build_driver
+        from conduit.io import get_outputs, load_inputs
 
         parsed = load_config(config_path)
         parsed.blocking_spec = None

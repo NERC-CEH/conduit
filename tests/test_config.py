@@ -1,16 +1,15 @@
-"""Unit tests for satterc.config."""
+"""Unit tests for conduit.config."""
 
 from pathlib import Path
 
 import pytest
 
-from satterc.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
+from conduit.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
 EXPECTED_MODULES = [
-    "models.pmodel",
-    "models.rothc",
+    "node",  # test_config.toml defines a single [[node]] derived variable
     # resample absent — no [[resample]] entries in test_config.toml
     # inputs/outputs absent — now in input_specs / output_specs, not modules
 ]
@@ -67,12 +66,12 @@ class TestInputSpecs:
         vars_ = parsed_config.input_specs["daily"].vars
         assert "temperature" in vars_
         assert "precipitation" in vars_
-        assert "sunshine_fraction" in vars_
+        assert "humidity" in vars_
 
     def test_static_input_vars(self, parsed_config):
         vars_ = parsed_config.input_specs["static"].vars
         assert "elevation" in vars_
-        assert "clay_content" in vars_
+        assert "roughness" in vars_
 
     def test_input_paths_are_absolute(self, parsed_config):
         for freq, spec in parsed_config.input_specs.items():
@@ -83,6 +82,20 @@ class TestInputSpecs:
             Path(parsed_config.input_specs["daily"].path)
             == TEST_CONFIG_PATH.parent / "daily.nc"
         )
+
+    def test_vars_mapping_form_parsed(self):
+        config = Config(
+            {"inputs": {"met": {"path": "m.nc", "vars": {"temperature_daily": "t2m"}}}}
+        )
+        spec = config.parse().input_specs["met"]
+        assert spec.vars == {"temperature_daily": "t2m"}
+
+    def test_vars_mapping_non_string_raises(self):
+        config = Config(
+            {"inputs": {"met": {"path": "m.nc", "vars": {"temperature": 3}}}}
+        )
+        with pytest.raises(ValueError, match="node_name = file_var"):
+            config.parse()
 
 
 class TestOutputSpecs:
@@ -102,13 +115,20 @@ class TestOutputSpecs:
 
 
 class TestDriverConfig:
-    """Tests for driver_config: model params and resample_specs only."""
+    """Tests for driver_config: module params and node/resample specs only."""
 
-    def test_model_params_merged_into_driver_config(self, parsed_config):
+    def test_node_specs_stashed_in_driver_config(self, parsed_config):
         dc = parsed_config.driver_config
-        assert dc["method_kphio"] == "sandoval"
-        assert dc["method_optchi"] == "lavergne20_c3"
-        assert dc["n_years_spinup"] == 1
+        assert "node_specs" in dc
+        assert [spec.name for spec in dc["node_specs"]] == ["mean_temperature_weekly"]
+
+    def test_module_params_merged_into_driver_config(self):
+        config = Config(
+            {"mymodel": {"_import_path": "pkg.mod", "threshold": 0.5, "mode": "fast"}}
+        )
+        dc = config.parse().driver_config
+        assert dc["threshold"] == 0.5
+        assert dc["mode"] == "fast"
 
     def test_no_io_path_keys_in_driver_config(self, parsed_config):
         dc = parsed_config.driver_config
@@ -145,25 +165,23 @@ class TestPathResolution:
 class TestValidation:
     """Tests for config validation behaviour."""
 
-    def test_unknown_model_raises_value_error(self, tmp_path):
-        config = Config({"models": {"unknown_model": {"param": "value"}}})
+    def test_non_importable_module_raises_value_error(self, tmp_path):
+        config = Config({"mymodel": {"_import_path": "no_such_pkg.mod"}})
 
         def _build():
-            from satterc.dag.driver import build_driver
+            from conduit.dag.driver import build_driver
 
             parsed = config.parse()
             build_driver(parsed.modules, parsed.driver_config)
 
-        with pytest.raises(ValueError, match="unknown_model"):
+        with pytest.raises(ValueError, match="Cannot load module"):
             _build()
 
-    def test_duplicate_model_params_raise(self, tmp_path):
+    def test_duplicate_module_params_raise(self, tmp_path):
         config = Config(
             {
-                "models": {
-                    "pmodel": {"shared_param": "a"},
-                    "splash": {"shared_param": "b"},
-                }
+                "mod_a": {"_import_path": "pkg.a", "shared_param": "a"},
+                "mod_b": {"_import_path": "pkg.b", "shared_param": "b"},
             }
         )
         with pytest.raises(ValueError, match="shared_param"):
@@ -214,78 +232,89 @@ class TestGrid:
     """Tests for [grid] section parsing — now a no-op."""
 
     def test_grid_section_does_not_add_grid_module(self):
-        config = Config({"grid": {}, "models": {"pmodel": {}}})
+        config = Config({"grid": {}})
         parsed = config.parse()
         assert "grid" not in parsed.modules
 
     def test_no_grid_section_also_fine(self):
-        config = Config({"models": {"pmodel": {}}})
+        config = Config({"grid": {}})
         parsed = config.parse()
         assert "grid" not in parsed.modules
 
 
 class TestResample:
-    """Tests for [[resample]] section parsing."""
+    """Tests for [[resample]] preset parsing (desugars to fan-out node specs)."""
 
-    def test_resample_adds_resample_module(self):
+    def test_resample_adds_node_module(self):
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"}
                 ],
             }
         )
         parsed = config.parse()
-        assert "resample" in parsed.modules
+        assert parsed.modules == ["node"]
+        assert "resample_specs" not in parsed.driver_config
 
-    def test_no_resample_omits_resample_module(self):
-        config = Config({"models": {"pmodel": {}}})
+    def test_no_resample_omits_node_module(self):
+        config = Config({"grid": {}})
         parsed = config.parse()
-        assert "resample" not in parsed.modules
+        assert "node" not in parsed.modules
 
-    def test_resample_specs_in_driver_config(self):
-        from satterc.config import ResampleSpec
-
+    def test_resample_desugars_to_passthrough_node_specs(self):
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp", "npp"], "from_freq": "daily", "to_freq": "weekly"}
                 ],
             }
         )
-        parsed = config.parse()
-        specs = parsed.driver_config["resample_specs"]
-        assert len(specs) == 1
-        assert isinstance(specs[0], ResampleSpec)
-        assert specs[0].vars == ["gpp", "npp"]
-        assert specs[0].source_freq == "daily"
-        assert specs[0].target_freq == "weekly"
+        specs = config.parse().driver_config["node_specs"]
+        by_name = {s.name: s for s in specs}
+        assert set(by_name) == {"gpp_weekly", "npp_weekly"}
+        assert by_name["gpp_weekly"].inputs == ["gpp_daily"]
+        assert by_name["gpp_weekly"].passthrough is True
+        assert "freq='7D'" in by_name["gpp_weekly"].expression
+
+    def test_explicit_freq_in_expression(self):
+        config = Config(
+            {
+                "resample": [
+                    {
+                        "vars": ["gpp"],
+                        "from_freq": "daily",
+                        "to_freq": "tenday",
+                        "freq": "10D",
+                    }
+                ],
+            }
+        )
+        spec = config.parse().driver_config["node_specs"][0]
+        assert spec.name == "gpp_tenday"
+        assert "freq='10D'" in spec.expression
 
     def test_duplicate_resample_output_raises(self):
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"},
                     {"vars": ["gpp"], "from_freq": "weekly", "to_freq": "monthly"},
                 ],
             }
         )
-        with pytest.raises(ValueError, match="Duplicate resample output"):
+        with pytest.raises(ValueError, match="Duplicate node name"):
             config.parse()
 
     def test_unsupported_freq_pair_raises(self):
         config = Config(
             {
-                "models": {"pmodel": {}},
                 "resample": [
                     {"vars": ["gpp"], "from_freq": "monthly", "to_freq": "daily"}
                 ],
             }
         )
-        with pytest.raises(ValueError, match="Unsupported resample direction"):
+        with pytest.raises(ValueError, match="No default offset"):
             config.parse()
 
 
@@ -308,7 +337,7 @@ class TestNode:
         assert "node" in parsed.modules
 
     def test_no_node_omits_node_module(self):
-        config = Config({"models": {"pmodel": {}}})
+        config = Config({"grid": {}})
         parsed = config.parse()
         assert "node" not in parsed.modules
 
@@ -339,10 +368,10 @@ class TestNode:
             {
                 "node": [
                     {
-                        "name": "mean_growth_temperature_weekly",
+                        "name": "mean_temperature_weekly",
                         "inputs": ["temperature_daily"],
                         "_import_path": "mypackage.met_utils",
-                        "function": "mean_growth_temperature",
+                        "function": "mean_temperature",
                     }
                 ]
             }
@@ -352,7 +381,7 @@ class TestNode:
         assert isinstance(spec, NodeSpec)
         assert spec.expression is None
         assert spec.import_path == "mypackage.met_utils"
-        assert spec.function == "mean_growth_temperature"
+        assert spec.function == "mean_temperature"
 
     def test_node_units_parsed(self):
         config = Config(
@@ -465,6 +494,37 @@ class TestMultipleFrequencies:
         parsed = config.parse()
         assert "daily" in parsed.output_specs
         assert "monthly" in parsed.output_specs
+
+
+class TestAnnotationsSection:
+    """Tests for the [annotations] section and its legacy [units] alias."""
+
+    def test_units_alias_mode_and_exact(self):
+        parsed = Config({"units": {"mode": "strict", "exact": True}}).parse()
+        assert parsed.units_on_missing == "error"
+        assert parsed.units_on_inexact == "error"
+        assert parsed.schema_on_mismatch is None
+
+    def test_mode_off_disables(self):
+        parsed = Config({"annotations": {"mode": "off"}}).parse()
+        assert parsed.units_enabled is False
+
+    def test_on_mismatch_drives_schema(self):
+        parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
+        assert parsed.schema_on_mismatch == "warn"
+
+    def test_invalid_on_mismatch_raises(self):
+        with pytest.raises(ValueError, match="on_mismatch"):
+            Config({"annotations": {"on_mismatch": "explode"}}).parse()
+
+    def test_both_sections_raise(self):
+        with pytest.raises(ValueError, match="not both"):
+            Config({"annotations": {}, "units": {}}).parse()
+
+    def test_absent_section_is_all_none(self):
+        parsed = Config({}).parse()
+        assert parsed.units_enabled is None
+        assert parsed.schema_on_mismatch is None
 
 
 class TestExternalModules:

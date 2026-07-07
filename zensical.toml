@@ -2,71 +2,68 @@
 
 use_directory_urls = false
 
-site_name = "satterc"
-site_description = "A Python framework for data-driven terrestrial carbon modelling based on Directed Acyclic Graphs."
+site_name = "conduit"
+site_description = "An opinionated Hamilton + xarray + pint foundation for geoscientific data pipelines."
 site_author = "Joe Marsh Rossney"
-site_url = "https://satterc.github.io/satterc"
+site_url = "https://NERC-CEH.github.io/conduit"
 
-repo_name = "SatTerC/satterc"
-repo_url = "https://github.com/SatTerC/satterc"
+repo_name = "NERC-CEH/conduit"
+repo_url = "https://github.com/NERC-CEH/conduit"
 
 copyright = "Copyright &copy; 2026 The authors"
 
 nav = [
   { "Home" = "index.md" },
-  { "Getting Started" = [
-      "getting_started/installation.md",
-      "getting_started/quickstart.md",
-      "getting_started/concepts.md",
-      "getting_started/contributing.md",
+  { "Get started" = [
+      "get-started/install.md",
+      "get-started/first-pipeline.md",
+      "get-started/units-and-contracts.md",
   ]},
-  { "Usage" = [
-      "usage/config.md",
-      "usage/api.md",
-      "usage/cli.md",
-      "usage/data-formats.md",
-      "usage/custom-modules.md",
-      "usage/troubleshooting.md",
+  { "Concepts" = [
+      "concepts/why-conduit.md",
+      "concepts/dag-model.md",
+      "concepts/contracts.md",
+      "concepts/scaling.md",
   ]},
-  { "Models" = [
-      "models/index.md",
-      "models/splash.md",
-      "models/pmodel.md",
-      "models/sgam.md",
-      "models/rothc.md",
+  { "Guides" = [
+      "guides/bring-your-own-module.md",
+      "guides/inline-nodes-and-fan-out.md",
+      "guides/drive-from-python.md",
+      "guides/run-and-visualise.md",
+      "guides/validate-before-running.md",
+      "guides/scale-up.md",
   ]},
-  { "Examples" = [
-      "examples/my_first_pipeline.md",
-      "examples/soil_moisture.md",
-      "examples/pft_parameters.md",
-      "examples/full_pipeline.md",
+  { "Reference" = [
+      "reference/configuration.md",
+      "reference/data-formats.md",
+      "reference/troubleshooting.md",
+      { "API" = [
+          "api/conduit.cli/index.md",
+          "api/conduit.cli/cli.md",
+          "api/conduit.cli/graph.md",
+          "api/conduit.cli/run.md",
+          "api/conduit.cli/version.md",
+          "api/conduit.config.md",
+          "api/conduit.io.md",
+          "api/conduit.transforms.md",
+          "api/conduit.dag.driver.md",
+          "api/conduit.dag/node.md",
+          "api/conduit.dag/contract_check.md",
+          "api/conduit.dag/wiring_check.md",
+          "api/conduit.dag/caching.md",
+          "api/conduit.dag/blocking.md",
+          "api/conduit.gridded/spatial.md",
+          "api/conduit.gridded/io.md",
+          "api/conduit.gridded/cli.md",
+      ]},
   ]},
-  { "API Reference" = [
-      "api/satterc.cli/index.md",
-      "api/satterc.cli/cli.md",
-      "api/satterc.cli/graph.md",
-      "api/satterc.cli/run.md",
-      "api/satterc.cli/setup.md",
-      "api/satterc.cli/data_gen.md",
-      "api/satterc.cli/version.md",
-      "api/satterc.config.md",
-      "api/satterc.dag.driver.md",
-      "api/satterc.dag/splash.md",
-      "api/satterc.dag/pmodel.md",
-      "api/satterc.dag/sgam.md",
-      "api/satterc.dag/rothc.md",
-      "api/satterc.dag/resample.md",
-      "api/satterc.setup_utils/config_gen.md",
-      "api/satterc.setup_utils/data_gen/daily.md",
-      "api/satterc.setup_utils/data_gen/fallback.md",
-      "api/satterc.setup_utils/data_gen/generate.md",
-      "api/satterc.setup_utils/data_gen/static.md",
+  { "Recipes" = [
+      "recipes/index.md",
   ]},
 ]
 
 # Katex
 extra_javascript = [
-    "_static/js/marimo-button.js",
     "_static/js/katex.js",
     "https://unpkg.com/katex@0/dist/katex.min.js",
     "https://unpkg.com/katex@0/dist/contrib/auto-render.min.js"

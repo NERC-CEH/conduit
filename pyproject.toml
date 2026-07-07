@@ -3,45 +3,43 @@ requires = ["uv_build>=0.8.10,<0.9.0"]
 build-backend = "uv_build"
 
 [project]
-name = "satterc"
-version = "0.4.1"
-description = "Add your description here"
+name = "conduit"
+version = "0.1.0"
+description = "A unit-safe, scalable foundation for building configurable xarray data pipelines and forward models."
 authors = [
     { name = "jmarshrossney", email = "17361029+jmarshrossney@users.noreply.github.com" }
 ]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "apache-hamilton>=1.90.0",
-    "cf-xarray>=0.11.3",
     "dask>=2025.1.0",
     "netcdf4>=1.7.4",
     "numpy>=2.4.2",
-    "pint>=0.25.3",
-    "pint-xarray>=0.6.1",
     "pyarrow>=10.0",
-    "pyproj>=3.7.2",
-    "rioxarray>=0.22.0",
     "tomli-w>=1.2.0",
     "typer>=0.24.1",
     "xarray>=2026.2.0",
+    "xarray-annotated[cf] @ git+https://github.com/jmarshrossney/xarray-annotated.git",
     "zarr>=3.2.1",
 ]
 
 [project.optional-dependencies]
 viz = ["apache-hamilton[visualization]>=1.90.0"]
-models = ["pyrealm>=2.0.0", "rothc-py", "sgam"]
-all = ["satterc[viz,models]"]
+# Geospatial inputs (CRS-aware (y, x) -> pixel stacking and lat/lon reprojection).
+# Only needed when inputs carry CRS metadata; imported lazily by conduit.io.
+geo = ["pyproj>=3.7.2", "rioxarray>=0.22.0"]
+all = ["conduit[viz,geo]"]
 
 [project.scripts]
-satterc = "satterc.cli:main"
+conduit = "conduit.cli:main"
 
 [project.urls]
-Homepage = "https://SatTerC.github.io/satterc"
-Repository = "https://github.com/SatTerC/satterc"
-Documentation = "https://SatTerC.github.io/satterc"
+Homepage = "https://github.com/NERC-CEH/conduit"
+Repository = "https://github.com/NERC-CEH/conduit"
+Documentation = "https://github.com/NERC-CEH/conduit"
 
 [dependency-groups]
 dev = [
@@ -54,7 +52,7 @@ dev = [
 ]
 docs = [
     {include-group = "examples"},
-    "satterc[all]",  # examples and API docs import the model modules
+    "conduit[viz]",
     "marimo>=0.23.0",
     "marimo-md-export>=0.5.2",
     "mkdocstrings-python>=2.0.3",
@@ -64,18 +62,21 @@ examples = [
     "matplotlib>=3.10.8",
 ]
 test = [
-    "satterc[models]",  # the test suite imports pyrealm/sgam/rothc
+    "conduit[viz,geo]",
     "coverage>=7.13.5",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
 ]
 
-[tool.uv]
-exclude-newer = "1 week"
-
-[tool.uv.sources]
-rothc-py = { git = "https://github.com/SatTerC/rothc_py.git" }
-sgam = { git = "https://github.com/SatTerC/sgam.git" }
+[tool.pytest]
+testpaths = ["tests"]
+filterwarnings = [
+    # netCDF4 1.7.4 sets .shape on numpy arrays, deprecated in numpy>=2.5.
+    # The upstream fix belongs in netCDF4's _netCDF4.pyx (use np.reshape
+    # with copy=False instead of assigning .shape). Suppress until resolved.
+    # https://github.com/Unidata/netcdf4-python
+    "ignore:Setting the shape on a NumPy array:DeprecationWarning:xarray",
+]
 
 [tool.pyright]
 venvPath = "."
@@ -85,7 +86,7 @@ include = ["src/", "tests/"]
 [tool.ruff]
 line-length = 88
 indent-width = 4
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -106,21 +107,18 @@ select = [
 "tests/**" = ["D", "E501"]
 "scripts/**" = ["D"]
 # Typer CLI modules use typer.Option() in function signatures as standard practice.
-"src/satterc/cli/**" = ["B008"]
+"src/conduit/cli/**" = ["B008"]
 # Marimo notebooks use bare expressions for display output (B018),
 # contain prose that naturally exceeds 88 chars (E501),
 # include academic citations with en dashes (RUF001),
 # may have unused variables from exploratory cells (F841),
 # use scientific notation with Greek letters (RUF003),
 # and are exploratory notebooks without module docstrings (D100, D401).
-"examples/**" = ["B018", "E501", "F841", "RUF001", "RUF003", "D100", "D401"]
+"examples/**" = ["B018", "E501", "F841", "RUF001", "RUF003", "D100", "D401", "F821"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
-[tool.pytest.ini_options]
-filterwarnings = [
-    "ignore:'where' used without 'out':UserWarning",
-    "ignore:\\s*Pyrealm 2\\.0\\.0 uses a new default.*:UserWarning",
-    "ignore::pyrealm.core.experimental.ExperimentalFeatureWarning",
-]
+[tool.uv]
+exclude-newer = "1 week"
+exclude-newer-package = { marimo-md-export = false }

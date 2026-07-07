@@ -1,11 +1,11 @@
-"""Tests for the ``satterc run --dry-run`` pre-flight and its building blocks.
+"""Tests for the ``conduit run --dry-run`` pre-flight and its building blocks.
 
 Three layers:
 
-- direct tests of :func:`satterc.dag.unit_check.check_input_units` (the runtime,
+- direct tests of :func:`conduit.dag.contract_check.check_input_units` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
-- direct tests of :func:`satterc.io.assert_output_paths_writable`;
+- direct tests of :func:`conduit.io.assert_output_paths_writable`;
 - CLI integration tests of the broader pre-flight (config / inputs / DAG plan /
   output paths) via ``runner.invoke(app, ["run", ..., "--dry-run"])``.
 """
@@ -17,19 +17,19 @@ import pint
 import pytest
 import xarray as xr
 from typer.testing import CliRunner
+from xarray_annotated.units import UnitsWarning, policy
 
-from satterc import UnitsWarning
-from satterc.cli import app
-from satterc.config import IOSpec, ResampleSpec, SubsetSpec
-from satterc.dag.driver import build_driver
-from satterc.dag.unit_check import check_input_units
-from satterc.io import assert_output_paths_writable
+from conduit.cli import app
+from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec
+from conduit.dag.contract_check import check_input_units
+from conduit.dag.driver import build_driver
+from conduit.io import assert_output_paths_writable
 
 runner = CliRunner()
 
 
 # ---------------------------------------------------------------------------
-# Helpers (mirrors tests/test_unit_check.py: build Hamilton-scannable modules
+# Helpers (mirrors tests/test_contract_check.py: build Hamilton-scannable modules
 # from dynamically generated functions).
 # ---------------------------------------------------------------------------
 
@@ -60,7 +60,7 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from satterc.dag._utils import declare_units\n"
+        "from xarray_annotated.units import declare_units\n"
         "class _Out(TypedDict):\n"
         f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
         "@extract_fields()\n"
@@ -93,50 +93,66 @@ class TestCheckInputUnitsDirect:
         return build_driver(["vpd_cons"], {})
 
     def test_matching_units_pass(self, dr):
-        check_input_units(dr, {"vpd_weekly": _input("Pa")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"vpd_weekly": _input("Pa")})
 
     def test_compatible_units_convert_without_error(self, dr):
-        # hPa <-> Pa is a valid, intentional conversion; must not fail.
-        check_input_units(dr, {"vpd_weekly": _input("hPa")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"vpd_weekly": _input("hPa")})
 
     def test_exact_match_rejects_compatible_but_different(self, dr):
-        with pytest.raises(ValueError, match="exact"):
-            check_input_units(
-                dr, {"vpd_weekly": _input("hPa")}, mode="strict", exact=True
-            )
+        with (
+            policy(enabled=True, on_missing="error", on_inexact="error"),
+            pytest.raises(ValueError, match="on_inexact"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("hPa")})
 
     def test_incompatible_units_raise(self, dr):
-        with pytest.raises(pint.DimensionalityError):
-            check_input_units(dr, {"vpd_weekly": _input("kg")}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(pint.DimensionalityError),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("kg")})
 
     def test_missing_units_strict_raises(self, dr):
-        with pytest.raises(ValueError, match="no 'units' attribute"):
-            check_input_units(dr, {"vpd_weekly": _input(None)}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(ValueError, match="no 'units' attribute"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input(None)})
 
     def test_missing_units_warn_warns(self, dr):
-        with pytest.warns(UnitsWarning, match="unvalidated"):
-            check_input_units(dr, {"vpd_weekly": _input(None)}, mode="warn")
+        with (
+            policy(enabled=True, on_missing="warn"),
+            pytest.warns(UnitsWarning, match="unvalidated"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input(None)})
 
     def test_unparseable_units_strict_raises(self, dr):
-        # A present-but-unparseable units string is as un-validatable as a missing
-        # one; in strict mode it raises a clear error rather than an opaque one.
-        with pytest.raises(ValueError, match="unparseable"):
-            check_input_units(dr, {"vpd_weekly": _input("fraction")}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(ValueError, match="unparseable"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("fraction")})
 
     def test_unparseable_units_warn_warns(self, dr):
-        with pytest.warns(UnitsWarning, match="unparseable"):
-            check_input_units(dr, {"vpd_weekly": _input("fraction")}, mode="warn")
+        with (
+            policy(enabled=True, on_missing="warn"),
+            pytest.warns(UnitsWarning, match="unparseable"),
+        ):
+            check_input_units(dr, {"vpd_weekly": _input("fraction")})
 
     def test_off_mode_skips_everything(self, dr):
-        # Even a dimensionally incompatible unit is ignored in 'off' mode.
-        check_input_units(dr, {"vpd_weekly": _input("kg")}, mode="off")
+        with policy(enabled=False):
+            check_input_units(dr, {"vpd_weekly": _input("kg")})
 
     def test_input_without_declared_consumer_ignored(self, dr):
-        # An input the DAG does not consume with a declared unit is left alone.
-        check_input_units(dr, {"some_other_var": _input("kg")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"some_other_var": _input("kg")})
 
     def test_non_dataarray_inputs_ignored(self, dr):
-        check_input_units(dr, {"vpd_weekly": 3.0}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"vpd_weekly": 3.0})
 
 
 # ---------------------------------------------------------------------------
@@ -146,27 +162,33 @@ class TestCheckInputUnitsDirect:
 
 class TestCheckInputUnitsPropagation:
     def _resample_driver(self, register):
-        """External ``gpp_weekly`` -> resample -> ``gpp_monthly`` consumed as a rate."""
+        """External ``gpp_weekly`` -> passthrough resample -> ``gpp_monthly`` (rate)."""
+        from conduit.config import expand_node_entries, resample_to_node_entry
+
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
-        specs = [
+        entry = resample_to_node_entry(
             ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly")
-        ]
-        return build_driver(["resample", "rs_cons"], {"resample_specs": specs})
+        )
+        specs = [NodeSpec.from_config(e) for e in expand_node_entries([entry])]
+        return build_driver(["node", "rs_cons"], {"node_specs": specs})
 
     def test_resample_routed_input_is_validated(self, register):
         dr = self._resample_driver(register)
-        # Wrong units on the raw weekly input are caught via backward propagation.
-        with pytest.raises(pint.DimensionalityError):
-            check_input_units(dr, {"gpp_weekly": _input("kg")}, mode="strict")
+        with (
+            policy(enabled=True, on_missing="error"),
+            pytest.raises(pint.DimensionalityError),
+        ):
+            check_input_units(dr, {"gpp_weekly": _input("kg")})
 
     def test_resample_routed_input_passes_when_correct(self, register):
         dr = self._resample_driver(register)
-        check_input_units(dr, {"gpp_weekly": _input("g m-2 d-1")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"gpp_weekly": _input("g m-2 d-1")})
 
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
         declaring consumer is not validated, since a node can change units."""
-        from satterc.config import NodeSpec
+        from conduit.config import NodeSpec
 
         register("dv_cons", _consumer("g m-2 d-1", in_name="flux"))
         specs = [
@@ -180,8 +202,8 @@ class TestCheckInputUnitsPropagation:
             )
         ]
         dr = build_driver(["node", "dv_cons"], {"node_specs": specs})
-        # Raw inputs 'a'/'b' carry no derivable expectation -> not checked.
-        check_input_units(dr, {"a": _input("kg"), "b": _input("kg")}, mode="strict")
+        with policy(enabled=True, on_missing="error"):
+            check_input_units(dr, {"a": _input("kg"), "b": _input("kg")})
 
 
 # ---------------------------------------------------------------------------
@@ -218,38 +240,23 @@ class TestAssertOutputPathsWritable:
 
 
 # ---------------------------------------------------------------------------
-# CLI: satterc run --dry-run
+# CLI: conduit run --dry-run
 # ---------------------------------------------------------------------------
 
 
 def _config(tmp_path, synthetic_data_dir, outputs: str = "") -> str:
     """Write a config pointing at the session synthetic data, with optional outputs."""
     content = f"""\
-[models.pmodel]
-method_kphio = "sandoval"
-method_optchi = "lavergne20_c3"
+[[node]]
+name = "mean_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
 
 [grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
-vars = ["precipitation", "sunshine_fraction", "temperature", "lai", "gpp"]
-
-[inputs.weekly]
-path = "{synthetic_data_dir / "weekly.nc"}"
-vars = ["co2", "fapar", "ppfd", "pressure", "vpd"]
-
-[inputs.monthly]
-path = "{synthetic_data_dir / "monthly.nc"}"
-vars = ["dummy_variable"]
-
-[inputs.static]
-path = "{synthetic_data_dir / "static.nc"}"
-vars = [
-  "elevation", "plant_type", "max_soil_moisture", "clay_content",
-  "soil_depth", "organic_carbon_stocks", "root_pool_init",
-  "leaf_pool_init", "stem_pool_init",
-]
+vars = ["temperature"]
 {outputs}
 """
     p = tmp_path / "config.toml"

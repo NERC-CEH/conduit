@@ -1,4 +1,4 @@
-"""End-to-end integration tests for the full satterc pipeline.
+"""End-to-end integration tests for the full conduit pipeline.
 
 These tests call load_inputs() with the test config and synthetic data,
 then execute pipeline nodes to verify the full stack — config → load_inputs
@@ -7,8 +7,8 @@ then execute pipeline nodes to verify the full stack — config → load_inputs
 
 import numpy as np
 
-from satterc.config import IOSpec
-from satterc.io import get_final_vars
+from conduit.config import IOSpec
+from conduit.io import get_final_vars
 
 N_PIXELS = 4  # 2x2 grid
 N_DAYS = 365
@@ -24,7 +24,7 @@ class TestLoadedInputs:
         assert da.sizes["pixel"] == N_PIXELS
 
     def test_weekly_input_shape(self, pipeline_inputs):
-        da = pipeline_inputs["co2_weekly"]
+        da = pipeline_inputs["pressure_weekly"]
         assert 50 <= da.sizes["time"] <= 54
         assert da.sizes["pixel"] == N_PIXELS
 
@@ -42,13 +42,13 @@ class TestLoadedInputs:
         for name in (
             "temperature_daily",
             "precipitation_daily",
-            "sunshine_fraction_daily",
+            "humidity_daily",
         ):
             da = pipeline_inputs[name]
             assert not np.any(np.isnan(da.values)), f"{name} contains NaN"
 
     def test_no_nan_in_static_inputs(self, pipeline_inputs):
-        for name in ("elevation", "max_soil_moisture", "clay_content"):
+        for name in ("elevation", "roughness", "soil_moisture"):
             da = pipeline_inputs[name]
             assert not np.any(np.isnan(da.values)), f"{name} contains NaN"
 
@@ -82,19 +82,19 @@ class TestDriverExecution:
         """get_final_vars() produces valid final_vars across daily, weekly, monthly."""
         output_specs = {
             "daily": IOSpec(path="", vars=["temperature"]),
-            "weekly": IOSpec(path="", vars=["co2"]),
+            "weekly": IOSpec(path="", vars=["pressure"]),
             "monthly": IOSpec(path="", vars=["dummy_variable"]),
         }
         final_vars = get_final_vars(output_specs)
         assert final_vars == [
             "temperature_daily",
-            "co2_weekly",
+            "pressure_weekly",
             "dummy_variable_monthly",
         ]
         results = pipeline_driver.execute(final_vars, inputs=pipeline_inputs)
         assert all(v in results for v in final_vars)
         assert results["temperature_daily"].sizes["pixel"] == N_PIXELS
-        assert results["co2_weekly"].sizes["pixel"] == N_PIXELS
+        assert results["pressure_weekly"].sizes["pixel"] == N_PIXELS
         assert results["dummy_variable_monthly"].sizes["pixel"] == N_PIXELS
 
     def test_get_final_vars_single_frequency(self, pipeline_driver, pipeline_inputs):
