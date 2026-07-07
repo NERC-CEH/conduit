@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .config import RESAMPLE_FREQ_MAP, IOSpec, SubsetSpec
+from .config import IOSpec, SubsetSpec
 
 
 def effective_suffix(label: str, spec: IOSpec) -> str:
@@ -197,35 +197,6 @@ def _validate_dates(ds: xr.Dataset, freq: str) -> pd.DatetimeIndex:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers: cross-frequency temporal alignment
-# ---------------------------------------------------------------------------
-
-
-def _validate_temporal_alignment(dates: dict[str, pd.DatetimeIndex]) -> None:
-    """Raise ValueError if coarser-frequency dates are not valid resample labels.
-
-    For each (fine, coarse) pair in RESAMPLE_FREQ_MAP where both are present,
-    derives the expected coarse timestamps by resampling the fine index and
-    checks that all actual coarse dates are a subset of those expected timestamps.
-    Pairs where one or both frequencies are absent are silently skipped.
-    """
-    for (fine, coarse), freq in RESAMPLE_FREQ_MAP.items():
-        if fine not in dates or coarse not in dates:
-            continue
-        expected = pd.DatetimeIndex(
-            pd.Series(0, index=dates[fine]).resample(freq).mean().index
-        )
-        misaligned = dates[coarse][~dates[coarse].isin(expected)]
-        if len(misaligned) > 0:
-            raise ValueError(
-                f"Temporal alignment check failed for '{fine}' → '{coarse}': "
-                f"the following '{coarse}' timestamps are not valid '{freq}' "
-                f"resample period labels from the '{fine}' index: "
-                f"{misaligned.tolist()}"
-            )
-
-
-# ---------------------------------------------------------------------------
 # Internal helpers: saving datasets
 # ---------------------------------------------------------------------------
 
@@ -278,6 +249,16 @@ def _save(ds: xr.Dataset, path: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
+    """Open every configured input as a raw ``Dataset`` (pre-stack, pre-subset).
+
+    The single source of truth for "load the raw input files": `load_inputs`
+    calls it internally, and the input-checks pre-flight calls it too. Opens are
+    lazy (metadata only), so calling it twice per run is cheap.
+    """
+    return {label: _load_raw(spec.path) for label, spec in input_specs.items()}
+
+
 def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
@@ -319,9 +300,7 @@ def load_inputs(
     from .gridded.io import compute_lat_lon, has_crs, stack_if_gridded
 
     inputs: dict[str, Any] = {}
-    raw_datasets: dict[str, xr.Dataset] = {
-        label: _load_raw(spec.path) for label, spec in input_specs.items()
-    }
+    raw_datasets = load_raw_datasets(input_specs)
 
     # Invariant: at most one time dimension per input dataset. A second datetime
     # axis makes "the time dimension" ambiguous (for validation, resampling, and
@@ -357,13 +336,6 @@ def load_inputs(
                 if label in _FREQ_CODES
                 else _time_index(ds_raw, label)
             )
-
-    dates = {
-        key[len("dates_") :]: val
-        for key, val in inputs.items()
-        if key.startswith("dates_")
-    }
-    _validate_temporal_alignment(dates)
 
     if geospatial:
         spatial = {label: ds for label, ds in raw_datasets.items() if has_crs(ds)}
