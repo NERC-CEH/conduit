@@ -38,14 +38,12 @@ it, don't bypass it.
 All common tasks are managed via `just` (see `justfile`):
 
 ```bash
-just lint            # ruff format + check + marimo notebook lint (modifies files)
+just lint            # ruff format + check --fix (modifies files)
 just lint-check      # same as lint but read-only (used in CI)
 just typecheck       # pyright static type check
 just test            # pytest only (no lint)
 just test-cov        # pytest with coverage report (fails under 90%)
 just docs            # build docs with zensical
-just export <name>   # export a marimo example notebook to markdown + HTML
-just export-all      # export all example notebooks
 ```
 
 Run a single test file:
@@ -123,8 +121,7 @@ Tests in `tests/` use session-scoped fixtures that generate synthetic netCDF dat
 
 ### Examples
 
-`examples/` holds two marimo notebooks — `getting_started.py` (end-to-end pipeline) and
-`unit_safe_pipelines.py` (the units feature) — each pinning `conduit==<version>` in its
-inline `# /// script` block (update on a version bump, then `just export-all`). It also
-holds `graphviz.toml`, a commented `conduit graph --style` template (a user-facing
-reference, not loaded by any tooling).
+`examples/` holds `graphviz.toml`, a commented `conduit graph --style` template (a
+user-facing reference, not loaded by any tooling). The hands-on tutorials live in the docs
+(`docs/get-started/`, `docs/guides/`) as prose pages rather than exported marimo notebooks;
+`notes/DOCS_DRIFT_GUARDS.md` tracks the deferred plan to make those pages executable again.

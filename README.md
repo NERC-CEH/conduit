@@ -12,9 +12,10 @@ conduit adds three things that are hard to get any other way:
 - **Config *is* the DAG.** Describe — and compose, parameterise and fan out — a whole pipeline
   in a plain [TOML](https://toml.io) file. Import your own modules or define glue nodes inline;
   the config doubles as a complete, reproducible provenance record of the run.
-- **Scale-up as a config knob, not a rewrite.** The same functions run in-memory, out-of-core
-  ([dask](https://www.dask.org/)), or across parallel processes over Zarr — you change the
-  config, not the code.
+- **Scale-up as a config knob, not a rewrite.** The same functions run in-memory, blocked, or
+  across parallel processes writing to a shared Zarr store — you change the config, not the
+  code — and stream lazily out-of-core ([dask](https://www.dask.org/)) when you feed them
+  dask-backed inputs.
 
 Under the hood it composes [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
 (the DAG), xarray (labelled N-D arrays), and

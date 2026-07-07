@@ -20,9 +20,10 @@ three things that are hard to get any other way:
 - **Config *is* the DAG.** Describe — and compose, parameterise and fan out — a whole pipeline
   in a plain [TOML](https://toml.io) file. The config doubles as a complete, reproducible
   provenance record of the run.
-- **Scale-up as a config knob, not a rewrite.** The *same* functions run in-memory,
-  out-of-core ([dask](https://www.dask.org/)), or across parallel processes writing to a
-  shared Zarr store — driven by config, not by rewriting your code.
+- **Scale-up as a config knob, not a rewrite.** The *same* functions run in-memory, blocked,
+  or across parallel processes writing to a shared Zarr store — driven by config, not by
+  rewriting your code — and stream lazily out-of-core ([dask](https://www.dask.org/)) when you
+  feed them dask-backed inputs.
 
 Under the hood conduit composes [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
 (the DAG engine), xarray (labelled N-D arrays), and
@@ -65,9 +66,10 @@ Get a pipeline running in a few minutes — see [Your first pipeline](get-starte
   inline (`[[node]]`), with `for_each` fan-out and `{var}` templating to generate many nodes
   from one spec. Explicit, aliasable file↔node mapping (`{node_name: file_var}`) with
   collision detection; the config is stamped into outputs as a reproducible provenance record.
-- **Scale without a rewrite** — the same functions run in-memory, out-of-core (dask), with
-  content-addressed result caching, memory-bounded blocked execution, or parallel subset
-  runs over a shared Zarr store — all driven by config, not code changes.
+- **Scale without a rewrite** — the same functions run in-memory, with content-addressed
+  result caching, memory-bounded blocked execution, or parallel subset runs over a shared Zarr
+  store — all driven by config, not code changes — and stream lazily out-of-core (dask) when
+  fed dask-backed inputs.
 - **Reusable transforms & presets** — annotation-preserving transforms (e.g. `resample`)
   wired in as passthrough nodes; `[[resample]]` is a thin preset over the general fan-out
   engine.
