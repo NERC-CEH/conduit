@@ -16,13 +16,13 @@ def effective_suffix(label: str, spec: IOSpec) -> str:
     """Resolve the node-name suffix for an input/output section.
 
     Honours an explicit ``IOSpec.suffix`` when set; otherwise defaults to
-    ``_<label>``, except the conventional ``static`` label which defaults to
-    ``""`` (bare names). This is the single place the frequency-suffix naming
-    convention is applied, so it is opt-out and not a hard requirement.
+    ``_<label>``. This is the single place the frequency-suffix naming
+    convention is applied, so it is opt-out (set ``suffix = ""`` for bare
+    names) and not a hard requirement.
     """
     if spec.suffix is not None:
         return spec.suffix
-    return "" if label == "static" else f"_{label}"
+    return f"_{label}"
 
 
 def var_mapping(
@@ -134,6 +134,26 @@ def _load_raw(path: str) -> xr.Dataset:
 # ---------------------------------------------------------------------------
 
 _FREQ_CODES: dict[str, str] = {"daily": "D", "weekly": "W", "monthly": "ME"}
+
+
+def _time_dims(ds: xr.Dataset) -> list[str]:
+    """Names of ``ds`` dimensions whose coordinate is datetime-like.
+
+    A dimension counts as temporal when its dimension coordinate is a NumPy
+    ``datetime64`` array or a cftime index (``CFTimeIndex``). Scalar or
+    non-dimension datetime coordinates do not count — only true dimensions. This
+    is the basis of the "at most one time dimension per input dataset" invariant
+    enforced in `load_inputs`.
+    """
+    dims: list[str] = []
+    for dim in ds.dims:
+        coord = ds.coords.get(dim)
+        if coord is not None and (
+            np.issubdtype(coord.dtype, np.datetime64)
+            or type(ds.indexes.get(dim)).__name__ == "CFTimeIndex"
+        ):
+            dims.append(str(dim))
+    return dims
 
 
 def _time_index(ds: xr.Dataset, label: str = "time") -> pd.DatetimeIndex:
@@ -266,8 +286,9 @@ def load_inputs(
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
     Node names are formed from each section's variables and its
-    `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily`` or, for a
-    bare section, ``elevation``). A ``time`` dimension is auto-detected per
+    `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily``, or
+    ``elevation`` for a section that sets ``suffix = ""``). A ``time`` dimension
+    is auto-detected per
     section: when present a ``dates_{label}`` index is emitted, and its frequency
     is *validated* only for sections whose label is a known frequency
     (``daily``/``weekly``/``monthly``) — arbitrary labels are accepted without
@@ -301,6 +322,18 @@ def load_inputs(
     raw_datasets: dict[str, xr.Dataset] = {
         label: _load_raw(spec.path) for label, spec in input_specs.items()
     }
+
+    # Invariant: at most one time dimension per input dataset. A second datetime
+    # axis makes "the time dimension" ambiguous (for validation, resampling, and
+    # output-store construction), so reject it up front with a clear message.
+    for label, ds in raw_datasets.items():
+        tdims = _time_dims(ds)
+        if len(tdims) > 1:
+            raise ValueError(
+                f"[inputs.{label}] has multiple time dimensions {sorted(tdims)}; "
+                f"conduit requires at most one time dimension per input dataset. "
+                f"Merge, select, or rename the extra datetime axis before loading."
+            )
 
     if geospatial is None:
         geospatial = any(has_crs(ds) for ds in raw_datasets.values())

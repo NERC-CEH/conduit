@@ -17,11 +17,13 @@ import xarray as xr
 from conduit.config import IOSpec
 from conduit.io import (
     _save_netcdf,
+    _time_dims,
     _validate_dates,
     _validate_temporal_alignment,
     get_final_vars,
     get_outputs,
     load_dataset,
+    load_inputs,
     save_outputs,
 )
 
@@ -54,12 +56,6 @@ def _simple_ds(times=DAILY_TIMES, n_pixels=N_PIXELS):
     return xr.Dataset(
         {"var_a": (["time", "pixel"], RNG.random((len(times), n_pixels)))},
         coords={"time": times, "pixel": np.arange(n_pixels)},
-    )
-
-
-def _static_da(values):
-    return xr.DataArray(
-        values, dims=["pixel"], coords={"pixel": np.arange(len(values))}
     )
 
 
@@ -267,14 +263,18 @@ class TestGetFinalVars:
             "soc_monthly",
         ]
 
-    def test_static_no_suffix(self, tmp_path):
-        specs = {"static": IOSpec(path=str(tmp_path / "s.nc"), vars=["elevation"])}
+    def test_bare_names_via_empty_suffix(self, tmp_path):
+        specs = {
+            "static": IOSpec(path=str(tmp_path / "s.nc"), vars=["elevation"], suffix="")
+        }
         assert get_final_vars(specs) == ["elevation"]
 
-    def test_static_mixed_with_temporal(self, tmp_path):
+    def test_bare_section_mixed_with_temporal(self, tmp_path):
         specs = {
             "daily": IOSpec(path=str(tmp_path / "d.nc"), vars=["gpp"]),
-            "static": IOSpec(path=str(tmp_path / "s.nc"), vars=["elevation", "clay"]),
+            "static": IOSpec(
+                path=str(tmp_path / "s.nc"), vars=["elevation", "clay"], suffix=""
+            ),
         }
         result = get_final_vars(specs)
         assert result == ["gpp_daily", "elevation", "clay"]
@@ -331,6 +331,34 @@ class TestSaveOutputs:
 # ---------------------------------------------------------------------------
 # _validate_temporal_alignment
 # ---------------------------------------------------------------------------
+
+
+class TestSingleTimeDim:
+    """load_inputs enforces at most one time dimension per input dataset."""
+
+    def test_time_dims_detects_datetime_dimension(self):
+        ds = _simple_ds()  # dims (time, pixel), only `time` is datetime
+        assert _time_dims(ds) == ["time"]
+
+    def test_time_dims_ignores_non_datetime_dims(self):
+        ds = xr.Dataset(
+            {"x": (("band",), np.arange(3))}, coords={"band": ["r", "g", "b"]}
+        )
+        assert _time_dims(ds) == []
+
+    def test_two_time_dims_raises(self, tmp_path):
+        # A cube with two datetime axes (e.g. observation time + forecast lead time).
+        t1 = pd.date_range("2020-01-01", periods=4, freq="D")
+        t2 = pd.date_range("2020-06-01", periods=3, freq="D")
+        ds = xr.Dataset(
+            {"forecast": (("time", "lead_time"), np.zeros((4, 3)))},
+            coords={"time": t1, "lead_time": t2},
+        )
+        path = tmp_path / "two_time.nc"
+        ds.to_netcdf(path, engine="netcdf4")
+        specs = {"fc": IOSpec(path=str(path), vars=["forecast"])}
+        with pytest.raises(ValueError, match="multiple time dimensions"):
+            load_inputs(specs)
 
 
 class TestValidateTemporalAlignment:

@@ -25,8 +25,8 @@ class TestVarMapping:
         spec = IOSpec(path="p", vars=["temperature"])
         assert var_mapping("daily", spec) == {"temperature_daily": "temperature"}
 
-    def test_static_list_form_is_bare(self):
-        spec = IOSpec(path="p", vars=["elevation"])
+    def test_empty_suffix_gives_bare_names(self):
+        spec = IOSpec(path="p", vars=["elevation"], suffix="")
         assert var_mapping("static", spec) == {"elevation": "elevation"}
 
     def test_mapping_form_is_verbatim_and_suffix_free(self):

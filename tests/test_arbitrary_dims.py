@@ -27,8 +27,9 @@ def _write_scene(path) -> None:
 
 
 def test_effective_suffix_rules():
+    # The default suffix is ``_<label>`` for every label, with no special cases.
     assert effective_suffix("daily", IOSpec(path="", vars=[])) == "_daily"
-    assert effective_suffix("static", IOSpec(path="", vars=[])) == ""
+    assert effective_suffix("static", IOSpec(path="", vars=[])) == "_static"
     assert effective_suffix("scene", IOSpec(path="", vars=[])) == "_scene"
     # explicit override wins, including bare names on any label
     assert effective_suffix("daily", IOSpec(path="", vars=[], suffix="")) == ""

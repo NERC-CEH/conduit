@@ -79,8 +79,8 @@ engine. A run proceeds in four stages:
 
 Every node has a unique name. Input nodes combine the file variable with the section
 suffix (`{var}{suffix}`), so `temperature` under `[inputs.climate]` becomes
-`temperature_climate`. The suffix is a *convention* — `_<label>` by default, bare for
-the conventional `static` label, or whatever you set — see
+`temperature_climate`. The suffix is a *convention* — `_<label>` by default, `""`
+(bare names) or whatever you set via `suffix` — see
 [Configuration › inputs](../reference/configuration.md#inputs). An explicit `vars`
 mapping lets you decouple file names from node names entirely.
 

@@ -34,6 +34,7 @@ vars = ["temperature", "precipitation"]
 
 [inputs.static]
 path = "data/static.nc"
+suffix = ""
 vars = ["elevation"]
 ```
 
@@ -47,8 +48,8 @@ vars = ["elevation"]
 
 - A **list** — `vars = ["temperature"]` — names each node `{var}{suffix}`. The suffix
   defaults to `_<label>` (so `temperature` under `[inputs.daily]` → node
-  `temperature_daily`), except the conventional `static` label, which uses bare names.
-  Set `suffix = ""` for bare names on any section, or `suffix = "_x"` for a custom one.
+  `temperature_daily`). Set `suffix = ""` for bare names on any section (e.g. a
+  `static` section, as above), or `suffix = "_x"` for a custom one.
 - A **mapping** — `vars = {temperature_daily = "t2m"}` — an explicit, suffix-free alias
   reading file variable `t2m` as node `temperature_daily`. Use this to decouple file
   naming from DAG naming.

@@ -37,6 +37,7 @@ vars = [
 
 [inputs.static]
 path = "static.nc"
+suffix = ""
 vars = [
   "elevation",
   "surface_type",

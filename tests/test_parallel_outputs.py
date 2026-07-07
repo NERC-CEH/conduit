@@ -165,7 +165,9 @@ class TestZarrSubset:
         """create-store + region writes cover several frequencies, incl. static."""
         specs = {
             "daily": IOSpec(path=str(tmp_path / "daily.zarr"), vars=["temperature"]),
-            "static": IOSpec(path=str(tmp_path / "static.zarr"), vars=["roughness"]),
+            "static": IOSpec(
+                path=str(tmp_path / "static.zarr"), vars=["roughness"], suffix=""
+            ),
         }
 
         created = create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)

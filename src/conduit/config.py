@@ -260,11 +260,10 @@ class IOSpec:
       naming, or to alias a variable without renaming the file.
 
     ``suffix`` controls the list form's node names. When ``None`` (the default) the
-    effective suffix is derived from the section label: ``_<label>`` for a
-    temporal/grouped section, or ``""`` (bare names) for the conventional ``static``
-    label. Set ``suffix = ""`` on any section for bare names, or ``suffix = "_x"``
-    to choose an explicit suffix. It is ignored for the mapping form (which is
-    already explicit). See ``conduit.io.effective_suffix``.
+    effective suffix is derived from the section label (``_<label>``). Set
+    ``suffix = ""`` on any section for bare names, or ``suffix = "_x"`` to choose an
+    explicit suffix. It is ignored for the mapping form (which is already explicit).
+    See ``conduit.io.effective_suffix``.
     """
 
     path: str
