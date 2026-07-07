@@ -12,7 +12,7 @@ authors = [
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "apache-hamilton>=1.90.0",
     "dask>=2025.1.0",
@@ -86,7 +86,7 @@ include = ["src/", "tests/"]
 [tool.ruff]
 line-length = 88
 indent-width = 4
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
