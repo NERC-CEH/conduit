@@ -294,6 +294,20 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
 
 
 @dataclass
+class CheckSpec:
+    """One entry of ``[validation].checks``: a named input-compatibility check.
+
+    ``check`` is a key in `conduit.checks.CHECKS`; ``inputs`` are the resolved
+    ``[inputs.*]`` section labels to pass (``["*"]`` already expanded at parse
+    time); ``kwargs`` are the remaining inline-table keys forwarded verbatim.
+    """
+
+    check: str
+    inputs: list[str]
+    kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ParsedConfig:
     """Parsed pipeline configuration, ready to pass to build_driver."""
 
@@ -304,6 +318,7 @@ class ParsedConfig:
     cache_spec: "CacheSpec | None" = None
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
+    checks: list["CheckSpec"] = field(default_factory=list)
     units_enabled: bool | None = None
     units_on_missing: str | None = None
     units_on_inexact: str | None = None
@@ -523,6 +538,68 @@ class Config:
             return None
         return SubsetSpec.from_config(entry)
 
+    def _parse_checks(
+        self, data: dict, input_specs: dict[str, "IOSpec"]
+    ) -> list["CheckSpec"]:
+        """Handle the ``[validation]`` table's ``checks`` array.
+
+        ``[validation]`` groups declared expectations to validate (as opposed to
+        DAG structure). For each entry in its ``checks`` list this validates the
+        check name (against the registry), expands ``["*"]`` to all input labels,
+        checks every named input exists, and validates arity — all at parse time.
+        Remaining inline-table keys become forwarded ``kwargs``.
+        """
+        section = data.pop("validation", {})
+        unknown_keys = set(section) - {"checks"}
+        if unknown_keys:
+            raise ValueError(
+                f"[validation] has unknown key(s) {sorted(unknown_keys)}; "
+                f"only 'checks' is supported"
+            )
+        entries = section.get("checks", [])
+        # Lazy import breaks the config -> checks -> io -> config cycle.
+        from .checks import CHECKS
+
+        specs: list[CheckSpec] = []
+        for entry in entries:
+            entry = dict(entry)
+            if "check" not in entry:
+                raise ValueError(f"checks entry {entry!r} is missing a 'check' key")
+            name = entry.pop("check")
+            if name not in CHECKS:
+                raise ValueError(
+                    f"unknown check {name!r}; known checks: {sorted(CHECKS)}"
+                )
+            raw_inputs = entry.pop("inputs", None)
+            if not raw_inputs:
+                raise ValueError(f"check {name!r} is missing a non-empty 'inputs' list")
+
+            if "*" in raw_inputs:
+                if raw_inputs != ["*"]:
+                    raise ValueError(
+                        f"check {name!r}: '*' must be the sole element of 'inputs', "
+                        f"got {raw_inputs!r}"
+                    )
+                inputs = list(input_specs)
+            else:
+                inputs = list(raw_inputs)
+                unknown = [s for s in inputs if s not in input_specs]
+                if unknown:
+                    raise ValueError(
+                        f"check {name!r} references unknown input section(s) "
+                        f"{unknown}; known: {sorted(input_specs)}"
+                    )
+
+            arity = CHECKS[name].arity
+            if arity != "variadic" and len(inputs) != arity:
+                raise ValueError(
+                    f"check {name!r} takes exactly {arity} input(s), "
+                    f"got {len(inputs)}: {inputs}"
+                )
+
+            specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
+        return specs
+
     def _parse_annotations(
         self, data: dict
     ) -> tuple[bool | None, str | None, str | None, str | None]:
@@ -605,6 +682,8 @@ class Config:
 
         Recognised top-level sections (processed directly):
         - [inputs.*]      — I/O specs; freq derived from subsection key
+        - [validation]    — declared expectations to validate; `checks` holds the
+                            input-Dataset compatibility checks (see conduit.checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [grid]          — silently accepted (grid computation is now in load_inputs())
         - [graphviz]      — silently ignored (DAG styling is a `graph --style` file)
@@ -629,6 +708,7 @@ class Config:
         self._parse_grid(data)
         self._parse_graphviz(data)
         self._parse_inputs(data, input_specs)
+        checks = self._parse_checks(data, input_specs)
         self._parse_outputs(data, output_specs)
         modules += self._parse_nodes(data, driver_config)
         cache_spec = self._parse_cache(data)
@@ -649,6 +729,7 @@ class Config:
             cache_spec=cache_spec,
             blocking_spec=blocking_spec,
             subset_spec=subset_spec,
+            checks=checks,
             units_enabled=units_enabled,
             units_on_missing=units_on_missing,
             units_on_inexact=units_on_inexact,

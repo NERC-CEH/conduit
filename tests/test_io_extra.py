@@ -19,7 +19,6 @@ from conduit.io import (
     _save_netcdf,
     _time_dims,
     _validate_dates,
-    _validate_temporal_alignment,
     get_final_vars,
     get_outputs,
     load_dataset,
@@ -38,18 +37,6 @@ DAILY_TIMES = pd.date_range("2020-01-01", periods=N_TIMES, freq="D")
 WEEKLY_TIMES = pd.date_range("2020-01-01", periods=N_TIMES, freq="7D")
 MONTHLY_TIMES = pd.date_range("2020-01-01", periods=N_TIMES, freq="ME")
 RNG = np.random.default_rng(0)
-
-# Constants for cross-frequency alignment tests
-DAILY_YEAR = pd.date_range("2020-01-01", periods=365, freq="D")
-WEEKLY_ALIGNED = pd.date_range("2020-01-01", periods=52, freq="7D")
-WEEKLY_PARTIAL = pd.date_range(
-    "2020-01-08", periods=4, freq="7D"
-)  # subset of WEEKLY_ALIGNED
-WEEKLY_WRONG_DAY = pd.date_range(
-    "2020-01-03", periods=5, freq="7D"
-)  # Friday start, not on 7D grid from Jan 1
-MONTHLY_ALIGNED = pd.date_range("2020-01-31", periods=12, freq="ME")  # month-end labels
-MONTHLY_WRONG = pd.date_range("2020-01-01", periods=12, freq="MS")  # month-start labels
 
 
 def _simple_ds(times=DAILY_TIMES, n_pixels=N_PIXELS):
@@ -329,7 +316,7 @@ class TestSaveOutputs:
 
 
 # ---------------------------------------------------------------------------
-# _validate_temporal_alignment
+# Single time-dimension invariant
 # ---------------------------------------------------------------------------
 
 
@@ -359,56 +346,3 @@ class TestSingleTimeDim:
         specs = {"fc": IOSpec(path=str(path), vars=["forecast"])}
         with pytest.raises(ValueError, match="multiple time dimensions"):
             load_inputs(specs)
-
-
-class TestValidateTemporalAlignment:
-    """_validate_temporal_alignment checks coarser dates ⊆ expected resample labels."""
-
-    def test_aligned_daily_weekly_passes(self):
-        _validate_temporal_alignment({"daily": DAILY_YEAR, "weekly": WEEKLY_ALIGNED})
-
-    def test_aligned_daily_monthly_passes(self):
-        _validate_temporal_alignment({"daily": DAILY_YEAR, "monthly": MONTHLY_ALIGNED})
-
-    def test_aligned_weekly_monthly_passes(self):
-        weekly = pd.date_range("2020-01-01", periods=52, freq="7D")
-        monthly = pd.date_range("2020-01-31", periods=12, freq="ME")
-        _validate_temporal_alignment({"weekly": weekly, "monthly": monthly})
-
-    def test_only_daily_no_check(self):
-        _validate_temporal_alignment({"daily": DAILY_YEAR})
-
-    def test_only_monthly_no_check(self):
-        _validate_temporal_alignment({"monthly": MONTHLY_ALIGNED})
-
-    def test_empty_no_check(self):
-        _validate_temporal_alignment({})
-
-    def test_partial_subset_passes(self):
-        # Coarse data covering only part of the fine date range is valid
-        _validate_temporal_alignment({"daily": DAILY_YEAR, "weekly": WEEKLY_PARTIAL})
-
-    def test_wrong_weekday_raises(self):
-        with pytest.raises(ValueError, match="Temporal alignment check failed"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "weekly": WEEKLY_WRONG_DAY}
-            )
-
-    def test_wrong_month_convention_raises(self):
-        with pytest.raises(ValueError, match="Temporal alignment check failed"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "monthly": MONTHLY_WRONG}
-            )
-
-    def test_coarse_outside_fine_range_raises(self):
-        weekly_outside = pd.date_range("2022-01-01", periods=5, freq="7D")
-        with pytest.raises(ValueError, match="Temporal alignment check failed"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "weekly": weekly_outside}
-            )
-
-    def test_error_message_names_frequencies(self):
-        with pytest.raises(ValueError, match="'daily' → 'weekly'"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "weekly": WEEKLY_WRONG_DAY}
-            )

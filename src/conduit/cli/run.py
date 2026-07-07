@@ -94,6 +94,8 @@ def run(
 
     inputs = load_inputs(parsed.input_specs, subset_spec=parsed.subset_spec)
 
+    _run_input_checks(parsed)
+
     dr = build_driver(
         modules=parsed.modules,
         config=parsed.driver_config,
@@ -116,6 +118,30 @@ def run(
             subset_spec=parsed.subset_spec,
             provenance=_config_provenance(config_file),
         )
+
+
+def _run_input_checks(parsed: "ParsedConfig") -> int:
+    """Run the configured input-compatibility checks before the DAG is built.
+
+    Returns the number of checks run (0 if none configured). Under ``[subset]``
+    the checks operate on a pixel slice rather than the full domain, so they are
+    skipped with a warning recommending a full-domain ``--dry-run``. A failure
+    raises `conduit.checks.InputCheckError`.
+    """
+    if not parsed.checks:
+        return 0
+    if parsed.subset_spec is not None:
+        warnings.warn(
+            "input checks skipped under [subset]; run `conduit run --dry-run` on "
+            "the full domain to validate them",
+            stacklevel=2,
+        )
+        return 0
+    from ..checks import run_input_checks
+    from ..io import load_raw_datasets
+
+    run_input_checks(load_raw_datasets(parsed.input_specs), parsed.checks)
+    return len(parsed.checks)
 
 
 def _config_provenance(config_file: Path) -> dict[str, str]:
@@ -153,6 +179,15 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
         f"  ✓ inputs loaded: {len(inputs)} variable(s) "
         f"from {len(parsed.input_specs)} source(s)"
     )
+
+    if parsed.checks:
+        n_checks = _run_input_checks(parsed)
+        if n_checks:
+            typer.echo(f"  ✓ input checks passed ({n_checks})")
+        else:
+            typer.echo("  - input checks: skipped (running under [subset])")
+    else:
+        typer.echo("  - input checks: none configured")
 
     # Caching is an execution-time adapter; disable it so the dry run creates no
     # cache directory. The graph structure and unit checks are unaffected.

@@ -201,6 +201,49 @@ pixel_end   = 500    # exclusive
 | `pixel_start` | **Required.** First pixel index (inclusive, zero-based). |
 | `pixel_end` | **Required.** One past the last index (exclusive); must exceed `pixel_start`. |
 
+## Validation
+
+`[validation]` groups **declarations about properties you expect and want to check** — as
+opposed to the DAG's structure, which conduit derives on its own. Its `checks` array runs
+a suite of input-Dataset compatibility checks before compute (and as a stage of
+[`--dry-run`](../guides/validate-before-running.md)).
+
+```toml
+[validation]
+checks = [
+  { check = "spatial_grid_equal", inputs = ["*"] },
+  { check = "time_equal",         inputs = ["climate", "land"] },
+  { check = "coords_equal",       inputs = ["*"], coords = ["level"] },
+]
+```
+
+Each entry names a `check` and the `inputs` to pass it. `check` and `inputs` are reserved;
+**every other key is forwarded verbatim as a keyword argument** to the check (e.g.
+`coords`, `atol`).
+
+| Key | Description |
+|-----|-------------|
+| `check` | **Required.** The check to run (see below). |
+| `inputs` | **Required.** `[inputs.*]` labels to compare, in order. `["*"]` means *all* input sections (declaration order) and must be the sole element. |
+| *others* | Forwarded as keyword arguments to the named check. |
+
+Available checks:
+
+| `check` | Inputs | Asserts |
+|---------|--------|---------|
+| `time_equal` | any | all inputs share an identical time index |
+| `time_subset` | exactly 2 | the second input's timestamps are a subset of the first's |
+| `spatial_grid_equal` | any | all inputs share a CRS, x/y dims, and coordinate values (`atol`) |
+| `crs_equal` | any | all inputs share a CRS |
+| `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
+
+The checks are a real importable library (`conduit.checks`), so the
+[notebook-driven path](../guides/drive-from-python.md) calls them directly — the config
+list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
+block conduit performs no cross-input validation (it does not guess which inputs are
+*meant* to align — only you know that). Under [`[subset]`](#subset) they are skipped, with
+a warning, since they describe the whole domain rather than a single shard.
+
 ## Annotations
 
 `[annotations]` controls how contract declarations (units + schema: dims/coords/dtype)
@@ -244,6 +287,8 @@ conversion), or set `exact = true` to forbid implicit temperature conversions.
 
 ## See also
 
+- [Validate before running](../guides/validate-before-running.md) — the `--dry-run`
+  pre-flight, the wiring check, and the `[validation]` input checks.
 - [Data formats](data-formats.md) — supported file types and spatial/temporal handling.
 - [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) — the `[[node]]` and
   `[[resample]]` guide.

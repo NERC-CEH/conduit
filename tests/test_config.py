@@ -590,3 +590,84 @@ class TestDump:
         config = Config.load(TEST_CONFIG_PATH)
         config.dump(out_path, overwrite_ok=True)
         assert out_path.stat().st_size > 0
+
+
+class TestCheckSpecs:
+    """Tests for the `[validation].checks` block parsing (_parse_checks)."""
+
+    def _cfg(self, checks):
+        return Config(
+            {
+                "inputs": {
+                    "climate": {"path": "c.nc", "vars": ["temperature"]},
+                    "land": {"path": "l.nc", "vars": ["elevation"]},
+                },
+                "validation": {"checks": checks},
+            }
+        )
+
+    def test_no_validation_section_defaults_empty(self):
+        assert Config({"inputs": {"a": {"path": "a.nc"}}}).parse().checks == []
+
+    def test_empty_validation_section_defaults_empty(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {}})
+        assert cfg.parse().checks == []
+
+    def test_unknown_validation_key_rejected(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {"chekcs": []}})
+        with pytest.raises(ValueError, match="unknown key"):
+            cfg.parse()
+
+    def test_basic_check_parsed(self):
+        parsed = self._cfg(
+            [{"check": "time_equal", "inputs": ["climate", "land"]}]
+        ).parse()
+        assert len(parsed.checks) == 1
+        spec = parsed.checks[0]
+        assert spec.check == "time_equal"
+        assert spec.inputs == ["climate", "land"]
+        assert spec.kwargs == {}
+
+    def test_wildcard_expands_to_all_inputs(self):
+        parsed = self._cfg([{"check": "time_equal", "inputs": ["*"]}]).parse()
+        assert parsed.checks[0].inputs == ["climate", "land"]
+
+    def test_wildcard_mixed_with_names_rejected(self):
+        with pytest.raises(ValueError, match="sole element"):
+            self._cfg([{"check": "time_equal", "inputs": ["*", "climate"]}]).parse()
+
+    def test_unknown_check_name_rejected(self):
+        with pytest.raises(ValueError, match="unknown check"):
+            self._cfg([{"check": "nope", "inputs": ["climate"]}]).parse()
+
+    def test_unknown_input_section_rejected(self):
+        with pytest.raises(ValueError, match="unknown input section"):
+            self._cfg([{"check": "time_equal", "inputs": ["climate", "sea"]}]).parse()
+
+    def test_kwargs_forwarded(self):
+        parsed = self._cfg(
+            [{"check": "coords_equal", "inputs": ["*"], "coords": ["latitude"]}]
+        ).parse()
+        assert parsed.checks[0].kwargs == {"coords": ["latitude"]}
+
+    def test_fixed_arity_violation_rejected(self):
+        # time_subset requires exactly 2 inputs; ["*"] expands to 2 here — OK —
+        # but 3 explicit inputs is a parse-time arity error.
+        cfg = Config(
+            {
+                "inputs": {
+                    "a": {"path": "a.nc"},
+                    "b": {"path": "b.nc"},
+                    "c": {"path": "c.nc"},
+                },
+                "validation": {
+                    "checks": [{"check": "time_subset", "inputs": ["a", "b", "c"]}]
+                },
+            }
+        )
+        with pytest.raises(ValueError, match="exactly 2 input"):
+            cfg.parse()
+
+    def test_missing_inputs_key_rejected(self):
+        with pytest.raises(ValueError, match="missing a non-empty 'inputs'"):
+            self._cfg([{"check": "time_equal"}]).parse()
