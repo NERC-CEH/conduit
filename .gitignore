@@ -19,6 +19,4 @@ __marimo__/
 
 .claude/
 
-# Docs pages generated from marimo notebooks by `just export-all`
-docs/get-started/units-and-contracts.md
-docs/guides/drive-from-python.md
+docs/examples
