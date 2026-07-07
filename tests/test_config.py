@@ -593,7 +593,7 @@ class TestDump:
 
 
 class TestCheckSpecs:
-    """Tests for the `checks = [...]` block parsing (_parse_checks)."""
+    """Tests for the `[validation].checks` block parsing (_parse_checks)."""
 
     def _cfg(self, checks):
         return Config(
@@ -602,12 +602,21 @@ class TestCheckSpecs:
                     "climate": {"path": "c.nc", "vars": ["temperature"]},
                     "land": {"path": "l.nc", "vars": ["elevation"]},
                 },
-                "checks": checks,
+                "validation": {"checks": checks},
             }
         )
 
-    def test_no_checks_defaults_empty(self):
+    def test_no_validation_section_defaults_empty(self):
         assert Config({"inputs": {"a": {"path": "a.nc"}}}).parse().checks == []
+
+    def test_empty_validation_section_defaults_empty(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {}})
+        assert cfg.parse().checks == []
+
+    def test_unknown_validation_key_rejected(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {"chekcs": []}})
+        with pytest.raises(ValueError, match="unknown key"):
+            cfg.parse()
 
     def test_basic_check_parsed(self):
         parsed = self._cfg(
@@ -651,7 +660,9 @@ class TestCheckSpecs:
                     "b": {"path": "b.nc"},
                     "c": {"path": "c.nc"},
                 },
-                "checks": [{"check": "time_subset", "inputs": ["a", "b", "c"]}],
+                "validation": {
+                    "checks": [{"check": "time_subset", "inputs": ["a", "b", "c"]}]
+                },
             }
         )
         with pytest.raises(ValueError, match="exactly 2 input"):

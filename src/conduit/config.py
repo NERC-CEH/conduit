@@ -295,7 +295,7 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
 
 @dataclass
 class CheckSpec:
-    """One entry of the ``checks = [...]`` block: a named input-compatibility check.
+    """One entry of ``[validation].checks``: a named input-compatibility check.
 
     ``check`` is a key in `conduit.checks.CHECKS`; ``inputs`` are the resolved
     ``[inputs.*]`` section labels to pass (``["*"]`` already expanded at parse
@@ -541,13 +541,22 @@ class Config:
     def _parse_checks(
         self, data: dict, input_specs: dict[str, "IOSpec"]
     ) -> list["CheckSpec"]:
-        """Handle the ``checks = [...]`` array of input-compatibility checks.
+        """Handle the ``[validation]`` table's ``checks`` array.
 
-        Validates the check name (against the registry), expands ``["*"]`` to all
-        input labels, checks every named input exists, and validates arity — all
-        at parse time. Remaining inline-table keys become forwarded ``kwargs``.
+        ``[validation]`` groups declared expectations to validate (as opposed to
+        DAG structure). For each entry in its ``checks`` list this validates the
+        check name (against the registry), expands ``["*"]`` to all input labels,
+        checks every named input exists, and validates arity — all at parse time.
+        Remaining inline-table keys become forwarded ``kwargs``.
         """
-        entries = data.pop("checks", [])
+        section = data.pop("validation", {})
+        unknown_keys = set(section) - {"checks"}
+        if unknown_keys:
+            raise ValueError(
+                f"[validation] has unknown key(s) {sorted(unknown_keys)}; "
+                f"only 'checks' is supported"
+            )
+        entries = section.get("checks", [])
         # Lazy import breaks the config -> checks -> io -> config cycle.
         from .checks import CHECKS
 
@@ -673,7 +682,8 @@ class Config:
 
         Recognised top-level sections (processed directly):
         - [inputs.*]      — I/O specs; freq derived from subsection key
-        - checks = [...]  — input-Dataset compatibility checks (see conduit.checks)
+        - [validation]    — declared expectations to validate; `checks` holds the
+                            input-Dataset compatibility checks (see conduit.checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [grid]          — silently accepted (grid computation is now in load_inputs())
         - [graphviz]      — silently ignored (DAG styling is a `graph --style` file)

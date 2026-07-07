@@ -3,7 +3,7 @@
 A small library of pairwise/variadic predicates over input ``Dataset``s,
 ``check_X(*datasets, **kwargs) -> None`` (raise on failure, return ``None`` on
 pass), plus a registry (`CHECKS`) and a runner (`run_input_checks`) that applies
-a parsed ``checks = [...]`` config block and aggregates failures.
+a parsed ``[validation].checks`` config block and aggregates failures.
 
 Every check here is a statement about the inputs *alone* — no DAG operation is
 baked in. Operation-coupled guarantees (e.g. "does a resample node land on the
