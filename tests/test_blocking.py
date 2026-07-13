@@ -10,9 +10,9 @@ import xarray as xr
 
 from conduit.config import BlockingSpec, Config, IOSpec
 from conduit.dag.blocking import (
+    _block_input_names,
     _concat_results,
     _make_blocks,
-    _pixel_input_names,
     execute_blocked,
 )
 from conduit.dag.driver import build_driver
@@ -49,17 +49,17 @@ def _run_blocked(pipeline_config, pipeline_inputs, block_size):
 # ---------------------------------------------------------------------------
 
 
-class TestPixelInputNames:
+class TestBlockInputNames:
     def test_identifies_pixel_arrays(self):
         da_pixel = xr.DataArray(np.zeros((3, 4)), dims=["time", "pixel"])
         da_time = xr.DataArray(np.zeros(3), dims=["time"])
         scalar = 42
         inputs = {"a": da_pixel, "b": da_time, "c": scalar}
-        assert _pixel_input_names(inputs) == ["a"]
+        assert _block_input_names(inputs) == ["a"]
 
     def test_empty_when_no_pixel_dim(self):
         inputs = {"x": xr.DataArray(np.zeros(3), dims=["time"])}
-        assert _pixel_input_names(inputs) == []
+        assert _block_input_names(inputs) == []
 
 
 class TestBlockDimSizeConsistency:

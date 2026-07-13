@@ -28,10 +28,6 @@ def _block_input_names(inputs: dict[str, Any], dim: str = "pixel") -> list[str]:
     ]
 
 
-# Backwards-compatible alias (the partition dimension defaults to ``pixel``).
-_pixel_input_names = _block_input_names
-
-
 def _block_dim_size(inputs: dict[str, Any], block_names: list[str], dim: str) -> int:
     """Return the size of ``dim``, shared by every blocked input.
 
