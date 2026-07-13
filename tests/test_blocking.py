@@ -193,7 +193,7 @@ class TestBlockingSpecValidation:
         assert parsed.blocking_spec == BlockingSpec(block_size=8)
 
     def test_absent_section_gives_none(self):
-        parsed = Config.loads("[grid]\n").parse()
+        parsed = Config.loads("").parse()
         assert parsed.blocking_spec is None
 
 
@@ -272,8 +272,6 @@ class TestCLIEndToEnd:
 name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
-
-[grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"

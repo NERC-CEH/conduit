@@ -37,7 +37,7 @@ class TestCacheConfig:
         assert parsed.cache_spec is None
 
     def test_absent_section(self):
-        parsed = Config.loads("[grid]\n").parse()
+        parsed = Config.loads("").parse()
         assert parsed.cache_spec is None
 
     def test_recompute_bool(self):

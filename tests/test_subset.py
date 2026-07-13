@@ -68,7 +68,7 @@ class TestSubsetSpecValidation:
         assert parsed.subset_spec == SubsetSpec(start=0, stop=100)
 
     def test_absent_section_gives_none(self):
-        parsed = Config.loads("[grid]\n").parse()
+        parsed = Config.loads("").parse()
         assert parsed.subset_spec is None
 
 
@@ -154,8 +154,6 @@ class TestCLISubset:
 name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
-
-[grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"

@@ -252,8 +252,6 @@ name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
 
-[grid]
-
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]

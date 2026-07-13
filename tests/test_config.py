@@ -297,18 +297,22 @@ class TestValidation:
             config.parse()
 
 
-class TestGrid:
-    """Tests for [grid] section parsing — now a no-op."""
+class TestRetiredSections:
+    """[grid] and [graphviz] used to be swallowed silently; both now raise.
 
-    def test_grid_section_does_not_add_grid_module(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
-        assert "grid" not in parsed.modules
+    Silently accepting a section invites typos: a config with a mistyped section
+    name would parse cleanly and then do nothing. They fall through to the
+    external-module path and fail for want of an _import_path, like any other
+    unknown section.
+    """
 
-    def test_no_grid_section_also_fine(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
-        assert "grid" not in parsed.modules
+    def test_grid_section_rejected(self):
+        with pytest.raises(ValueError, match="_import_path"):
+            Config({"grid": {}}).parse()
+
+    def test_graphviz_section_rejected(self):
+        with pytest.raises(ValueError, match="_import_path"):
+            Config({"graphviz": {"show_legend": True}}).parse()
 
 
 class TestResample:
@@ -327,8 +331,7 @@ class TestResample:
         assert "resample_specs" not in parsed.driver_config
 
     def test_no_resample_omits_node_module(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
+        parsed = Config({}).parse()
         assert "node" not in parsed.modules
 
     def test_resample_desugars_to_passthrough_node_specs(self):
@@ -423,8 +426,7 @@ class TestNode:
         assert "node" in parsed.modules
 
     def test_no_node_omits_node_module(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
+        parsed = Config({}).parse()
         assert "node" not in parsed.modules
 
     def test_node_specs_parsed(self):

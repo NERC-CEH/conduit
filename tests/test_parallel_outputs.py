@@ -399,8 +399,6 @@ name = "{VAR}_weekly"
 inputs = ["temperature_weekly"]
 expression = "temperature_weekly"
 
-[grid]
-
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]

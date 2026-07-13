@@ -10,10 +10,11 @@ activates a pipeline component; absent sections are simply not included, so you 
 pipeline from only the parts you need.
 
 Recognised top-level sections are listed below. **Any section not listed here is treated
-as your own module** and must carry an `_import_path` key (see
-[Modules](#modules)). Two sections are accepted but otherwise inert: `[grid]` (an
-explicit marker for gridded inputs) and `[graphviz]` (styling belongs in a
-`conduit graph --style` file, not the science config).
+as your own module** and must carry an `_import_path` key (see [Modules](#modules)) — so
+a mistyped section name is an error rather than a silently ignored one. In particular
+there is no `[grid]` section (gridding is detected from the inputs' CRS) and no
+`[graphviz]` section (styling belongs in a `conduit graph --style` file, not the science
+config).
 
 /// admonition | Paths are resolved relative to the config file
     type: note

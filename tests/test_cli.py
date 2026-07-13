@@ -46,8 +46,6 @@ expression = "temperature_daily.resample(time='7D').mean()"
 units = "degC"
 freq = "7D"
 
-[grid]
-
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]
@@ -543,12 +541,13 @@ class TestImportStyleFunction:
 
 
 class TestStrayGraphvizSection:
-    def test_science_config_ignores_graphviz_section(self, tmp_path):
+    def test_science_config_rejects_graphviz_section(self, tmp_path):
+        # Styling belongs in a `graph --style` file, not the science config. It used
+        # to be swallowed silently, which masks typos; now it is an error.
         cfg = tmp_path / "config.toml"
         cfg.write_text(
             "[graphviz]\nshow_legend = true\n"
             '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x * 2"\n'
         )
-        # must not raise the missing-_import_path error for [graphviz]
-        parsed = load_config(cfg)
-        assert "node" in parsed.modules
+        with pytest.raises(ValueError, match="_import_path"):
+            load_config(cfg)

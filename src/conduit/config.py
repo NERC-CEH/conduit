@@ -563,25 +563,6 @@ class Config:
         """Dump config to a TOML str."""
         return tomli_w.dumps(self._data)
 
-    def _parse_grid(self, data: dict) -> list[str]:
-        """Handle [grid] section.
-
-        Silently accepted; grid computation moved to load_inputs().
-        """
-        data.pop("grid", None)
-        return []
-
-    def _parse_graphviz(self, data: dict) -> list[str]:
-        """Handle a stray [graphviz] section.
-
-        DAG-visualisation styling lives in its own file passed to ``conduit
-        graph --style`` (see ``conduit.cli.graph_style``), not in the science
-        config.  A misplaced [graphviz] section here is silently ignored rather
-        than mistaken for an external module missing ``_import_path``.
-        """
-        data.pop("graphviz", None)
-        return []
-
     def _parse_inputs(self, data: dict, input_specs: dict) -> None:
         """Handle [inputs.*] sections.
 
@@ -839,8 +820,6 @@ class Config:
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks (see conduit.checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
-        - [grid]          — silently accepted (grid computation is now in load_inputs())
-        - [graphviz]      — silently ignored (DAG styling is a `graph --style` file)
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
         - [[resample]]    — preset desugaring to fan-out passthrough nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)
@@ -858,8 +837,6 @@ class Config:
         input_specs: dict[str, IOSpec] = {}
         output_specs: dict[str, IOSpec] = {}
         modules: list[str] = []
-        self._parse_grid(data)
-        self._parse_graphviz(data)
         self._parse_inputs(data, input_specs)
         checks = self._parse_checks(data, input_specs)
         self._parse_outputs(data, output_specs)
