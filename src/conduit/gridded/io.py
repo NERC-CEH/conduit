@@ -173,14 +173,22 @@ def compute_lat_lon(
     transformer = Transformer.from_crs(ref_ds.rio.crs, "EPSG:4326", always_xy=True)
     lon_grid, lat_grid = transformer.transform(x_grid, y_grid)
 
+    # Build the intermediate with the reference's *own* dim names: for inputs whose
+    # spatial dims are e.g. easting/northing, hardcoding x/y here would name the
+    # lat/lon MultiIndex levels differently from every data variable's, and the
+    # later alignment on `pixel` would quietly produce NaNs.
     grid_ds = xr.Dataset(
         data_vars={
-            "latitude": (["x", "y"], lat_grid),
-            "longitude": (["x", "y"], lon_grid),
+            "latitude": ([x_dim, y_dim], lat_grid),
+            "longitude": ([x_dim, y_dim], lon_grid),
         },
-        coords={"x": x, "y": y},
+        coords={x_dim: x, y_dim: y},
     )
-    stacked = stack_spatial_dims(grid_ds)
+    # Stacked directly rather than via `stack_spatial_dims`, which would need rio to
+    # re-infer dims it cannot recognise under non-x/y names. The (y, x) order must
+    # match `stack_spatial_dims`' — pinned by
+    # test_grid.py::test_lat_lon_aligns_with_renamed_spatial_dims.
+    stacked = grid_ds.stack(pixel=(y_dim, x_dim))
     return stacked.latitude, stacked.longitude
 
 
