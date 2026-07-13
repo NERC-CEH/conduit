@@ -529,6 +529,62 @@ def _schema_consumer(*markers, in_name: str = "arr"):
     return ns["cons"]
 
 
+def _named_schema_consumer(fn_name: str, *markers, in_name: str = "arr"):
+    """A named node consuming ``in_name``, declaring the given schema markers on it."""
+    src = (
+        "from typing import Annotated\n"
+        "import xarray as xr\n"
+        f"def {fn_name}({in_name}: Annotated[(xr.DataArray, *_markers)]) -> xr.DataArray:\n"
+        f"    return {in_name}\n"
+    )
+    ns: dict = {"_markers": markers}
+    exec(src, ns)
+    return ns[fn_name]
+
+
+class TestAllPairsEdgeCheck:
+    """Every pair of declarations is compared, not just each against the first.
+
+    Three of the four edge predicates are non-transitive: a *loose* declaration is
+    compatible with everything, so it cannot serve as a base for a star-wise check.
+    ``Dims("x","y")`` is compatible with both ``Dims("x","y", ordered=True)`` and
+    ``Dims("y","x", ordered=True)`` — yet those two provably conflict. With no
+    producer to anchor on, only an all-pairs comparison finds it.
+    """
+
+    def test_conflicting_consumers_caught_via_a_loose_declaration(self, register):
+        mod = register(
+            "ap_cons",
+            # Deliberately loose first: it is compatible with each of the other two,
+            # so a check anchored on it alone sees no problem.
+            _named_schema_consumer("c1_loose", Dims("time", "x")),
+            _named_schema_consumer("c2_time_x", Dims("time", "x", ordered=True)),
+            _named_schema_consumer("c3_x_time", Dims("x", "time", ordered=True)),
+        )
+        dr = _build(mod)
+        with (
+            policy(enabled=True),
+            pytest.raises(ValueError, match="dims incompatible") as exc,
+        ):
+            check_dag_contracts(dr)
+        # The conflicting *pair* is named, not just the mismatch with the base.
+        message = str(exc.value)
+        assert "c2_time_x" in message
+        assert "c3_x_time" in message
+
+    def test_mutually_compatible_consumers_still_pass(self, register):
+        mod = register(
+            "ap_ok",
+            _named_schema_consumer("d1", Dims("time", "x")),
+            _named_schema_consumer("d2", Dims("x", "time")),
+            _named_schema_consumer("d3", Dims("time", "x", ordered=True)),
+        )
+        dr = _build(mod)
+        with policy(enabled=True), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            check_dag_contracts(dr)
+
+
 class TestSchemaDagCheck:
     """The build-time edge check compares dims and dtype markers, always raising
     ``ValueError`` on a provable mismatch (a pipeline-definition error)."""

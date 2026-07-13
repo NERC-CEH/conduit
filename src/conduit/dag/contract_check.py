@@ -59,6 +59,7 @@ that one facet.
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
 import xarray as xr
@@ -334,13 +335,20 @@ def _check_dag(
             candidates.extend((decl, f"input of {who}") for decl, who in consumers)
             if len(candidates) < 2:
                 continue
-            base_decl, base_src = candidates[0]
-            for decl, src in candidates[1:]:
-                why = facet.edge(base_decl, decl, pol)
+            # All pairs, not star-wise against candidates[0]: three of the four edge
+            # predicates are *non-transitive*, because a loose declaration is
+            # compatible with everything. Dims("x","y") is compatible with both
+            # Dims("x","y", ordered=True) and Dims("y","x", ordered=True), which
+            # provably conflict with each other — a star check anchored on the loose
+            # one would pass. (dtype `exact` and freq anchors have the same shape;
+            # units alone is transitive, being an equivalence relation.) Candidates
+            # are producer-first, so combinations() still leads with "output of ...".
+            for (a_decl, a_src), (b_decl, b_src) in combinations(candidates, 2):
+                why = facet.edge(a_decl, b_decl, pol)
                 if why is not None:
                     findings.append(
-                        f"  {name!r}: {base_src} declares {base_decl!r} but {src} "
-                        f"declares {decl!r} ({why})"
+                        f"  {name!r}: {a_src} declares {a_decl!r} but {b_src} "
+                        f"declares {b_decl!r} ({why})"
                     )
     if findings:
         raise ValueError(
