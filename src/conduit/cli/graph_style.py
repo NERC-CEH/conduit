@@ -9,10 +9,10 @@ Recognised top-level keys in a ``--style`` file::
 
     style_function = "my_pkg.styling:my_style"   # import path "module:function"
     show_legend = true
-    cluster_by_frequency = true                  # box nodes by daily/weekly/monthly
+    cluster_by_frequency = true                  # box nodes by declared frequency
 
-    [palette]                                    # override any category colour
-    daily = "#ff7f00"
+    [palette]                                    # pin a colour to a frequency
+    "7D" = "#ff7f00"                             # ... or override `output`
 
     [graph_attr]                                 # graphviz graph attributes
     rankdir = "TB"
@@ -29,13 +29,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# ColorBrewer "Set2": a colour-blind-friendly qualitative palette. These work
-# both as node fill colours (with black text) and as edge colours.
+# ColorBrewer "Set2": a colour-blind-friendly qualitative palette. These work both as
+# node fill colours (with black text) and as edge colours. Frequencies are arbitrary
+# offset aliases ("7D", "1ME", "W-SUN"), not a fixed vocabulary, so colours are
+# assigned from this cycle in first-seen order rather than from a fixed table.
+FREQ_COLOR_CYCLE: tuple[str, ...] = (
+    "#fc8d62",
+    "#8da0cb",
+    "#a6d854",
+    "#66c2a5",
+    "#ffd92f",
+    "#e5c494",
+)
+
+#: Colours for the fixed, non-frequency categories. A ``[palette]`` entry may also
+#: name a *frequency* (``"7D"``) to pin it against `FREQ_COLOR_CYCLE`.
 DEFAULT_PALETTE: dict[str, str] = {
-    "static": "#66c2a5",  # static inputs
-    "daily": "#fc8d62",  # daily-frequency nodes/edges
-    "weekly": "#8da0cb",  # weekly-frequency nodes/edges
-    "monthly": "#a6d854",  # monthly-frequency nodes/edges
     "output": "#e7298a",  # border highlight on requested output nodes
 }
 
