@@ -30,6 +30,7 @@ nav = [
       "guides/inline-nodes-and-fan-out.md",
       "guides/drive-from-python.md",
       "guides/run-and-visualise.md",
+      "guides/resampling-and-units.md",
       "guides/validate-before-running.md",
       "guides/scale-up.md",
   ]},

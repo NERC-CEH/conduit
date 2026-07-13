@@ -194,6 +194,15 @@ resample carries a checkable frequency contract: a downstream consumer declaring
 
 The time axis is detected from the data, so it need not be called `time`.
 
+/// admonition | Choosing `aggfunc` is not something the checks can help with
+    type: warning
+
+Resampling preserves units, so `mean` and `sum` are equally *dimensionally* valid — a
+wrong choice produces a meaningless number that no contract check will flag. Use `mean`
+for a rate and `sum` for an amount-per-period; see
+[Resampling & units](../guides/resampling-and-units.md).
+///
+
 ## Cache
 
 `[cache]` persists intermediate results to disk (Hamilton caching). See
