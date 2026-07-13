@@ -17,7 +17,6 @@ from xarray_annotated.units import declare_units, policy
 from conduit.config import NodeSpec, ResampleSpec
 from conduit.dag.contract_check import (
     check_dag_contracts,
-    check_dag_units,
     check_input_contracts,
 )
 from conduit.dag.driver import build_driver
@@ -159,7 +158,7 @@ class TestDimensionalMismatch:
             policy(enabled=True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_warn_also_raises(self, register):
         dr = self._dr(register)
@@ -167,18 +166,18 @@ class TestDimensionalMismatch:
             policy(enabled=True, on_missing="warn"),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_off_is_silent(self, register):
         dr = self._dr(register)
         with policy(enabled=False), warnings.catch_warnings():
             warnings.simplefilter("error")
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_message_names_node_and_units(self, register):
         dr = self._dr(register)
         with policy(enabled=True), pytest.raises(ValueError, match="gpp_weekly") as exc:
-            check_dag_units(dr)
+            check_dag_contracts(dr)
         msg = str(exc.value)
         assert "'g m-2 d-1'" in msg
         assert "'kg'" in msg
@@ -199,7 +198,7 @@ class TestExactMatch:
         dr = self._dr(register)
         with policy(enabled=True, on_inexact="convert"), warnings.catch_warnings():
             warnings.simplefilter("error")
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_compatible_flagged_when_error(self, register):
         dr = self._dr(register)
@@ -207,7 +206,7 @@ class TestExactMatch:
             policy(enabled=True, on_inexact="error"),
             pytest.raises(ValueError, match="exact match required"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +223,7 @@ class TestSharedInputConflict:
             policy(enabled=True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +250,7 @@ class TestBareReturnProducer:
             policy(enabled=True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_compatible_passes_under_exact(self, register):
         dr = self._dr(register, "g m-2 d-1", "g m-2 d-1")
@@ -260,7 +259,7 @@ class TestBareReturnProducer:
             warnings.catch_warnings(),
         ):
             warnings.simplefilter("error")
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_exact_string_mismatch_flagged(self, register):
         dr = self._dr(register, "Pa", "hPa")
@@ -268,7 +267,7 @@ class TestBareReturnProducer:
             policy(enabled=True, on_inexact="error"),
             pytest.raises(ValueError, match="exact match required"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
 
 class TestOptInContract:
@@ -285,12 +284,15 @@ class TestOptInContract:
             warnings.catch_warnings(),
         ):
             warnings.simplefilter("error")
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
 
 class TestDefaultResolution:
-    """``check_dag_units`` resolves ``on_inexact`` from the global state when
-    its argument is left as ``None`` (the path ``build_driver`` relies on)."""
+    """Every facet's policy is resolved from the process-global state.
+
+    That is the only path now: the units-only wrappers that let a caller override
+    ``on_inexact`` per call are gone, so production and tests reach the check the
+    same way — via `set_policy` / `policy`."""
 
     def test_dimension_mismatch_raises_when_enabled(self, register):
         prod = register("dm_prod", _producer("g m-2 d-1"))
@@ -300,7 +302,7 @@ class TestDefaultResolution:
             policy(enabled=True),
             pytest.raises(ValueError, match="incompatible"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_off_global_skips(self, register):
         prod = register("dm2_prod", _producer("g m-2 d-1"))
@@ -308,7 +310,7 @@ class TestDefaultResolution:
         dr = _build(prod, cons)
         with policy(enabled=False), warnings.catch_warnings():
             warnings.simplefilter("error")
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_on_inexact_resolves_from_global(self, register):
         prod = register("de_prod", _producer("Pa"))
@@ -318,7 +320,7 @@ class TestDefaultResolution:
             policy(enabled=True, on_inexact="error"),
             pytest.raises(ValueError, match="exact match required"),
         ):
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
 
 class TestConsistent:
@@ -331,14 +333,14 @@ class TestConsistent:
             warnings.catch_warnings(),
         ):
             warnings.simplefilter("error")
-            check_dag_units(dr)
+            check_dag_contracts(dr)
 
     def test_producer_consumer_same_unit_clean(self, register):
         register("clean_prod", _producer("g m-2 d-1"))
         register("clean_cons", _consumer("g m-2 d-1"))
         with policy(enabled=True, on_inexact="error"):
             dr = build_driver(["clean_prod", "clean_cons"], {})
-        check_dag_units(dr, on_inexact="error")
+            check_dag_contracts(dr)
 
 
 # ---------------------------------------------------------------------------

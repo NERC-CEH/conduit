@@ -58,7 +58,7 @@ that one facet.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
@@ -143,14 +143,6 @@ class _Facet:
     runtime_check: Callable[[xr.DataArray, list, str], None]
     #: Whether a passthrough node preserves this facet (so it can be propagated).
     passthrough_preserving: bool
-    #: Apply `_check_dag`'s caller-supplied ``on_inexact`` override to this facet's
-    #: policy. Only units has an ``on_inexact`` axis, so only units supplies one;
-    #: for every other facet the override is simply not theirs to interpret.
-    override_policy: Callable[[Any, str], Any] | None = None
-
-
-def _units_override_policy(pol: Any, on_inexact: str) -> Any:
-    return replace(pol, on_inexact=on_inexact)
 
 
 _FACETS: tuple[_Facet, ...] = (
@@ -161,7 +153,6 @@ _FACETS: tuple[_Facet, ...] = (
         _units_edge,
         _units_input_check,
         True,
-        override_policy=_units_override_policy,
     ),
     _Facet(
         "dims",
@@ -198,7 +189,6 @@ _FACETS: tuple[_Facet, ...] = (
         False,
     ),
 )
-_UNITS_ONLY: tuple[_Facet, ...] = (_FACETS[0],)
 
 # Per-facet map: node name -> (declaration, producer/consumer label).
 _Produced = dict[str, tuple[Any, str]]
@@ -320,19 +310,13 @@ def _propagate_backward(
 # ---------------------------------------------------------------------------
 
 
-def _check_dag(
-    dr: "driver.Driver",
-    facets: tuple[_Facet, ...],
-    on_inexact: str | None,
-) -> None:
+def _check_dag(dr: "driver.Driver", facets: tuple[_Facet, ...]) -> None:
     maps, passthrough_edges = _collect_contract_maps(dr)
     findings: list[str] = []
     for facet in facets:
         pol = facet.get_policy()
         if not pol.enabled or facet.edge is None:
             continue
-        if on_inexact is not None and facet.override_policy is not None:
-            pol = facet.override_policy(pol, on_inexact)
         produced, consumed = maps[facet.name]
         if facet.passthrough_preserving:
             _propagate_forward(produced, passthrough_edges)
@@ -397,16 +381,7 @@ def check_dag_contracts(dr: "driver.Driver") -> None:
     when its policy is disabled (the conftest default), so this is a no-op for
     pipelines that opt out of contract handling.
     """
-    _check_dag(dr, _FACETS, on_inexact=None)
-
-
-def check_dag_units(dr: "driver.Driver", *, on_inexact: str | None = None) -> None:
-    """Units-only build-time edge check (with optional ``on_inexact`` override).
-
-    A thin wrapper over `check_dag_contracts` restricted to the units facet;
-    ``on_inexact`` defaults from the active units policy when ``None``.
-    """
-    _check_dag(dr, _UNITS_ONLY, on_inexact=on_inexact)
+    _check_dag(dr, _FACETS)
 
 
 def check_input_contracts(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
@@ -421,8 +396,3 @@ def check_input_contracts(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
     backward through unit-preserving passthrough edges to a fixpoint.
     """
     _check_inputs(dr, inputs, _FACETS)
-
-
-def check_input_units(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
-    """Units-only input check (see `check_input_contracts`)."""
-    _check_inputs(dr, inputs, _UNITS_ONLY)
