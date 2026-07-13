@@ -221,7 +221,7 @@ class TestNodeFreq:
                 freq=node_freq,
             )
         ]
-        return build_driver(["node", "nf_cons"], {"node_specs": specs})
+        return build_driver(["node", "nf_cons"], {}, node_specs=specs)
 
     def test_declared_node_freq_is_a_checkable_producer(self, register):
         with (
@@ -248,7 +248,7 @@ class TestNodeFreq:
             )
         ]
         with policy(enabled=True):
-            dr = build_driver(["node"], {"node_specs": specs})
+            dr = build_driver(["node"], {}, node_specs=specs)
             with pytest.raises(FreqError, match="frequency mismatch"):
                 dr.execute(["flux"], inputs={"a": _series("D")})
 
@@ -294,7 +294,7 @@ class TestResampleFreq:
                 freq=offset,
             )
         )
-        return build_driver(["node", "rf_cons"], {"node_specs": specs})
+        return build_driver(["node", "rf_cons"], {}, node_specs=specs)
 
     def test_consumer_matching_the_offset_passes(self, register):
         with policy(enabled=True):
@@ -332,7 +332,7 @@ class TestResampleFreq:
         )
         with policy(enabled=True), warnings.catch_warnings():
             warnings.simplefilter("error")
-            dr = build_driver(["node"], {"node_specs": specs})
+            dr = build_driver(["node"], {}, node_specs=specs)
             out = dr.execute(
                 ["gpp_weekly"], inputs={"gpp_daily": _series("D", periods=120)}
             )
@@ -348,7 +348,7 @@ class TestResampleFreq:
             ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D")
         )
         with policy(enabled=True):
-            build_driver(["rfp_prod", "node", "rfp_cons"], {"node_specs": specs})
+            build_driver(["rfp_prod", "node", "rfp_cons"], {}, node_specs=specs)
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +361,8 @@ class TestPolicyFromConfig:
         parsed = Config(
             {"annotations": {"on_mismatch": "warn", "on_uninferable": "ignore"}}
         ).parse()
-        assert parsed.on_mismatch == "warn"
-        assert parsed.on_uninferable == "ignore"
+        assert parsed.annotations.on_mismatch == "warn"
+        assert parsed.annotations.on_uninferable == "ignore"
 
 
 # ---------------------------------------------------------------------------

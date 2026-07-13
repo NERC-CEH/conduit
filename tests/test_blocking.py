@@ -10,9 +10,9 @@ import xarray as xr
 
 from conduit.config import BlockingSpec, Config, IOSpec
 from conduit.dag.blocking import (
+    _block_input_names,
     _concat_results,
     _make_blocks,
-    _pixel_input_names,
     execute_blocked,
 )
 from conduit.dag.driver import build_driver
@@ -26,13 +26,21 @@ _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"
 
 
 def _run_unblocked(pipeline_config, pipeline_inputs):
-    dr = build_driver(pipeline_config.modules, pipeline_config.driver_config)
+    dr = build_driver(
+        pipeline_config.modules,
+        pipeline_config.driver_config,
+        node_specs=pipeline_config.node_specs,
+    )
     return dr.execute(_FINAL_VARS, inputs=pipeline_inputs)  # type: ignore[reportArgumentType]
 
 
 def _run_blocked(pipeline_config, pipeline_inputs, block_size):
     spec = BlockingSpec(block_size=block_size)
-    dr = build_driver(pipeline_config.modules, pipeline_config.driver_config)
+    dr = build_driver(
+        pipeline_config.modules,
+        pipeline_config.driver_config,
+        node_specs=pipeline_config.node_specs,
+    )
     return execute_blocked(dr, pipeline_inputs, _FINAL_VARS, spec)
 
 
@@ -41,17 +49,37 @@ def _run_blocked(pipeline_config, pipeline_inputs, block_size):
 # ---------------------------------------------------------------------------
 
 
-class TestPixelInputNames:
+class TestBlockInputNames:
     def test_identifies_pixel_arrays(self):
         da_pixel = xr.DataArray(np.zeros((3, 4)), dims=["time", "pixel"])
         da_time = xr.DataArray(np.zeros(3), dims=["time"])
         scalar = 42
         inputs = {"a": da_pixel, "b": da_time, "c": scalar}
-        assert _pixel_input_names(inputs) == ["a"]
+        assert _block_input_names(inputs) == ["a"]
 
     def test_empty_when_no_pixel_dim(self):
         inputs = {"x": xr.DataArray(np.zeros(3), dims=["time"])}
-        assert _pixel_input_names(inputs) == []
+        assert _block_input_names(inputs) == []
+
+
+class TestBlockDimSizeConsistency:
+    def test_mismatched_block_dim_sizes_raise(self):
+        inputs = {
+            "big": xr.DataArray(np.zeros(100), dims=["pixel"]),
+            "small": xr.DataArray(np.zeros(50), dims=["pixel"]),
+        }
+        with pytest.raises(ValueError, match="disagree on the size") as exc:
+            list(_make_blocks(inputs, ["big", "small"], block_size=10))
+        message = str(exc.value)
+        assert "big=100" in message
+        assert "small=50" in message
+
+    def test_matching_sizes_are_fine(self):
+        inputs = {
+            "a": xr.DataArray(np.zeros(10), dims=["pixel"]),
+            "b": xr.DataArray(np.zeros(10), dims=["pixel"]),
+        }
+        assert len(list(_make_blocks(inputs, ["a", "b"], block_size=5))) == 2
 
 
 class TestMakeBlocks:
@@ -165,7 +193,7 @@ class TestBlockingSpecValidation:
         assert parsed.blocking_spec == BlockingSpec(block_size=8)
 
     def test_absent_section_gives_none(self):
-        parsed = Config.loads("[grid]\n").parse()
+        parsed = Config.loads("").parse()
         assert parsed.blocking_spec is None
 
 
@@ -213,7 +241,10 @@ class TestCachingWithBlocking:
 
         def _run_blocked_cached():
             dr = build_driver(
-                pipeline_config.modules, pipeline_config.driver_config, cache=cache
+                pipeline_config.modules,
+                pipeline_config.driver_config,
+                cache=cache,
+                node_specs=pipeline_config.node_specs,
             )
             return execute_blocked(dr, pipeline_inputs, _FINAL_VARS, spec)
 
@@ -241,8 +272,6 @@ class TestCLIEndToEnd:
 name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
-
-[grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
@@ -295,7 +324,9 @@ block_size = 2
 
         parsed = load_config(config_path)
         parsed.blocking_spec = None
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         inputs = load_inputs(parsed.input_specs)
         final_vars = get_final_vars(parsed.output_specs)
         ref_results = dr.execute(final_vars, inputs=inputs)  # type: ignore[reportArgumentType]

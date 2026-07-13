@@ -117,7 +117,7 @@ class TestLoadTimeseries:
     def test_unsupported_extension_raises(self, tmp_path):
         path = tmp_path / "data.nc"
         path.touch()
-        with pytest.raises(ValueError, match="Unsupported format"):
+        with pytest.raises(ValueError, match="for a table file"):
             load_timeseries(path)
 
     def test_time_column_not_named_time(self, tmp_path):
@@ -164,7 +164,7 @@ class TestLoadStatic:
     def test_unsupported_extension_raises(self, tmp_path):
         path = tmp_path / "data.nc"
         path.touch()
-        with pytest.raises(ValueError, match="Unsupported format"):
+        with pytest.raises(ValueError, match="for a scalar file"):
             load_static(path)
 
 
@@ -250,7 +250,7 @@ class TestSaveTimeseries:
 
     def test_unsupported_extension_raises(self, tmp_path):
         df = self._make_df()
-        with pytest.raises(ValueError, match="Unsupported format"):
+        with pytest.raises(ValueError, match="for a table file"):
             save_timeseries(df, tmp_path / "out.nc")
 
 

@@ -64,22 +64,43 @@ parsed = Config(config_data).parse()
 ```
 
 Key fields: `modules` (module identifiers), `driver_config` (parameters for the driver
-and modules), `input_specs` / `output_specs` (per-section `IOSpec`s), plus the parsed
-`cache_spec`, `blocking_spec`, `subset_spec` and contract-policy fields.
+and modules), `node_specs` (the `[[node]]` / `[[resample]]` specs), `input_specs` /
+`output_specs` (per-section `IOSpec`s), plus the parsed `cache_spec`, `blocking_spec`,
+`subset_spec` and `annotations` (an `AnnotationPolicySpec`).
 
-## 3. Build the driver
+## 3. Apply the contract policy
+
+The `[annotations]` section is *not* applied by parsing — it sets `xarray-annotated`'s
+process-global policy, which the build-time contract check then consults. Apply it
+before building, exactly as the CLI does:
+
+```python
+parsed.annotations.apply()
+```
+
+Skip this and your DAG is checked under the default policy rather than the one your
+config asked for.
+
+## 4. Build the driver
 
 `build_driver()` constructs a Hamilton `Driver` and runs the build-time contract check:
 
 ```python
-dr = build_driver(modules=parsed.modules, config=parsed.driver_config)
+dr = build_driver(
+    modules=parsed.modules,
+    config=parsed.driver_config,
+    node_specs=parsed.node_specs,
+)
 ```
+
+`node_specs` is required whenever the config defines `[[node]]` or `[[resample]]`
+entries — it is what the built-in `node` module is generated from.
 
 The driver is the DAG runtime — it resolves dependencies and executes nodes in order.
 You can inspect it now with `dr.display_all_functions()` or
 `dr.visualize_path_between(...)`.
 
-## 4. Load inputs
+## 5. Load inputs
 
 `load_inputs()` reads the files in `input_specs` and returns a flat dict of named
 `DataArray`s, keyed by node name:
@@ -92,7 +113,7 @@ Node names follow the config's naming: `{var}{suffix}` for list-form `vars`, or 
 explicit `{node_name: file_var}` alias for mapping-form. Grid coordinates
 (`latitude`, `longitude`) are computed automatically when inputs carry a CRS.
 
-## 5. Execute
+## 6. Execute
 
 Call `dr.execute()` with the node names you want. `get_final_vars()` turns
 `output_specs` into that flat list:
@@ -118,7 +139,7 @@ results = dr.execute(
 )
 ```
 
-## 6. Inspect and save
+## 7. Inspect and save
 
 `dr.execute()` returns a flat dict of `DataArray`s. `get_outputs()` merges them into
 per-section `Dataset`s (the form most plotting/analysis expects):
@@ -148,10 +169,15 @@ from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save
 from conduit.config import Config
 
 parsed = Config(config_data).parse()          # 1–2. build + parse
-dr = build_driver(modules=parsed.modules, config=parsed.driver_config)  # 3.
-inputs = load_inputs(parsed.input_specs)       # 4.
-results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 5.
-datasets = get_outputs(results, parsed.output_specs)  # 6.
+parsed.annotations.apply()                     # 3. contract policy
+dr = build_driver(                             # 4.
+    modules=parsed.modules,
+    config=parsed.driver_config,
+    node_specs=parsed.node_specs,
+)
+inputs = load_inputs(parsed.input_specs)       # 5.
+results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 6.
+datasets = get_outputs(results, parsed.output_specs)  # 7.
 save_outputs(datasets, parsed.output_specs)
 ```
 

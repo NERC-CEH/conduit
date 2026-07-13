@@ -10,10 +10,11 @@ activates a pipeline component; absent sections are simply not included, so you 
 pipeline from only the parts you need.
 
 Recognised top-level sections are listed below. **Any section not listed here is treated
-as your own module** and must carry an `_import_path` key (see
-[Modules](#modules)). Two sections are accepted but otherwise inert: `[grid]` (an
-explicit marker for gridded inputs) and `[graphviz]` (styling belongs in a
-`conduit graph --style` file, not the science config).
+as your own module** and must carry an `_import_path` key (see [Modules](#modules)) — so
+a mistyped section name is an error rather than a silently ignored one. In particular
+there is no `[grid]` section (gridding is detected from the inputs' CRS) and no
+`[graphviz]` section (styling belongs in a `conduit graph --style` file, not the science
+config).
 
 /// admonition | Paths are resolved relative to the config file
     type: note
@@ -41,10 +42,10 @@ vars = ["elevation"]
 | Key | Description |
 |-----|-------------|
 | `path` | **Required.** File to load. Format is inferred from the extension — see [Data formats](data-formats.md). |
-| `vars` | Which variables to expose, and under what node names (see below). |
+| `vars` | Which variables to expose, and under what node names (see below). Omit to load them all. |
 | `suffix` | Overrides the node-name suffix for the list form of `vars`. |
 
-**`vars` has two forms:**
+**`vars` has three forms:**
 
 - A **list** — `vars = ["temperature"]` — names each node `{var}{suffix}`. The suffix
   defaults to `_<label>` (so `temperature` under `[inputs.daily]` → node
@@ -53,6 +54,16 @@ vars = ["elevation"]
 - A **mapping** — `vars = {temperature_daily = "t2m"}` — an explicit, suffix-free alias
   reading file variable `t2m` as node `temperature_daily`. Use this to decouple file
   naming from DAG naming.
+- **Omitted** — every variable in the file is bound, through the suffix:
+
+  ```toml
+  [inputs.daily]
+  path = "data/daily.nc"   # no `vars`: loads every variable as `{var}_daily`
+  ```
+
+  An *empty* list (`vars = []`) is a parse error rather than a way to spell this — it
+  would bind nothing, which is never what a section is for. (Output sections always
+  require `vars`; there is nothing to enumerate a destination file's variables from.)
 
 ## Outputs
 
@@ -90,9 +101,23 @@ conventions.
 /// admonition | Parameter namespacing
     type: note
 
-All module parameters are merged into a single flat dictionary, so names must be unique
-across active sections. A clash raises at parse time — prefix to disambiguate
-(e.g. `aridity_floor`).
+Module parameters from **every** section are merged into a single flat dictionary — the
+Hamilton driver config. This is deliberate: Hamilton resolves a node function's
+keyword-only arguments by *name* against that one dict, so a parameter's config key and
+the function's argument name are the same string. Auto-prefixing by section would mean
+every module had to name its argument `aridity_floor` rather than `floor`, which is a
+worse trade for the common single-module case.
+
+The consequence is that parameter names must be unique across active sections. Two
+sections defining `threshold` is a parse-time error naming both:
+
+```
+Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
+share one flat namespace, so give the two parameters distinct names ...
+```
+
+To fix it, rename the parameter in the config *and* the keyword argument in the module
+that reads it (e.g. `aridity_floor`). Sections that are not both active never collide.
 ///
 
 ## Nodes
@@ -169,6 +194,15 @@ resample carries a checkable frequency contract: a downstream consumer declaring
 
 The time axis is detected from the data, so it need not be called `time`.
 
+/// admonition | Choosing `aggfunc` is not something the checks can help with
+    type: warning
+
+Resampling preserves units, so `mean` and `sum` are equally *dimensionally* valid — a
+wrong choice produces a meaningless number that no contract check will flag. Use `mean`
+for a rate and `sum` for an amount-per-period; see
+[Resampling & units](../guides/resampling-and-units.md).
+///
+
 ## Cache
 
 `[cache]` persists intermediate results to disk (Hamilton caching). See
@@ -205,19 +239,38 @@ dim = "pixel"
 
 ## Subset
 
-`[subset]` restricts the run to a contiguous slice of the stacked `pixel` dimension, for
-parallel per-shard runs. See [Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs-over-zarr).
+`[subset]` restricts the run to a contiguous slice of one dimension, so independent
+processes can each handle a different shard of the same inputs. See
+[Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs).
 
 ```toml
 [subset]
-pixel_start = 0      # inclusive
-pixel_end   = 500    # exclusive
+start = 0            # inclusive
+stop  = 500          # exclusive
+dim   = "pixel"      # optional; the default
 ```
 
 | Key | Description |
 |-----|-------------|
-| `pixel_start` | **Required.** First pixel index (inclusive, zero-based). |
-| `pixel_end` | **Required.** One past the last index (exclusive); must exceed `pixel_start`. |
+| `start` | **Required.** First index along `dim` (inclusive, zero-based). |
+| `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
+| `dim` | Partition dimension (default `pixel`). |
+
+`dim` mirrors [`[blocking]`](#blocking): the two mechanisms partition the same way and
+differ only in *who* runs the parts — one process sequentially (`[blocking]`) versus many
+processes concurrently (`[subset]`). A non-gridded pipeline can subset over `location` or
+`site` just as it can block over it, and each part is written to its own suffixed file
+(`out_location0-500.nc`).
+
+/// admonition | Zarr stores are pixel-only
+    type: warning
+
+The one place `pixel` is still special is the shared Zarr store built by
+`conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
+`merge` unstacks back to `(y, x)`. Configuring `dim` as anything else alongside a Zarr
+output is an error. Use a NetCDF output instead — its subset parts are separate files
+and need no pre-created store.
+///
 
 ## Validation
 
@@ -265,8 +318,7 @@ a warning, since they describe the whole domain rather than a single shard.
 ## Annotations
 
 `[annotations]` controls how contract declarations (units, schema: dims/coords/dtype,
-and temporal: freq) are validated. The legacy name `[units]` is a working alias for the
-same section. Omit it to keep the defaults.
+and temporal: freq) are validated. Omit it to keep the defaults.
 
 ```toml
 [annotations]

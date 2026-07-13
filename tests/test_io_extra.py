@@ -298,6 +298,34 @@ class TestSaveOutputs:
 
 
 # ---------------------------------------------------------------------------
+# vars: omitted means "load everything"
+# ---------------------------------------------------------------------------
+
+
+class TestOmittedVars:
+    """An input section with no ``vars`` binds every variable in the file."""
+
+    def test_input_section_without_vars_loads_all(self, synthetic_data_dir):
+        from synthetic_data import DAILY_VARS
+
+        inputs = load_inputs(
+            {"daily": IOSpec(path=str(synthetic_data_dir / "daily.nc"))}
+        )
+        # Every file variable is bound, through the section's suffix.
+        for var in DAILY_VARS:
+            assert f"{var}_daily" in inputs
+
+    def test_omitted_vars_honours_an_explicit_suffix(self, synthetic_data_dir):
+        from synthetic_data import STATIC_VARS
+
+        inputs = load_inputs(
+            {"static": IOSpec(path=str(synthetic_data_dir / "static.nc"), suffix="")}
+        )
+        for var in STATIC_VARS:
+            assert var in inputs
+
+
+# ---------------------------------------------------------------------------
 # Single time-dimension invariant
 # ---------------------------------------------------------------------------
 
@@ -317,6 +345,20 @@ class TestSingleTimeDim:
 
     def test_time_dims_accepts_a_dataarray(self):
         assert time_dims(_simple_ds()["var_a"]) == ["time"]
+
+    def test_time_dims_detects_a_cftime_axis(self):
+        # A non-standard calendar gives a CFTimeIndex, not datetime64 — the second
+        # limb of the detector, and the one no other test exercises.
+        times = xr.date_range(
+            "2020-01-01", periods=5, freq="D", calendar="noleap", use_cftime=True
+        )
+        ds = xr.Dataset(
+            {"var_a": (("time",), np.zeros(5))},
+            coords={"time": times},
+        )
+        assert not np.issubdtype(ds.time.dtype, np.datetime64)  # not the first limb
+        assert time_dims(ds) == ["time"]
+        assert sole_time_dim(ds, "ds") == "time"
 
     def test_sole_time_dim_returns_the_one_axis(self):
         assert sole_time_dim(_simple_ds(), "ds") == "time"
