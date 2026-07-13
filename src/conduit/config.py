@@ -768,8 +768,15 @@ class Config:
         )
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
-        """Handle remaining sections as external modules."""
+        """Handle remaining sections as external modules.
+
+        Module params share one flat `driver_config` namespace (that is how Hamilton
+        resolves a node's keyword-only config arguments), so ``defined_by`` tracks
+        which section contributed each key — enough to name *both* sides of a
+        collision rather than just the key.
+        """
         modules: list[str] = []
+        defined_by: dict[str, str] = {}
         for section_label, params in data.items():
             params = dict(params)
             import_path = params.pop("_import_path", None)
@@ -784,7 +791,7 @@ class Config:
                     f"'_import_path = {import_path!r}' in [{section_label!r}] "
                     f"is not a valid dotted module path."
                 )
-            _merge_params(section_label, params, driver_config)
+            _merge_params(section_label, params, driver_config, defined_by)
             modules.append(import_path)
         return modules
 
@@ -869,13 +876,24 @@ def _is_valid_module_path(path: str) -> bool:
     return bool(path) and all(part.isidentifier() for part in path.split("."))
 
 
-def _merge_params(section: str, params: dict, driver_config: dict) -> None:
-    """Merge params into driver_config, raising ValueError on key conflicts."""
-    conflicts = set(params) & set(driver_config)
-    if conflicts:
+def _merge_params(
+    section: str,
+    params: dict,
+    driver_config: dict,
+    defined_by: dict[str, str],
+) -> None:
+    """Merge one section's params into the shared driver_config namespace.
+
+    Raises on a key already contributed by another section, naming both — the user
+    cannot fix a collision without knowing who they are colliding with.
+    """
+    for key in sorted(set(params) & set(driver_config)):
         raise ValueError(
-            f"Parameter(s) {sorted(conflicts)} in [{section}] conflict "
-            f"with an already-defined key. Use a module-specific prefix to "
-            f"disambiguate (e.g. mymodel_threshold)."
+            f"Parameter {key!r} is defined by both [{defined_by[key]}] and "
+            f"[{section}]. Module parameters share one flat namespace, so give the "
+            f"two parameters distinct names (e.g. {defined_by[key]}_{key} and "
+            f"{section}_{key}) and rename the keyword argument in each module to "
+            f"match."
         )
     driver_config |= params
+    defined_by.update(dict.fromkeys(params, section))

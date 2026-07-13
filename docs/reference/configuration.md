@@ -90,9 +90,23 @@ conventions.
 /// admonition | Parameter namespacing
     type: note
 
-All module parameters are merged into a single flat dictionary, so names must be unique
-across active sections. A clash raises at parse time — prefix to disambiguate
-(e.g. `aridity_floor`).
+Module parameters from **every** section are merged into a single flat dictionary — the
+Hamilton driver config. This is deliberate: Hamilton resolves a node function's
+keyword-only arguments by *name* against that one dict, so a parameter's config key and
+the function's argument name are the same string. Auto-prefixing by section would mean
+every module had to name its argument `aridity_floor` rather than `floor`, which is a
+worse trade for the common single-module case.
+
+The consequence is that parameter names must be unique across active sections. Two
+sections defining `threshold` is a parse-time error naming both:
+
+```
+Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
+share one flat namespace, so give the two parameters distinct names ...
+```
+
+To fix it, rename the parameter in the config *and* the keyword argument in the module
+that reads it (e.g. `aridity_floor`). Sections that are not both active never collide.
 ///
 
 ## Nodes

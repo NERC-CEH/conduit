@@ -199,6 +199,20 @@ class TestValidation:
         with pytest.raises(ValueError, match="shared_param"):
             config.parse()
 
+    def test_param_conflict_names_both_sections(self):
+        config = Config(
+            {
+                "modela": {"_import_path": "pkg.a", "threshold": 1},
+                "modelb": {"_import_path": "pkg.b", "threshold": 2},
+            }
+        )
+        with pytest.raises(ValueError, match="threshold") as exc:
+            config.parse()
+        # A user cannot fix the collision without knowing who they collide with.
+        message = str(exc.value)
+        assert "[modela]" in message
+        assert "[modelb]" in message
+
     def test_external_module_missing_import_path_raises(self):
         config = Config({"my_section": {"param": "value"}})
         with pytest.raises(ValueError, match="_import_path"):
