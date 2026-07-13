@@ -41,10 +41,10 @@ vars = ["elevation"]
 | Key | Description |
 |-----|-------------|
 | `path` | **Required.** File to load. Format is inferred from the extension — see [Data formats](data-formats.md). |
-| `vars` | Which variables to expose, and under what node names (see below). |
+| `vars` | Which variables to expose, and under what node names (see below). Omit to load them all. |
 | `suffix` | Overrides the node-name suffix for the list form of `vars`. |
 
-**`vars` has two forms:**
+**`vars` has three forms:**
 
 - A **list** — `vars = ["temperature"]` — names each node `{var}{suffix}`. The suffix
   defaults to `_<label>` (so `temperature` under `[inputs.daily]` → node
@@ -53,6 +53,16 @@ vars = ["elevation"]
 - A **mapping** — `vars = {temperature_daily = "t2m"}` — an explicit, suffix-free alias
   reading file variable `t2m` as node `temperature_daily`. Use this to decouple file
   naming from DAG naming.
+- **Omitted** — every variable in the file is bound, through the suffix:
+
+  ```toml
+  [inputs.daily]
+  path = "data/daily.nc"   # no `vars`: loads every variable as `{var}_daily`
+  ```
+
+  An *empty* list (`vars = []`) is a parse error rather than a way to spell this — it
+  would bind nothing, which is never what a section is for. (Output sections always
+  require `vars`; there is nothing to enumerate a destination file's variables from.)
 
 ## Outputs
 

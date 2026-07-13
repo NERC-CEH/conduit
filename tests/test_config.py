@@ -104,6 +104,16 @@ class TestInputSpecs:
         with pytest.raises(ValueError, match="node_name = file_var"):
             config.parse()
 
+    def test_omitted_vars_means_load_everything(self):
+        spec = Config({"inputs": {"met": {"path": "m.nc"}}}).parse().input_specs["met"]
+        assert spec.vars is None
+
+    def test_input_empty_vars_list_raises(self):
+        # Previously parsed fine, then silently bound nothing.
+        config = Config({"inputs": {"met": {"path": "m.nc", "vars": []}}})
+        with pytest.raises(ValueError, match="empty 'vars'"):
+            config.parse()
+
 
 class TestOutputSpecs:
     """Tests for output_specs — empty in test config (no [outputs.*] sections)."""

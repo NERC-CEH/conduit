@@ -289,7 +289,7 @@ class IOSpec:
     """I/O specification for a single input or output section.
 
     ``vars`` maps this section's file variables to Hamilton node names, in one of
-    two forms:
+    three forms:
 
     - a **list** ``["temperature", ...]`` — the node name is derived from the file
       variable and the section's suffix (``{var}{suffix}``), the convenient default;
@@ -297,17 +297,20 @@ class IOSpec:
       ``{temperature_daily = "t2m"}`` (input: read file var ``t2m`` as node
       ``temperature_daily``) or ``{gpp_daily = "gpp"}`` (output: write node
       ``gpp_daily`` to file var ``gpp``). Use this to decouple file naming from DAG
-      naming, or to alias a variable without renaming the file.
+      naming, or to alias a variable without renaming the file;
+    - **omitted** (``None``) — *inputs only*: bind **every** variable in the file,
+      through the suffix. An empty list is not a way to spell this and is rejected:
+      binding nothing is never what a section is for.
 
-    ``suffix`` controls the list form's node names. When ``None`` (the default) the
-    effective suffix is derived from the section label (``_<label>``). Set
-    ``suffix = ""`` on any section for bare names, or ``suffix = "_x"`` to choose an
-    explicit suffix. It is ignored for the mapping form (which is already explicit).
-    See ``conduit.io.effective_suffix``.
+    ``suffix`` controls the list/load-everything forms' node names. When ``None``
+    (the default) the effective suffix is derived from the section label
+    (``_<label>``). Set ``suffix = ""`` on any section for bare names, or
+    ``suffix = "_x"`` to choose an explicit suffix. It is ignored for the mapping
+    form (which is already explicit). See ``conduit.io.effective_suffix``.
     """
 
     path: str
-    vars: list[str] | dict[str, str]
+    vars: list[str] | dict[str, str] | None = None
     suffix: str | None = None
 
 
@@ -558,16 +561,30 @@ class Config:
         return []
 
     def _parse_inputs(self, data: dict, input_specs: dict) -> None:
-        """Handle [inputs.*] sections."""
-        for freq, params in data.pop("inputs", {}).items():
+        """Handle [inputs.*] sections.
+
+        An input section may omit ``vars`` entirely, which binds every variable in
+        the file through the section's suffix. It may not list *no* variables: an
+        empty list previously parsed fine and then silently bound nothing.
+        """
+        for label, params in data.pop("inputs", {}).items():
             if "path" not in params:
                 raise ValueError(
-                    f"[inputs.{freq}] is missing a 'path' key. "
+                    f"[inputs.{label}] is missing a 'path' key. "
                     f"Input sections must specify a file path."
                 )
-            input_specs[freq] = IOSpec(
+            vars_ = params.get("vars")
+            if vars_ is not None and len(vars_) == 0:
+                raise ValueError(
+                    f"[inputs.{label}] has an empty 'vars'. Either list the "
+                    f"variables to load, or omit 'vars' entirely to load every "
+                    f"variable in the file."
+                )
+            input_specs[label] = IOSpec(
                 path=params["path"],
-                vars=_validate_vars(f"inputs.{freq}", params.get("vars") or []),
+                vars=(
+                    None if vars_ is None else _validate_vars(f"inputs.{label}", vars_)
+                ),
                 suffix=params.get("suffix"),
             )
 

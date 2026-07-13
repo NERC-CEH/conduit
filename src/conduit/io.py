@@ -43,8 +43,8 @@ def var_mapping(
 
     - a **mapping** ``{node_name: file_var}`` is used verbatim (suffix-free);
     - a **list** yields ``{f"{var}{suffix}": var}`` using `effective_suffix`;
-    - ``vars is None`` (programmatic "load everything") maps every name in
-      ``available`` through the suffix.
+    - ``vars is None`` — an input section that omits ``vars`` — maps every name in
+      ``available`` (the file's variables) through the suffix.
     """
     if isinstance(spec.vars, dict):
         return dict(spec.vars)

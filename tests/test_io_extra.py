@@ -298,6 +298,34 @@ class TestSaveOutputs:
 
 
 # ---------------------------------------------------------------------------
+# vars: omitted means "load everything"
+# ---------------------------------------------------------------------------
+
+
+class TestOmittedVars:
+    """An input section with no ``vars`` binds every variable in the file."""
+
+    def test_input_section_without_vars_loads_all(self, synthetic_data_dir):
+        from synthetic_data import DAILY_VARS
+
+        inputs = load_inputs(
+            {"daily": IOSpec(path=str(synthetic_data_dir / "daily.nc"))}
+        )
+        # Every file variable is bound, through the section's suffix.
+        for var in DAILY_VARS:
+            assert f"{var}_daily" in inputs
+
+    def test_omitted_vars_honours_an_explicit_suffix(self, synthetic_data_dir):
+        from synthetic_data import STATIC_VARS
+
+        inputs = load_inputs(
+            {"static": IOSpec(path=str(synthetic_data_dir / "static.nc"), suffix="")}
+        )
+        for var in STATIC_VARS:
+            assert var in inputs
+
+
+# ---------------------------------------------------------------------------
 # Single time-dimension invariant
 # ---------------------------------------------------------------------------
 
