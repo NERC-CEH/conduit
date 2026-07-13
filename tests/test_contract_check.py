@@ -385,7 +385,7 @@ class TestResamplePropagation:
         register("rs_prod", _producer("g m-2 d-1"))  # produces gpp_weekly
         register("rs_cons", _consumer(consumer_unit, in_name="gpp_monthly"))
         specs = _resample_node_specs(
-            ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly")
+            ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME")
         )
         return build_driver(["rs_prod", "node", "rs_cons"], {"node_specs": specs})
 
@@ -416,8 +416,8 @@ class TestResamplePropagation:
         register("crp_prod", prod)
         register("crp_cons", _consumer("kg", in_name="gpp_monthly"))
         specs = _resample_node_specs(
-            ResampleSpec(vars=["gpp"], source_freq="daily", target_freq="weekly"),
-            ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly"),
+            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D"),
+            ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME"),
         )
         with (
             policy(enabled=True),

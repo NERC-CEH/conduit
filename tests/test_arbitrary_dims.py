@@ -44,7 +44,6 @@ class TestArbitraryDimLoading:
         # arbitrary label -> suffix; arbitrary dims preserved; no time/pixel/grid
         da = inputs["reflectance_scene"]
         assert da.dims == ("location", "band")
-        assert "dates_scene" not in inputs
         assert "latitude" not in inputs
         assert "longitude" not in inputs
 

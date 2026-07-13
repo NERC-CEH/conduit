@@ -3,7 +3,7 @@
 import os
 from os import PathLike
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -134,40 +134,47 @@ def _load_raw(path: str) -> xr.Dataset:
 # ---------------------------------------------------------------------------
 
 
-def _time_dims(ds: xr.Dataset) -> list[str]:
-    """Names of ``ds`` dimensions whose coordinate is datetime-like.
+def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
+    """Names of ``obj``'s dimensions whose coordinate is datetime-like.
 
     A dimension counts as temporal when its dimension coordinate is a NumPy
     ``datetime64`` array or a cftime index (``CFTimeIndex``). Scalar or
-    non-dimension datetime coordinates do not count — only true dimensions. This
-    is the basis of the "at most one time dimension per input dataset" invariant
-    enforced in `load_inputs`.
+    non-dimension datetime coordinates do not count — only true dimensions.
+
+    The single time-axis detector. It underpins the "at most one time dimension
+    per input dataset" invariant enforced in `load_inputs`, and is what lets the
+    rest of conduit find *the* time axis without hardcoding the name ``time`` —
+    see `conduit.transforms.resample` and `conduit.checks`.
     """
     dims: list[str] = []
-    for dim in ds.dims:
-        coord = ds.coords.get(dim)
+    for dim in obj.dims:
+        coord = obj.coords.get(dim)
         if coord is not None and (
             np.issubdtype(coord.dtype, np.datetime64)
-            or type(ds.indexes.get(dim)).__name__ == "CFTimeIndex"
+            or type(obj.indexes.get(dim)).__name__ == "CFTimeIndex"
         ):
             dims.append(str(dim))
     return dims
 
 
-def _time_index(ds: xr.Dataset, label: str = "time") -> pd.DatetimeIndex:
-    """Return the dataset's ``time`` index, asserting it is a ``DatetimeIndex``.
+def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
+    """Return the name of ``obj``'s one time dimension, or raise.
 
-    No frequency validation happens here: an input's frequency is validated only
-    where a consumer *declares* one (`xarray_annotated.temporal.Freq`, checked by
-    `conduit.dag.contract_check`), and whole-Dataset temporal compatibility is the
-    job of the `conduit.checks` suite. A section's label carries no meaning.
+    ``what`` names the object in the error message (e.g. a node name). Callers
+    that need *the* time axis go through this rather than assuming ``"time"``.
     """
-    idx = cast(pd.DatetimeIndex, ds.get_index("time"))
-    if not isinstance(idx, pd.DatetimeIndex):
+    dims = time_dims(obj)
+    if len(dims) == 1:
+        return dims[0]
+    if not dims:
         raise ValueError(
-            f"Expected a DatetimeIndex for '{label}' inputs, got {type(idx)}"
+            f"{what} has no time dimension (no dimension coordinate is "
+            f"datetime-like); its dimensions are {list(obj.dims)}."
         )
-    return idx
+    raise ValueError(
+        f"{what} has multiple time dimensions {sorted(dims)}; conduit cannot tell "
+        f"which is meant. Merge, select, or rename the extra datetime axis."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -242,11 +249,9 @@ def load_inputs(
 
     Node names are formed from each section's variables and its
     `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily``, or
-    ``elevation`` for a section that sets ``suffix = ""``). A ``time`` dimension is
-    auto-detected per section: when present a ``dates_{label}`` index is emitted.
-    Sections with no ``time`` dimension contribute no dates node. Section labels are
-    inert — nothing is inferred from ``daily``/``weekly``/``monthly``; an input's
-    frequency is validated only where a consumer declares a
+    ``elevation`` for a section that sets ``suffix = ""``). Section labels are
+    otherwise inert — nothing is inferred from ``daily``/``weekly``/``monthly``; an
+    input's frequency is validated only where a consumer declares a
     `xarray_annotated.temporal.Freq` contract for it.
 
     The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
@@ -280,7 +285,7 @@ def load_inputs(
     # axis makes "the time dimension" ambiguous (for validation, resampling, and
     # output-store construction), so reject it up front with a clear message.
     for label, ds in raw_datasets.items():
-        tdims = _time_dims(ds)
+        tdims = time_dims(ds)
         if len(tdims) > 1:
             raise ValueError(
                 f"[inputs.{label}] has multiple time dimensions {sorted(tdims)}; "
@@ -304,9 +309,6 @@ def load_inputs(
                 )
             inputs[node_name] = ds[file_var]
 
-        if "time" in ds.dims:
-            inputs[f"dates_{label}"] = _time_index(ds_raw, label)
-
     if geospatial:
         spatial = {label: ds for label, ds in raw_datasets.items() if has_crs(ds)}
         if spatial:
@@ -315,15 +317,25 @@ def load_inputs(
             inputs["longitude"] = lon
 
     if subset_spec is not None:
-        sl = slice(subset_spec.pixel_start, subset_spec.pixel_end)
-        inputs = {
-            name: val.isel(pixel=sl)
-            if isinstance(val, xr.DataArray) and "pixel" in val.dims
-            else val
-            for name, val in inputs.items()
-        }
+        inputs = subset_inputs(inputs, subset_spec)
 
     return inputs
+
+
+def subset_inputs(inputs: dict[str, Any], subset_spec: SubsetSpec) -> dict[str, Any]:
+    """Slice every pixel-bearing input to ``subset_spec``'s pixel range.
+
+    Inputs without a ``pixel`` dimension pass through untouched. Shared by
+    `load_inputs` and by `conduit.gridded.io.create_output_store`, which reuses it
+    to derive a single-pixel probe of the pipeline.
+    """
+    sl = slice(subset_spec.pixel_start, subset_spec.pixel_end)
+    return {
+        name: val.isel(pixel=sl)
+        if isinstance(val, xr.DataArray) and "pixel" in val.dims
+        else val
+        for name, val in inputs.items()
+    }
 
 
 def get_outputs(
@@ -473,15 +485,13 @@ def assert_output_paths_writable(
 def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
     """Names of auto-derived inputs `load_inputs` emits that nodes needn't consume.
 
-    The ``dates_{label}`` time indices and the geospatial ``latitude`` /
-    ``longitude`` arrays are produced automatically from the input files, so a
-    pipeline that doesn't consume them is not misconfigured. The wiring check
+    The geospatial ``latitude`` / ``longitude`` arrays are computed from the input
+    files' CRS rather than read from them, so a pipeline that doesn't consume them
+    is not misconfigured. The wiring check
     (`conduit.dag.wiring_check.check_wiring`) excludes these from its "unused
     input" diagnostic.
     """
-    aux = {name for name in inputs if name.startswith("dates_")}
-    aux |= {"latitude", "longitude"} & set(inputs)
-    return aux
+    return {"latitude", "longitude"} & set(inputs)
 
 
 def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:

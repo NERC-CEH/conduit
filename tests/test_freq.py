@@ -268,7 +268,7 @@ def _resample_specs(*specs):
 class TestResampleFreq:
     def test_entry_declares_the_offset(self):
         entry = resample_to_node_entry(
-            ResampleSpec(vars=["gpp"], source_freq="daily", target_freq="weekly")
+            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D")
         )
         assert entry["freq"] == "7D"
         assert entry["passthrough"] is True
@@ -277,20 +277,20 @@ class TestResampleFreq:
         entry = resample_to_node_entry(
             ResampleSpec(
                 vars=["gpp"],
-                source_freq="daily",
-                target_freq="weekly",
+                source="daily",
+                target="weekly",
                 freq="W-WED",
             )
         )
         assert entry["freq"] == "W-WED"
 
-    def _dr(self, register, consumer: Freq, offset: str | None = None):
+    def _dr(self, register, consumer: Freq, offset: str = "7D"):
         register("rf_cons", _consumer(consumer, in_name="gpp_weekly"))
         specs = _resample_specs(
             ResampleSpec(
                 vars=["gpp"],
-                source_freq="daily",
-                target_freq="weekly",
+                source="daily",
+                target="weekly",
                 freq=offset,
             )
         )
@@ -325,8 +325,8 @@ class TestResampleFreq:
         specs = _resample_specs(
             ResampleSpec(
                 vars=["gpp"],
-                source_freq="daily",
-                target_freq="weekly",
+                source="daily",
+                target="weekly",
                 freq=offset,
             )
         )
@@ -345,7 +345,7 @@ class TestResampleFreq:
         register("rfp_prod", _producer("gpp_daily", Freq("D")))
         register("rfp_cons", _consumer(Freq("7D"), in_name="gpp_weekly"))
         specs = _resample_specs(
-            ResampleSpec(vars=["gpp"], source_freq="daily", target_freq="weekly")
+            ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D")
         )
         with policy(enabled=True):
             build_driver(["rfp_prod", "node", "rfp_cons"], {"node_specs": specs})

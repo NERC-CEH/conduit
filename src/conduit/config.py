@@ -8,17 +8,6 @@ from typing import Any, Self
 
 import tomli_w
 
-# Default pandas offset for a (from, to) frequency direction. The ``[[resample]]``
-# preset falls back to this when no explicit ``freq`` is given; ``conduit.io`` also
-# uses it as the cross-frequency temporal-alignment convention. It is a *default
-# convention*, not a hard requirement — any direction is allowed with an explicit
-# ``freq`` offset.
-RESAMPLE_FREQ_MAP: dict[tuple[str, str], str] = {
-    ("daily", "weekly"): "7D",
-    ("daily", "monthly"): "1ME",
-    ("weekly", "monthly"): "1ME",
-}
-
 _VALID_AGGFUNCS: frozenset[str] = frozenset(
     {"mean", "sum", "max", "min", "first", "last"}
 )
@@ -35,31 +24,21 @@ class ResampleSpec:
 
     ``[[resample]]`` is a thin *preset* over the fan-out ``[[node]]`` mechanism: it
     desugars to one passthrough node per variable that applies
-    `conduit.transforms.resample` (see `resample_to_node_entry`). ``freq`` is the
-    pandas offset alias passed to that transform; when omitted it defaults from
-    `RESAMPLE_FREQ_MAP` for the ``source_freq -> target_freq`` direction.
+    `conduit.transforms.resample` (see `resample_to_node_entry`).
+
+    ``source`` and ``target`` (TOML ``from`` / ``to``) are **node-name suffixes**, not
+    frequencies: ``from = "daily"`` reads ``{var}_daily`` and ``to = "weekly"``
+    produces ``{var}_weekly``. They are free-form labels — ``from = "raw"``,
+    ``to = "smoothed"`` is equally valid — and nothing is inferred from them. The
+    frequency is ``freq`` alone: a required pandas offset alias, passed to the
+    transform and declared as the generated node's output-frequency contract.
     """
 
     vars: list[str]
-    source_freq: str
-    target_freq: str
+    source: str
+    target: str
+    freq: str
     aggfunc: str = "mean"
-    freq: str | None = None
-
-    @property
-    def offset(self) -> str:
-        """The resolved pandas offset: explicit ``freq`` or the direction default."""
-        if self.freq is not None:
-            return self.freq
-        try:
-            return RESAMPLE_FREQ_MAP[(self.source_freq, self.target_freq)]
-        except KeyError:
-            raise ValueError(
-                f"No default offset for resample direction '{self.source_freq}' → "
-                f"'{self.target_freq}'. Supported defaults: "
-                f"{sorted(RESAMPLE_FREQ_MAP)}. Specify an explicit 'freq' "
-                f"(pandas offset alias) instead."
-            ) from None
 
     @classmethod
     def from_config(cls, entry: dict) -> "ResampleSpec":
@@ -69,15 +48,26 @@ class ResampleSpec:
             raise ValueError(
                 f"Unsupported aggfunc '{aggfunc}'. Supported: {sorted(_VALID_AGGFUNCS)}"
             )
-        spec = cls(
+        missing = [key for key in ("vars", "from", "to", "freq") if key not in entry]
+        if missing:
+            raise ValueError(
+                f"[[resample]] entry is missing required key(s) {missing}. Every "
+                f"entry needs 'vars', 'from' and 'to' (the node-name suffixes to read "
+                f"from and write to) and 'freq' (the target pandas offset alias, e.g. "
+                f"'7D', '1ME', 'W-SUN')."
+            )
+
+        from xarray_annotated.temporal import Freq, assert_valid_freq
+
+        freq = entry["freq"]
+        assert_valid_freq(Freq(freq), f"[[resample]] to '{entry['to']}' freq")
+        return cls(
             vars=entry["vars"],
-            source_freq=entry["from_freq"],
-            target_freq=entry["to_freq"],
+            source=entry["from"],
+            target=entry["to"],
+            freq=freq,
             aggfunc=aggfunc,
-            freq=entry.get("freq"),
         )
-        _ = spec.offset  # validate the direction resolves (raises a clear message)
-        return spec
 
 
 @dataclass
@@ -384,27 +374,27 @@ def _subst_var(value: Any, var: str) -> Any:
 def resample_to_node_entry(spec: ResampleSpec) -> dict:
     """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
 
-    Each variable ``v`` becomes a node ``{v}_{target_freq}`` that applies
-    `conduit.transforms.resample` to ``{v}_{source_freq}``; the node is a
-    passthrough (unit/dim preserving), so the contract check propagates the
-    source's declared contract across it.
+    Each variable ``v`` becomes a node ``{v}_{target}`` that applies
+    `conduit.transforms.resample` to ``{v}_{source}``; the node is a passthrough
+    (unit/dim preserving), so the contract check propagates the source's declared
+    contract across it.
 
     The one facet a resample does *not* preserve is the frequency — it is what the
-    node changes — so the node declares its own: ``freq = spec.offset``. Every
-    resample therefore carries a checkable output-frequency contract (including its
-    anchor, so a fat-fingered ``W-WED`` is caught), which a downstream consumer's
-    ``Freq`` declaration is compared against at build time.
+    node changes — so the node declares its own: ``freq``. Every resample therefore
+    carries a checkable output-frequency contract (including its anchor, so a
+    fat-fingered ``W-WED`` is caught), which a downstream consumer's ``Freq``
+    declaration is compared against at build time.
     """
-    src = f"{{var}}_{spec.source_freq}"
+    src = f"{{var}}_{spec.source}"
     return {
         "for_each": list(spec.vars),
-        "name": f"{{var}}_{spec.target_freq}",
+        "name": f"{{var}}_{spec.target}",
         "inputs": [src],
         "expression": (
-            f"__transforms.resample({src}, freq={spec.offset!r}, "
+            f"__transforms.resample({src}, freq={spec.freq!r}, "
             f"aggfunc={spec.aggfunc!r})"
         ),
-        "freq": spec.offset,
+        "freq": spec.freq,
         "passthrough": True,
     }
 

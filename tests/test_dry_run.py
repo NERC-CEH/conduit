@@ -167,7 +167,7 @@ class TestCheckInputUnitsPropagation:
 
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
         entry = resample_to_node_entry(
-            ResampleSpec(vars=["gpp"], source_freq="weekly", target_freq="monthly")
+            ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME")
         )
         specs = [NodeSpec.from_config(e) for e in expand_node_entries([entry])]
         return build_driver(["node", "rs_cons"], {"node_specs": specs})

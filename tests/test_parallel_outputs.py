@@ -1,8 +1,10 @@
 """Tests for parallel/subset output writing: stacked layout, create-store, merge."""
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -26,6 +28,15 @@ VAR = "mean_temperature"
 
 def _output_specs(path) -> dict[str, IOSpec]:
     return {"weekly": IOSpec(path=str(path), vars=[VAR])}
+
+
+def _create_store(parsed, output_specs, **kwargs) -> list[str]:
+    """``create_output_store`` for a pipeline with its outputs swapped out.
+
+    The store builder takes the whole ``ParsedConfig`` because it probes the DAG to
+    learn each output's real layout; these tests vary only the output specs.
+    """
+    return create_output_store(replace(parsed, output_specs=output_specs), **kwargs)
 
 
 def _execute(driver, config, spec: SubsetSpec | None, output_specs):
@@ -114,7 +125,7 @@ class TestZarrSubset:
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
 
-        created = create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        created = _create_store(pipeline_config, specs, pixel_chunk=2)
         assert created == [str(store)]
 
         # Freshly created store is all-NaN with the full pixel extent.
@@ -141,11 +152,59 @@ class TestZarrSubset:
         gridded = xr.open_zarr(tmp_path / "weekly_gridded.zarr", consolidated=False)
         assert set(gridded[VAR].dims) == set(unstack_pixel(stacked_reference)[VAR].dims)
 
+    def test_store_time_axis_comes_from_the_pipeline_not_the_label(
+        self, pipeline_config, stacked_reference, tmp_path
+    ):
+        """The store's time axis is what the DAG produces, not what a label suggests.
+
+        The output section here is labelled ``monthly`` — matching an input section
+        that has a genuine (and different) monthly time axis — but it carries the
+        *weekly* node. The store must take the weekly axis the pipeline actually
+        produces. The old ``dates_{label}`` lookup would have taken the monthly one.
+        """
+        store = tmp_path / "mislabelled.zarr"
+        specs = {
+            "monthly": IOSpec(
+                path=str(store), vars={f"{VAR}_weekly": VAR}
+            )  # node -> file var
+        }
+        _create_store(pipeline_config, specs, pixel_chunk=2)
+
+        produced = stacked_reference.indexes["time"]
+        monthly_input = load_inputs(pipeline_config.input_specs)[
+            "dummy_variable_monthly"
+        ].indexes["time"]
+        got = xr.open_zarr(store, consolidated=False).indexes["time"]
+
+        assert got.equals(produced)
+        assert not got.equals(monthly_input)  # the label was a red herring
+
+    def test_region_write_rejects_a_mismatched_time_axis(
+        self, pipeline_config, pipeline_driver, tmp_path
+    ):
+        """A store whose time axis disagrees with the data is caught, not written.
+
+        Region writes don't write coordinates, so without this guard the store would
+        keep its own (wrong) timestamps and silently mislabel the data.
+        """
+        from conduit.gridded.io import save_zarr_region
+
+        store = tmp_path / "weekly.zarr"
+        specs = _output_specs(store)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
+
+        spec = SubsetSpec(0, 2)
+        ds = _execute(pipeline_driver, pipeline_config, spec, specs)["weekly"]
+        shifted = ds.assign_coords(time=ds.indexes["time"] + pd.Timedelta(days=1))
+
+        with pytest.raises(ValueError, match="does not match Zarr store"):
+            save_zarr_region(shifted, str(store), spec)
+
     def test_merge_out_override(self, pipeline_config, pipeline_driver, tmp_path):
         """--out writes the merged grid to an explicit path."""
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
-        create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
         for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
@@ -170,7 +229,7 @@ class TestZarrSubset:
             ),
         }
 
-        created = create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        created = _create_store(pipeline_config, specs, pixel_chunk=2)
         assert len(created) == 2
 
         for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
@@ -206,7 +265,7 @@ class TestZarrSubset:
         """Re-creating an existing store needs --overwrite, to protect written data."""
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
-        create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
 
         # Write something, then prove a second create-store won't silently wipe it.
         save_outputs(
@@ -215,12 +274,10 @@ class TestZarrSubset:
             subset_spec=SubsetSpec(0, 2),
         )
         with pytest.raises(FileExistsError, match="overwrite"):
-            create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+            _create_store(pipeline_config, specs, pixel_chunk=2)
 
         # overwrite=True recreates it as an empty (all-NaN) store.
-        create_output_store(
-            pipeline_config.input_specs, specs, pixel_chunk=2, overwrite=True
-        )
+        _create_store(pipeline_config, specs, pixel_chunk=2, overwrite=True)
         recreated = xr.open_zarr(store, consolidated=False).compute()
         assert bool(np.isnan(recreated[VAR].values).all())
 
@@ -239,24 +296,26 @@ class TestZarrSubset:
 
 
 def _config_text(synthetic_data_dir, out_path, subset=None, block_size=2):
+    # The weekly time axis is *derived* — nothing on disk has it, and the output
+    # section's label matches no input section. The Zarr store learns it by probing
+    # the pipeline, which is exactly what create-store could not do before.
     blocks = f"""\
+[[resample]]
+vars = ["temperature"]
+from = "daily"
+to = "weekly"
+freq = "7D"
+
 [[node]]
-name = "mean_temperature_weekly"
-inputs = ["temperature_daily"]
-expression = "temperature_daily.resample(time='7D').mean()"
+name = "{VAR}_weekly"
+inputs = ["temperature_weekly"]
+expression = "temperature_weekly"
 
 [grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]
-
-# Loaded for its weekly time axis only (emits ``dates_weekly``, which the Zarr
-# store template needs to size the ``time`` dim); no data vars, so no unused-input
-# WiringWarning.
-[inputs.weekly]
-path = "{synthetic_data_dir / "weekly.nc"}"
-vars = []
 
 [outputs.weekly]
 path = "{out_path}"
@@ -423,7 +482,7 @@ class TestSubsetErrors:
     def test_misaligned_subset_raises(self, pipeline_config, pipeline_driver, tmp_path):
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
-        create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
 
         spec = SubsetSpec(1, 3)  # not aligned to chunk size 2
         with pytest.raises(ValueError, match="aligned"):

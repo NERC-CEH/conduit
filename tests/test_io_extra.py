@@ -2,7 +2,7 @@
 
 Covers:
 - load_dataset / _save_netcdf with Zarr files
-- time-index extraction (``dates_{label}``)
+- time-dimension detection (``time_dims``) and the single-time-dim invariant
 - get_outputs and save_outputs public API
 - Multiple-CRS-dataset lat/lon computation
 """
@@ -17,12 +17,13 @@ import xarray as xr
 from conduit.config import IOSpec
 from conduit.io import (
     _save_netcdf,
-    _time_dims,
     get_final_vars,
     get_outputs,
     load_dataset,
     load_inputs,
     save_outputs,
+    sole_time_dim,
+    time_dims,
 )
 
 # ---------------------------------------------------------------------------
@@ -96,16 +97,17 @@ class TestSaveNetcdfErrors:
 
 
 # ---------------------------------------------------------------------------
-# Time-index extraction (frequency is no longer inferred from the section label)
+# Section labels are inert
 # ---------------------------------------------------------------------------
 
 
-class TestTimeIndex:
-    """``dates_{label}`` is emitted for any section with a time dim, unvalidated.
+class TestSectionLabelsAreInert:
+    """A section's label names its nodes and does nothing else.
 
-    Frequency validation is now opt-in via a consumer's ``Freq`` declaration (see
-    tests/test_freq.py), so a section labelled ``daily`` carrying weekly timestamps
-    is loaded without complaint — the label means nothing.
+    ``load_inputs`` emits data variables only — no ``dates_{label}`` index, no
+    frequency inference. Frequency validation is opt-in via a consumer's ``Freq``
+    declaration (see tests/test_freq.py), so a section labelled ``daily`` carrying
+    weekly or irregular timestamps is loaded without complaint.
     """
 
     def _spec(self, tmp_path, times, label):
@@ -122,19 +124,19 @@ class TestTimeIndex:
             ("arbitrary", DAILY_TIMES),
         ],
     )
-    def test_dates_node_emitted(self, tmp_path, label, times):
+    def test_only_data_vars_are_emitted(self, tmp_path, label, times):
         inputs = load_inputs(self._spec(tmp_path, times, label))
-        assert isinstance(inputs[f"dates_{label}"], pd.DatetimeIndex)
+        assert set(inputs) == {f"var_a_{label}"}
 
     def test_label_frequency_not_enforced(self, tmp_path):
-        # A section called "daily" holding weekly timestamps: no longer an error.
+        # A section called "daily" holding weekly timestamps: not an error.
         inputs = load_inputs(self._spec(tmp_path, WEEKLY_TIMES, "daily"))
-        assert len(inputs["dates_daily"]) == N_TIMES
+        assert inputs["var_a_daily"].sizes["time"] == N_TIMES
 
     def test_irregular_times_accepted(self, tmp_path):
         times = pd.to_datetime(["2020-01-01", "2020-01-03", "2020-01-10"])
         inputs = load_inputs(self._spec(tmp_path, times, "daily"))
-        assert len(inputs["dates_daily"]) == 3
+        assert inputs["var_a_daily"].sizes["time"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -305,13 +307,37 @@ class TestSingleTimeDim:
 
     def test_time_dims_detects_datetime_dimension(self):
         ds = _simple_ds()  # dims (time, pixel), only `time` is datetime
-        assert _time_dims(ds) == ["time"]
+        assert time_dims(ds) == ["time"]
 
     def test_time_dims_ignores_non_datetime_dims(self):
         ds = xr.Dataset(
             {"x": (("band",), np.arange(3))}, coords={"band": ["r", "g", "b"]}
         )
-        assert _time_dims(ds) == []
+        assert time_dims(ds) == []
+
+    def test_time_dims_accepts_a_dataarray(self):
+        assert time_dims(_simple_ds()["var_a"]) == ["time"]
+
+    def test_sole_time_dim_returns_the_one_axis(self):
+        assert sole_time_dim(_simple_ds(), "ds") == "time"
+
+    def test_sole_time_dim_raises_without_a_time_axis(self):
+        ds = xr.Dataset(
+            {"x": (("band",), np.arange(3))}, coords={"band": ["r", "g", "b"]}
+        )
+        with pytest.raises(ValueError, match="has no time dimension"):
+            sole_time_dim(ds, "ds")
+
+    def test_sole_time_dim_raises_on_ambiguity(self):
+        ds = xr.Dataset(
+            {"f": (("time", "lead_time"), np.zeros((4, 3)))},
+            coords={
+                "time": pd.date_range("2020-01-01", periods=4, freq="D"),
+                "lead_time": pd.date_range("2020-06-01", periods=3, freq="D"),
+            },
+        )
+        with pytest.raises(ValueError, match="multiple time dimensions"):
+            sole_time_dim(ds, "ds")
 
     def test_two_time_dims_raises(self, tmp_path):
         # A cube with two datetime axes (e.g. observation time + forecast lead time).

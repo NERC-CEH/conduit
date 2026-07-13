@@ -11,14 +11,26 @@ preset be an ordinary generated node rather than a special-cased DAG module.
 
 import xarray as xr
 
+from .io import sole_time_dim
+
 __all__ = ["resample"]
 
 
-def resample(var_in: xr.DataArray, *, freq: str, aggfunc: str = "mean") -> xr.DataArray:
-    """Resample a DataArray along ``time`` to a coarser ``freq`` using ``aggfunc``.
+def resample(
+    var_in: xr.DataArray,
+    *,
+    freq: str,
+    aggfunc: str = "mean",
+    dim: str | None = None,
+) -> xr.DataArray:
+    """Resample a DataArray along its time axis to a coarser ``freq``.
 
     ``aggfunc`` must be a valid xarray ``DataArrayResample`` method (e.g. ``'mean'``,
     ``'sum'``). ``freq`` must be a valid pandas offset alias (e.g. ``'7D'``, ``'1ME'``).
+
+    ``dim`` names the time axis. When omitted it is detected from the array's
+    coordinates (`conduit.io.sole_time_dim`), so an axis need not be called
+    ``time``; pass ``dim`` explicitly to override.
 
     Units note: reducing along the time axis is dimensionally homogeneous, so both
     'mean' and 'sum' preserve units — hence we copy attrs (incl. CF 'units')
@@ -37,7 +49,8 @@ def resample(var_in: xr.DataArray, *, freq: str, aggfunc: str = "mean") -> xr.Da
     (so unit validation cannot catch it) yet physically meaningless. Pick the
     aggfunc to match the quantity.
     """
-    out = getattr(var_in.resample(time=freq), aggfunc)()
+    dim = dim or sole_time_dim(var_in, f"resample input {var_in.name!r}")
+    out = getattr(var_in.resample({dim: freq}), aggfunc)()
     # Preserve attrs (notably CF 'units') so contract validation downstream sees
     # the resampled variable's units.
     out.attrs = dict(var_in.attrs)
