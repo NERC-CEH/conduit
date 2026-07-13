@@ -484,6 +484,29 @@ class TestNode:
         with pytest.raises(ValueError, match="must specify either"):
             config.parse()
 
+    @pytest.mark.parametrize("bad", ["mean temperature", "2fast", "a-b", "lambda"])
+    def test_node_name_must_be_identifier(self, bad):
+        config = Config({"node": [{"name": bad, "inputs": ["a"], "expression": "a"}]})
+        with pytest.raises(ValueError, match=repr(bad)):
+            config.parse()
+
+    def test_node_input_must_be_identifier(self):
+        config = Config(
+            {"node": [{"name": "foo", "inputs": ["a b"], "expression": "a"}]}
+        )
+        with pytest.raises(ValueError, match="'a b'"):
+            config.parse()
+
+    @pytest.mark.parametrize("reserved", ["xr", "Any", "import_module", "__transforms"])
+    def test_reserved_node_names_rejected(self, reserved):
+        # A node named `xr` would shadow the helper bound in the generated module's
+        # namespace for every later node's expression.
+        config = Config(
+            {"node": [{"name": reserved, "inputs": ["a"], "expression": "a"}]}
+        )
+        with pytest.raises(ValueError, match="reserved"):
+            config.parse()
+
     def test_import_path_without_function_raises(self):
         config = Config(
             {

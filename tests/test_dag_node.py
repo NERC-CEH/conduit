@@ -7,7 +7,18 @@ import xarray as xr
 from xarray_annotated.units import policy, units_from_signature
 
 from conduit.config import NodeSpec
-from conduit.dag.node import _build_fn_code, make_node_module
+from conduit.dag.node import (
+    RESERVED_NODE_NAMES,
+    _build_fn_code,
+    _node_namespace,
+    make_node_module,
+)
+
+
+def test_reserved_names_match_generated_namespace():
+    # The parser rejects node names in RESERVED_NODE_NAMES; that set is only
+    # correct if it is exactly what the generated module's namespace binds.
+    assert set(_node_namespace()) == RESERVED_NODE_NAMES
 
 
 def _expr_spec(name, inputs, expression, units=None):

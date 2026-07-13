@@ -24,6 +24,27 @@ if TYPE_CHECKING:
 #: declare a frequency of its own.
 PASSTHROUGH_TAG = "conduit_passthrough"
 
+#: Names bound in every generated module's namespace, and therefore unusable as a
+#: node name or node input: a node called ``xr`` would shadow the helper for every
+#: later node's expression. `conduit.config.NodeSpec.from_config` rejects them at
+#: parse time. Kept in step with `_node_namespace` by
+#: ``test_dag_node.py::test_reserved_names_match_generated_namespace``.
+RESERVED_NODE_NAMES: frozenset[str] = frozenset(
+    {"xr", "Any", "import_module", "__transforms"}
+)
+
+
+def _node_namespace() -> dict[str, Any]:
+    """Build the namespace every generated node's body is ``exec``'d in."""
+    return {
+        "xr": xr,
+        "Any": Any,
+        "import_module": import_module,
+        # Available to node expressions (e.g. the [[resample]] preset desugars to
+        # ``__transforms.resample(...)``).
+        "__transforms": import_module("conduit.transforms"),
+    }
+
 
 def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
     """Generate a Hamilton-compatible module with one function per node spec.
@@ -35,14 +56,7 @@ def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
     decorators — no annotation/decorator source is generated.
     """
     mod = types.ModuleType(f"conduit_node_generated_{uuid.uuid4().hex[:8]}")
-    ns: dict = {
-        "xr": xr,
-        "Any": Any,
-        "import_module": import_module,
-        # Available to node expressions (e.g. the [[resample]] preset desugars to
-        # ``__transforms.resample(...)``).
-        "__transforms": import_module("conduit.transforms"),
-    }
+    ns: dict = _node_namespace()
     for spec in node_specs:
         exec(_build_fn_code(spec), ns)
         fn = _decorate(ns[spec.name], spec)

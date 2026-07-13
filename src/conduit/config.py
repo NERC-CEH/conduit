@@ -1,5 +1,6 @@
 """Configuration management for conduit."""
 
+import keyword
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -70,6 +71,33 @@ class ResampleSpec:
         )
 
 
+def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
+    """Reject a node name / input that is unsafe to interpolate into node source.
+
+    `conduit.dag.node` builds each node's ``def`` line by string formatting, so a
+    name that is not a plain Python identifier fails as an opaque ``SyntaxError``
+    deep in module generation (or, worse, injects statements). The generated
+    module's own namespace names are reserved too: a node called ``xr`` would
+    shadow the helper for every later node's expression.
+    """
+    from .dag.node import RESERVED_NODE_NAMES
+
+    where = f"[[node]] '{node_name}' {field_}"
+    if not isinstance(value, str) or not value.isidentifier():
+        raise ValueError(
+            f"{where}: {value!r} is not a valid Python identifier, and node names "
+            f"and inputs become identifiers in the generated node module."
+        )
+    if keyword.iskeyword(value):
+        raise ValueError(f"{where}: {value!r} is a Python keyword.")
+    if value in RESERVED_NODE_NAMES:
+        raise ValueError(
+            f"{where}: {value!r} is reserved — it names a helper bound in every "
+            f"generated node module ({sorted(RESERVED_NODE_NAMES)}). Choose "
+            f"another name."
+        )
+
+
 @dataclass
 class NodeSpec:
     """Specification for a single (already fan-out-expanded) [[node]] entry.
@@ -99,6 +127,9 @@ class NodeSpec:
     def from_config(cls, entry: dict) -> "NodeSpec":
         """Construct and validate from a raw (expanded) [[node]] TOML entry."""
         name = entry.get("name")
+        _assert_node_identifier(name, "name", name)
+        for inp in entry.get("inputs", []):
+            _assert_node_identifier(inp, "inputs", name)
         has_expression = "expression" in entry
         has_import_path = "_import_path" in entry
         has_function = "function" in entry
