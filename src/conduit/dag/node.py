@@ -1,8 +1,9 @@
 """Generate Hamilton-compatible node modules from config specs."""
 
+import hashlib
 import sys
 import types
-import uuid
+from dataclasses import astuple
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
@@ -46,6 +47,21 @@ def _node_namespace() -> dict[str, Any]:
     }
 
 
+def _module_name(node_specs: list["NodeSpec"]) -> str:
+    """Return a stable module name, keyed on the specs it is generated from.
+
+    Hamilton requires the generated module to live in ``sys.modules`` (it resolves a
+    node's originating function through it), so the registration cannot simply be
+    dropped. A random per-build name would therefore leak one entry *per build* —
+    unbounded in a long-lived process such as a calibration loop or a test session.
+
+    Keying the name on the specs' content means rebuilding the same config reuses one
+    entry, while two different configs still get distinct modules.
+    """
+    payload = repr([astuple(spec) for spec in node_specs]).encode()
+    return f"conduit_node_generated_{hashlib.sha256(payload).hexdigest()[:12]}"
+
+
 def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
     """Generate a Hamilton-compatible module with one function per node spec.
 
@@ -54,8 +70,12 @@ def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
     ``xarray_annotated.annotate`` builds the ``Annotated`` return hint from the raw
     spec values, then ``declare_units`` / ``declare_schema`` are applied as ordinary
     decorators — no annotation/decorator source is generated.
+
+    The module is registered in ``sys.modules`` under a content-derived name (see
+    `_module_name`), which Hamilton requires and which keeps repeated builds of the
+    same config from accumulating entries.
     """
-    mod = types.ModuleType(f"conduit_node_generated_{uuid.uuid4().hex[:8]}")
+    mod = types.ModuleType(_module_name(node_specs))
     ns: dict = _node_namespace()
     for spec in node_specs:
         exec(_build_fn_code(spec), ns)
