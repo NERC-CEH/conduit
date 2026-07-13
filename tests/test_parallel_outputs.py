@@ -10,6 +10,7 @@ import xarray as xr
 
 from conduit.config import IOSpec, SubsetSpec
 from conduit.gridded.io import (
+    _find_subset_parts,
     create_output_store,
     flatten_pixel_index,
     merge_subset_outputs,
@@ -81,6 +82,68 @@ class TestStackingHelpers:
 
 
 # ---------------------------------------------------------------------------
+# Part discovery: numeric ordering + completeness
+# ---------------------------------------------------------------------------
+
+
+class TestSubsetPartDiscovery:
+    """`_find_subset_parts` orders parts numerically and proves they cover the grid.
+
+    Exercised directly rather than through `merge_subset_outputs` because the
+    interesting boundaries (where a lexicographic sort diverges from a numeric one)
+    need far more pixels than the 2x2 session grid has.
+    """
+
+    def _touch(self, tmp_path, *names):
+        for name in names:
+            (tmp_path / name).touch()
+        return tmp_path / "weekly.nc"
+
+    def test_merge_sorts_parts_numerically(self, tmp_path):
+        # Lexicographically, '_p1000-1500' sorts before '_p500-1000'.
+        path = self._touch(
+            tmp_path,
+            "weekly_p500-1000.nc",
+            "weekly_p1000-1500.nc",
+            "weekly_p0-500.nc",
+        )
+        assert [p.name for p in _find_subset_parts(path)] == [
+            "weekly_p0-500.nc",
+            "weekly_p500-1000.nc",
+            "weekly_p1000-1500.nc",
+        ]
+
+    def test_merge_missing_part_raises(self, tmp_path):
+        path = self._touch(tmp_path, "weekly_p0-500.nc", "weekly_p1000-1500.nc")
+        with pytest.raises(ValueError, match="gap at pixel 500"):
+            _find_subset_parts(path)
+
+    def test_overlapping_parts_raise(self, tmp_path):
+        path = self._touch(
+            tmp_path, "weekly_p0-500.nc", "weekly_p400-900.nc", "weekly_p900-1000.nc"
+        )
+        with pytest.raises(ValueError, match="overlap at pixel 500"):
+            _find_subset_parts(path)
+
+    def test_parts_not_starting_at_zero_raise(self, tmp_path):
+        path = self._touch(tmp_path, "weekly_p500-1000.nc")
+        with pytest.raises(ValueError, match="gap at pixel 0"):
+            _find_subset_parts(path)
+
+    def test_merge_ignores_non_part_files(self, tmp_path):
+        # A stray '_partial' file matches the old glob but is not a subset part.
+        path = self._touch(
+            tmp_path, "weekly_p0-500.nc", "weekly_partial.nc", "weekly_pXX.nc"
+        )
+        assert [p.name for p in _find_subset_parts(path)] == ["weekly_p0-500.nc"]
+
+    def test_no_parts_raises(self, tmp_path):
+        path = self._touch(tmp_path, "weekly_partial.nc")
+        with pytest.raises(FileNotFoundError, match="No subset parts"):
+            _find_subset_parts(path)
+
+
+# ---------------------------------------------------------------------------
 # NetCDF: unique suffixed files + merge
 # ---------------------------------------------------------------------------
 
@@ -111,6 +174,24 @@ class TestNetcdfSubset:
             ref_grid[VAR].values,
             equal_nan=True,
         )
+
+    def test_merge_refuses_to_silently_drop_a_failed_subset(
+        self, pipeline_config, pipeline_driver, tmp_path
+    ):
+        """A subset run that never produced its part must not merge to NaN stripes."""
+        out = tmp_path / "weekly.nc"
+        specs = _output_specs(out)
+
+        # Write the outer two thirds; the middle subset "fails" (writes nothing).
+        for spec in (SubsetSpec(0, 1), SubsetSpec(3, 4)):
+            save_outputs(
+                _execute(pipeline_driver, pipeline_config, spec, specs),
+                specs,
+                subset_spec=spec,
+            )
+
+        with pytest.raises(ValueError, match="gap at pixel 1"):
+            merge_subset_outputs(specs)
 
 
 # ---------------------------------------------------------------------------

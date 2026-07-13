@@ -17,6 +17,7 @@ the CRS functions (`_ensure_rio`), so importing this module itself is cheap and
 dependency-free — only actually using a CRS path requires the extra.
 """
 
+import re
 from os import PathLike
 from pathlib import Path
 from typing import Any
@@ -388,6 +389,49 @@ def create_output_store(
     return created
 
 
+def _find_subset_parts(path: Path) -> list[Path]:
+    """Discover, order and validate the NetCDF subset parts written for ``path``.
+
+    Parts are named ``{stem}_p{start}-{stop}{suffix}`` (`subset_suffix`). They are
+    ordered by their integer ``start`` — a lexicographic sort puts ``_p1000-1500``
+    before ``_p500-1000`` — and the ranges must *chain*: start at 0, then each
+    start equal to the previous stop. A failed subset run (a gap) or a
+    double-written region (an overlap) therefore raises here, rather than becoming
+    silent NaN stripes in the merged grid.
+
+    Matching on the full ``_p<int>-<int>`` shape also means a neighbouring
+    ``{stem}_partial.nc`` is not swept into the merge.
+    """
+    pattern = re.compile(rf"{re.escape(path.stem)}_p(\d+)-(\d+)")
+    found: list[tuple[int, int, Path]] = []
+    for part in path.parent.glob(f"{path.stem}_p*{path.suffix}"):
+        match = pattern.fullmatch(part.stem)
+        if match is not None:
+            found.append((int(match[1]), int(match[2]), part))
+
+    if not found:
+        raise FileNotFoundError(
+            f"No subset parts found matching "
+            f"'{path.stem}_p<start>-<stop>{path.suffix}' in {path.parent}."
+        )
+
+    found.sort()
+    covered = ", ".join(f"{start}-{stop}" for start, stop, _ in found)
+    expected = 0
+    for start, stop, part in found:
+        if start != expected:
+            kind = "gap" if start > expected else "overlap"
+            raise ValueError(
+                f"Subset parts for {path.name} do not cover the pixel dimension: "
+                f"{kind} at pixel {expected} (part '{part.name}' starts at {start}). "
+                f"Ranges found: {covered}. Every pixel must be written exactly once "
+                f"or the merged output would contain unwritten regions."
+            )
+        expected = stop
+
+    return [part for _, _, part in found]
+
+
 def merge_subset_outputs(
     output_specs: dict[str, IOSpec],
     out: str | PathLike | None = None,
@@ -395,7 +439,7 @@ def merge_subset_outputs(
 ) -> list[str]:
     """Reassemble stacked subset outputs into gridded files.
 
-    For NetCDF outputs, concatenates the per-subset ``*_p<start>-<end>.nc`` parts;
+    For NetCDF outputs, concatenates the per-subset ``*_p<start>-<stop>.nc`` parts;
     for Zarr outputs, reads the shared store.  In both cases the ``pixel`` layout
     is unstacked back to a ``(y, x)`` grid.  Returns the list of files written.
 
@@ -403,6 +447,12 @@ def merge_subset_outputs(
     path and Zarr results to a sibling store with ``out_suffix`` appended.  Pass
     ``out`` to write to an explicit path instead; this is only valid when there is
     a single output section (otherwise the destination would be ambiguous).
+
+    Completeness is only verified on the **NetCDF** path, where the parts are
+    separate files whose ranges can be chained (`_find_subset_parts`). Zarr subsets
+    all write regions of one pre-created store, which carries no record of which
+    regions were written — detecting a missed region would mean scanning the store
+    for NaNs, so a failed Zarr subset run is *not* caught here.
     """
     if out is not None and len(output_specs) > 1:
         raise ValueError(
@@ -417,12 +467,7 @@ def merge_subset_outputs(
         suffix = path.suffix.lower()
 
         if suffix in (".nc", ".netcdf"):
-            parts = sorted(path.parent.glob(f"{path.stem}_p*{path.suffix}"))
-            if not parts:
-                raise FileNotFoundError(
-                    f"No subset parts found matching "
-                    f"'{path.stem}_p*{path.suffix}' in {path.parent}."
-                )
+            parts = _find_subset_parts(path)
             ds = xr.open_mfdataset(
                 parts, combine="nested", concat_dim="pixel", decode_coords="all"
             )
