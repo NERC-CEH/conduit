@@ -100,16 +100,25 @@ class NodeSpec:
         """Construct and validate from a raw (expanded) [[node]] TOML entry."""
         name = entry.get("name")
         has_expression = "expression" in entry
-        has_function = "_import_path" in entry or "function" in entry
-        if has_expression and has_function:
+        has_import_path = "_import_path" in entry
+        has_function = "function" in entry
+        if has_expression and (has_import_path or has_function):
             raise ValueError(
                 f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function'), not both."
             )
-        if not has_expression and not has_function:
+        if not has_expression and not (has_import_path or has_function):
             raise ValueError(
                 f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function')."
+            )
+        if has_import_path != has_function:
+            missing = "function" if has_import_path else "_import_path"
+            present = "_import_path" if has_import_path else "function"
+            raise ValueError(
+                f"Node entry for '{name}' specifies '{present}' but is missing "
+                f"'{missing}'. A function node needs both keys: "
+                f"'_import_path' (the module) and 'function' (the name within it)."
             )
         units = entry.get("units")
         if units is not None:

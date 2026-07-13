@@ -479,6 +479,36 @@ class TestNode:
         with pytest.raises(ValueError, match="must specify either"):
             config.parse()
 
+    def test_import_path_without_function_raises(self):
+        config = Config(
+            {
+                "node": [
+                    {
+                        "name": "foo",
+                        "inputs": ["a"],
+                        "_import_path": "some.module",
+                    }
+                ]
+            }
+        )
+        with pytest.raises(ValueError, match="missing 'function'"):
+            config.parse()
+
+    def test_function_without_import_path_raises(self):
+        config = Config(
+            {
+                "node": [
+                    {
+                        "name": "foo",
+                        "inputs": ["a"],
+                        "function": "some_fn",
+                    }
+                ]
+            }
+        )
+        with pytest.raises(ValueError, match="missing '_import_path'"):
+            config.parse()
+
 
 class TestMultipleFrequencies:
     """Tests for multiple input/output frequencies."""
