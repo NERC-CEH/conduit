@@ -180,7 +180,7 @@ def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
     geospatial: bool | None = None,
-) -> dict[str, Any]:
+) -> dict[str, xr.DataArray]:
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
     Node names are formed from each section's variables and its
@@ -214,7 +214,7 @@ def load_inputs(
     # what pulls the optional `geo` extra, and only when CRS metadata is present.
     from .gridded.io import compute_lat_lon, has_crs, stack_if_gridded
 
-    inputs: dict[str, Any] = {}
+    inputs: dict[str, xr.DataArray] = {}
     raw_datasets = load_raw_datasets(input_specs)
 
     # Invariant: at most one time dimension per input dataset. A second datetime
@@ -258,7 +258,9 @@ def load_inputs(
     return inputs
 
 
-def subset_inputs(inputs: dict[str, Any], subset_spec: SubsetSpec) -> dict[str, Any]:
+def subset_inputs(
+    inputs: dict[str, xr.DataArray], subset_spec: SubsetSpec
+) -> dict[str, xr.DataArray]:
     """Slice every input carrying ``subset_spec.dim`` to that spec's range.
 
     Inputs without the dimension (a static scalar, say) pass through untouched.
@@ -268,9 +270,7 @@ def subset_inputs(inputs: dict[str, Any], subset_spec: SubsetSpec) -> dict[str, 
     dim = subset_spec.dim
     sl = slice(subset_spec.start, subset_spec.stop)
     return {
-        name: val.isel({dim: sl})
-        if isinstance(val, xr.DataArray) and dim in val.dims
-        else val
+        name: val.isel({dim: sl}) if dim in val.dims else val
         for name, val in inputs.items()
     }
 

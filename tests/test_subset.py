@@ -95,19 +95,14 @@ class TestSubsetCorrectness:
             xr.testing.assert_identical(combined, full_val)
 
     def test_no_pixel_inputs_unaffected(self, pipeline_config, pipeline_inputs):
-        """Non-pixel inputs (dates, scalars) pass through unchanged."""
-        import pandas as pd
-
+        """Inputs without the partition dim pass through unchanged."""
         spec = SubsetSpec(start=0, stop=2)
         inputs_sub = load_inputs(pipeline_config.input_specs, subset_spec=spec)
 
         for name, full_val in pipeline_inputs.items():
-            if isinstance(full_val, xr.DataArray) and "pixel" in full_val.dims:
+            if "pixel" in full_val.dims:
                 continue
-            if isinstance(full_val, xr.DataArray):
-                xr.testing.assert_identical(inputs_sub[name], full_val)
-            elif isinstance(full_val, pd.DatetimeIndex):
-                assert inputs_sub[name].equals(full_val)
+            xr.testing.assert_identical(inputs_sub[name], full_val)
 
 
 # ---------------------------------------------------------------------------
