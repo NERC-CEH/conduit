@@ -636,13 +636,19 @@ class TestMultipleFrequencies:
 
 
 class TestAnnotationsSection:
-    """Tests for the [annotations] section and its legacy [units] alias."""
+    """Tests for the [annotations] section."""
 
-    def test_units_alias_mode_and_exact(self):
-        parsed = Config({"units": {"mode": "strict", "exact": True}}).parse()
+    def test_mode_and_exact(self):
+        parsed = Config({"annotations": {"mode": "strict", "exact": True}}).parse()
         assert parsed.annotations.on_missing == "error"
         assert parsed.annotations.on_inexact == "error"
         assert parsed.annotations.on_mismatch is None
+
+    def test_units_section_no_longer_recognised(self):
+        # The legacy alias is gone, so [units] falls through to the external-module
+        # path and fails for want of an _import_path.
+        with pytest.raises(ValueError, match="_import_path"):
+            Config({"units": {"mode": "strict"}}).parse()
 
     def test_mode_off_disables(self):
         parsed = Config({"annotations": {"mode": "off"}}).parse()
@@ -663,10 +669,6 @@ class TestAnnotationsSection:
     def test_invalid_on_uninferable_raises(self):
         with pytest.raises(ValueError, match="on_uninferable"):
             Config({"annotations": {"on_uninferable": "explode"}}).parse()
-
-    def test_both_sections_raise(self):
-        with pytest.raises(ValueError, match="not both"):
-            Config({"annotations": {}, "units": {}}).parse()
 
     def test_absent_section_is_all_none(self):
         parsed = Config({}).parse()

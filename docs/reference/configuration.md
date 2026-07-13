@@ -308,8 +308,7 @@ a warning, since they describe the whole domain rather than a single shard.
 ## Annotations
 
 `[annotations]` controls how contract declarations (units, schema: dims/coords/dtype,
-and temporal: freq) are validated. The legacy name `[units]` is a working alias for the
-same section. Omit it to keep the defaults.
+and temporal: freq) are validated. Omit it to keep the defaults.
 
 ```toml
 [annotations]

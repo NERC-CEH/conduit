@@ -750,7 +750,7 @@ class Config:
         return specs
 
     def _parse_annotations(self, data: dict) -> "AnnotationPolicySpec":
-        """Handle the [annotations] section (``[units]`` is a working alias).
+        """Handle the [annotations] section.
 
         Maps the section's keys to the xarray-annotated policy axes:
 
@@ -765,16 +765,12 @@ class Config:
 
         ``mode = "off"`` disables validation for *every* facet via the shared
         master switch. ``None`` axes defer to the process-wide default. All are
-        ``None`` if there is neither an [annotations] nor a [units] section.
+        ``None`` if there is no [annotations] section.
         """
-        annotations = data.pop("annotations", None)
-        units = data.pop("units", None)
-        if annotations is not None and units is not None:
-            raise ValueError("Use either [annotations] or its alias [units], not both.")
-        entry = annotations if annotations is not None else units
+        entry = data.pop("annotations", None)
         if entry is None:
             return AnnotationPolicySpec()
-        label = "annotations" if annotations is not None else "units"
+        label = "annotations"
         enabled: bool | None = None
         on_missing: str | None = None
         on_inexact: str | None = None
@@ -850,8 +846,7 @@ class Config:
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — pixel-blocked execution (block_size)
         - [subset]        — a slice of one dimension (dim, start, stop)
-        - [annotations]   — contract validation policy (units + schema + temporal);
-                            the legacy name [units] is a working alias
+        - [annotations]   — contract validation policy (units + schema + temporal)
 
         All other top-level sections are treated as external modules and must
         include a '_import_path = "pkg.module"' key specifying the importable
