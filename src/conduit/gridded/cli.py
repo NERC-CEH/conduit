@@ -99,15 +99,19 @@ def merge(
         ),
     ] = None,
 ) -> None:
-    """Merge per-subset outputs back into a single gridded file per frequency.
+    """Merge per-subset outputs back into a single file per output section.
 
-    NetCDF parts (``*_p<start>-<end>.nc``) are concatenated and written to the
+    NetCDF parts (``*_<dim><start>-<stop>.nc``) are concatenated and written to the
     config's declared path; a shared Zarr store is unstacked into a sibling
     ``*_gridded.zarr`` store.  Use ``--out`` to override the destination.
+
+    The partition dimension is read from the config's ``[subset]`` section (so the
+    part filenames match what the subset runs wrote), defaulting to ``pixel``.
     """
     parsed = load_config(config_file)
     parsed.annotations.apply()
-    written = merge_subset_outputs(parsed.output_specs, out=out)
+    dim = parsed.subset_spec.dim if parsed.subset_spec is not None else "pixel"
+    written = merge_subset_outputs(parsed.output_specs, out=out, dim=dim)
 
     if not written:
         typer.echo("No mergeable outputs in config.")

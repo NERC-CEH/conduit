@@ -199,8 +199,8 @@ def compute_lat_lon(
 
 
 def subset_suffix(spec: SubsetSpec) -> str:
-    """Filename suffix that uniquely identifies a pixel subset, e.g. ``_p0-500``."""
-    return f"_p{spec.pixel_start}-{spec.pixel_end}"
+    """Filename suffix that uniquely identifies a subset, e.g. ``_pixel0-500``."""
+    return f"_{spec.dim}{spec.start}-{spec.stop}"
 
 
 def subset_path(path: str, spec: SubsetSpec) -> Path:
@@ -209,14 +209,16 @@ def subset_path(path: str, spec: SubsetSpec) -> Path:
     return p.with_name(f"{p.stem}{subset_suffix(spec)}{p.suffix}")
 
 
-def _assert_coords_match(ds: xr.Dataset, store: xr.Dataset, path: str) -> None:
-    """Raise unless ``ds``'s non-``pixel`` coordinates match the store's exactly.
+def _assert_coords_match(
+    ds: xr.Dataset, store: xr.Dataset, path: str, partition_dim: str = "pixel"
+) -> None:
+    """Raise unless ``ds``'s coordinates match the store's, outside the partition dim.
 
-    The ``pixel`` dimension is excluded: it is the one axis a subset run *does*
-    partition, so its coordinate is legitimately a slice of the store's.
+    ``partition_dim`` is excluded: it is the one axis a subset run *does* partition,
+    so its coordinate is legitimately a slice of the store's.
     """
     for dim in ds.dims:
-        if dim == "pixel" or dim not in ds.coords:
+        if dim == partition_dim or dim not in ds.coords:
             continue
         if dim not in store.coords:
             raise ValueError(
@@ -237,17 +239,18 @@ def _assert_coords_match(ds: xr.Dataset, store: xr.Dataset, path: str) -> None:
 
 
 def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
-    """Write a pixel subset into an existing Zarr store via a region write.
+    """Write a subset into an existing Zarr store via a region write.
 
     The store must already exist (see ``conduit gridded create-store``).  Only the
     data variables are written; coordinates already live in the store, and writing
     them in region mode is both unnecessary and disallowed by xarray.
 
     Because the coordinates are *not* written, they are checked instead: a store
-    whose non-``pixel`` coordinates (notably ``time``) disagree with the data being
-    written into it would be silently mislabelled. `_assert_coords_match` turns that
-    into an error at the write, rather than a wrong answer at the merge.
+    whose other coordinates (notably ``time``) disagree with the data being written
+    into it would be silently mislabelled. `_assert_coords_match` turns that into an
+    error at the write, rather than a wrong answer at the merge.
     """
+    dim = spec.dim
     store = Path(path)
     if not store.exists():
         raise FileNotFoundError(
@@ -256,29 +259,34 @@ def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
         )
 
     template = xr.open_zarr(store, consolidated=False)
-    _assert_coords_match(ds, template, path)
-    n_pixel = template.sizes["pixel"]
-    # Only the data variables are region-written, so their on-disk pixel chunking
-    # is what governs concurrency safety (coords are written once by create-store).
+    _assert_coords_match(ds, template, path, partition_dim=dim)
+    if dim not in template.dims:
+        raise ValueError(
+            f"Zarr store '{path}' has no {dim!r} dimension, so a [subset] over "
+            f"{dim!r} cannot be region-written into it. The store's dimensions are "
+            f"{sorted(str(d) for d in template.dims)}."
+        )
+    n_along_dim = template.sizes[dim]
+    # Only the data variables are region-written, so their on-disk chunking along the
+    # partition dim is what governs concurrency safety (coords are written once by
+    # create-store).
     sample = template[next(iter(template.data_vars))]
     chunks_enc = sample.encoding.get("chunks")
     chunk = (
-        chunks_enc[list(sample.dims).index("pixel")]
-        if chunks_enc and "pixel" in sample.dims
-        else n_pixel
+        chunks_enc[list(sample.dims).index(dim)]
+        if chunks_enc and dim in sample.dims
+        else n_along_dim
     )
-    if spec.pixel_start % chunk != 0 or (
-        spec.pixel_end % chunk != 0 and spec.pixel_end != n_pixel
-    ):
+    if spec.start % chunk != 0 or (spec.stop % chunk != 0 and spec.stop != n_along_dim):
         raise ValueError(
-            f"[subset] range {spec.pixel_start}-{spec.pixel_end} is not aligned to "
-            f"the store's pixel chunk size ({chunk}). Concurrent region writes "
-            f"require subset boundaries to fall on chunk boundaries. Re-create the "
-            f"store with a matching --pixel-chunk, or adjust the subset range."
+            f"[subset] range {spec.start}-{spec.stop} is not aligned to the store's "
+            f"{dim} chunk size ({chunk}). Concurrent region writes require subset "
+            f"boundaries to fall on chunk boundaries. Re-create the store with a "
+            f"matching --pixel-chunk, or adjust the subset range."
         )
 
     data_only = ds.drop_vars(list(ds.coords))
-    region = {"pixel": slice(spec.pixel_start, spec.pixel_end)}
+    region = {dim: slice(spec.start, spec.stop)}
     data_only.to_zarr(store, region=region, consolidated=False)
 
 
@@ -329,6 +337,12 @@ def create_output_store(
 
     Refuses to clobber an existing store unless ``overwrite`` is set: re-running
     this after subset processes have populated a store would erase their data.
+
+    Unlike the rest of the ``[subset]`` path, this is ``pixel``-only: the store *is*
+    the stacked pixel grid (that is what `_pixel_template` builds and what `merge`
+    unstacks back to ``(y, x)``). A ``[subset]`` over any other ``dim`` alongside a
+    Zarr output is rejected rather than silently building a mislabelled store — such
+    a pipeline should use a NetCDF output, whose parts need no shared store.
     """
     import dask.array as da
 
@@ -342,6 +356,14 @@ def create_output_store(
     }
     if not zarr_specs:
         return []
+
+    if parsed.subset_spec is not None and parsed.subset_spec.dim != "pixel":
+        raise ValueError(
+            f"[subset] dim is {parsed.subset_spec.dim!r}, but a Zarr output store is "
+            f"the stacked 'pixel' grid and can only be partitioned over 'pixel'. "
+            f"Either subset over 'pixel', or use a NetCDF output (whose subset parts "
+            f"are separate files and need no pre-created store)."
+        )
     if not overwrite:
         existing = [
             spec.path for spec in zarr_specs.values() if Path(spec.path).exists()
@@ -361,7 +383,7 @@ def create_output_store(
     # Probe the pipeline over one pixel to learn each output's true layout. Caching
     # is deliberately not enabled: the probe is an implementation detail of building
     # the store and should neither consult nor populate the user's cache.
-    probe_inputs = subset_inputs(inputs, SubsetSpec(pixel_start=0, pixel_end=1))
+    probe_inputs = subset_inputs(inputs, SubsetSpec(start=0, stop=1, dim="pixel"))
     dr = build_driver(
         modules=parsed.modules,
         config=parsed.driver_config,
@@ -398,22 +420,22 @@ def create_output_store(
     return created
 
 
-def _find_subset_parts(path: Path) -> list[Path]:
+def _find_subset_parts(path: Path, dim: str = "pixel") -> list[Path]:
     """Discover, order and validate the NetCDF subset parts written for ``path``.
 
-    Parts are named ``{stem}_p{start}-{stop}{suffix}`` (`subset_suffix`). They are
-    ordered by their integer ``start`` — a lexicographic sort puts ``_p1000-1500``
-    before ``_p500-1000`` — and the ranges must *chain*: start at 0, then each
-    start equal to the previous stop. A failed subset run (a gap) or a
-    double-written region (an overlap) therefore raises here, rather than becoming
-    silent NaN stripes in the merged grid.
+    Parts are named ``{stem}_{dim}{start}-{stop}{suffix}`` (`subset_suffix`). They
+    are ordered by their integer ``start`` — a lexicographic sort puts
+    ``_pixel1000-1500`` before ``_pixel500-1000`` — and the ranges must *chain*:
+    start at 0, then each start equal to the previous stop. A failed subset run (a
+    gap) or a double-written region (an overlap) therefore raises here, rather than
+    becoming silent NaN stripes in the merged output.
 
-    Matching on the full ``_p<int>-<int>`` shape also means a neighbouring
+    Matching on the full ``_{dim}<int>-<int>`` shape also means a neighbouring
     ``{stem}_partial.nc`` is not swept into the merge.
     """
-    pattern = re.compile(rf"{re.escape(path.stem)}_p(\d+)-(\d+)")
+    pattern = re.compile(rf"{re.escape(path.stem)}_{re.escape(dim)}(\d+)-(\d+)")
     found: list[tuple[int, int, Path]] = []
-    for part in path.parent.glob(f"{path.stem}_p*{path.suffix}"):
+    for part in path.parent.glob(f"{path.stem}_{dim}*{path.suffix}"):
         match = pattern.fullmatch(part.stem)
         if match is not None:
             found.append((int(match[1]), int(match[2]), part))
@@ -421,7 +443,7 @@ def _find_subset_parts(path: Path) -> list[Path]:
     if not found:
         raise FileNotFoundError(
             f"No subset parts found matching "
-            f"'{path.stem}_p<start>-<stop>{path.suffix}' in {path.parent}."
+            f"'{path.stem}_{dim}<start>-<stop>{path.suffix}' in {path.parent}."
         )
 
     found.sort()
@@ -431,9 +453,9 @@ def _find_subset_parts(path: Path) -> list[Path]:
         if start != expected:
             kind = "gap" if start > expected else "overlap"
             raise ValueError(
-                f"Subset parts for {path.name} do not cover the pixel dimension: "
-                f"{kind} at pixel {expected} (part '{part.name}' starts at {start}). "
-                f"Ranges found: {covered}. Every pixel must be written exactly once "
+                f"Subset parts for {path.name} do not cover the {dim!r} dimension: "
+                f"{kind} at {dim} {expected} (part '{part.name}' starts at {start}). "
+                f"Ranges found: {covered}. Every {dim} must be written exactly once "
                 f"or the merged output would contain unwritten regions."
             )
         expected = stop
@@ -445,12 +467,15 @@ def merge_subset_outputs(
     output_specs: dict[str, IOSpec],
     out: str | PathLike | None = None,
     out_suffix: str = "_gridded",
+    dim: str = "pixel",
 ) -> list[str]:
-    """Reassemble stacked subset outputs into gridded files.
+    """Reassemble subset outputs into whole files.
 
-    For NetCDF outputs, concatenates the per-subset ``*_p<start>-<stop>.nc`` parts;
-    for Zarr outputs, reads the shared store.  In both cases the ``pixel`` layout
-    is unstacked back to a ``(y, x)`` grid.  Returns the list of files written.
+    For NetCDF outputs, concatenates the per-subset ``*_{dim}<start>-<stop>.nc``
+    parts; for Zarr outputs, reads the shared store.  A ``pixel`` layout is then
+    unstacked back to a ``(y, x)`` grid; any other ``dim`` (a non-gridded pipeline
+    subsetting over ``location``, say) is left as the flat concatenation, since
+    there is no grid to rebuild.  Returns the list of files written.
 
     By default NetCDF results are written to the config's declared (un-suffixed)
     path and Zarr results to a sibling store with ``out_suffix`` appended.  Pass
@@ -492,11 +517,12 @@ def merge_subset_outputs(
             )
             unstack_pixel(ds).to_zarr(dest, consolidated=False, mode="w")
         else:
-            parts = _find_subset_parts(path)
+            parts = _find_subset_parts(path, dim)
             ds = xr.open_mfdataset(
-                parts, combine="nested", concat_dim="pixel", decode_coords="all"
+                parts, combine="nested", concat_dim=dim, decode_coords="all"
             )
             dest = Path(out) if out is not None else path
+            # A no-op unless the partition dim is the stacked `pixel` grid.
             unstack_pixel(ds).to_netcdf(dest, engine="netcdf4")
         written.append(str(dest))
 

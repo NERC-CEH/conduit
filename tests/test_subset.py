@@ -20,41 +20,52 @@ _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"
 
 class TestSubsetSpecValidation:
     def test_valid(self):
-        spec = SubsetSpec.from_config({"pixel_start": 0, "pixel_end": 500})
-        assert spec.pixel_start == 0
-        assert spec.pixel_end == 500
+        spec = SubsetSpec.from_config({"start": 0, "stop": 500})
+        assert spec.start == 0
+        assert spec.stop == 500
 
-    def test_missing_pixel_start_raises(self):
+    def test_dim_defaults_to_pixel(self):
+        assert SubsetSpec.from_config({"start": 0, "stop": 500}).dim == "pixel"
+
+    def test_dim_can_be_any_dimension(self):
+        spec = SubsetSpec.from_config({"start": 0, "stop": 10, "dim": "location"})
+        assert spec.dim == "location"
+
+    def test_empty_dim_raises(self):
+        with pytest.raises(ValueError, match="'dim'"):
+            SubsetSpec.from_config({"start": 0, "stop": 10, "dim": ""})
+
+    def test_missing_start_raises(self):
         with pytest.raises((ValueError, TypeError)):
-            SubsetSpec.from_config({"pixel_end": 500})
+            SubsetSpec.from_config({"stop": 500})
 
-    def test_missing_pixel_end_raises(self):
+    def test_missing_stop_raises(self):
         with pytest.raises((ValueError, TypeError)):
-            SubsetSpec.from_config({"pixel_start": 0})
+            SubsetSpec.from_config({"start": 0})
 
-    def test_negative_pixel_start_raises(self):
-        with pytest.raises(ValueError, match="pixel_start"):
-            SubsetSpec.from_config({"pixel_start": -1, "pixel_end": 500})
+    def test_negative_start_raises(self):
+        with pytest.raises(ValueError, match="'start'"):
+            SubsetSpec.from_config({"start": -1, "stop": 500})
 
-    def test_negative_pixel_end_raises(self):
-        with pytest.raises(ValueError, match="pixel_end"):
-            SubsetSpec.from_config({"pixel_start": 0, "pixel_end": -1})
+    def test_negative_stop_raises(self):
+        with pytest.raises(ValueError, match="'stop'"):
+            SubsetSpec.from_config({"start": 0, "stop": -1})
 
-    def test_pixel_end_equal_to_start_raises(self):
-        with pytest.raises(ValueError, match="pixel_end"):
-            SubsetSpec.from_config({"pixel_start": 5, "pixel_end": 5})
+    def test_stop_equal_to_start_raises(self):
+        with pytest.raises(ValueError, match="'stop'"):
+            SubsetSpec.from_config({"start": 5, "stop": 5})
 
-    def test_pixel_end_less_than_start_raises(self):
-        with pytest.raises(ValueError, match="pixel_end"):
-            SubsetSpec.from_config({"pixel_start": 5, "pixel_end": 3})
+    def test_stop_less_than_start_raises(self):
+        with pytest.raises(ValueError, match="'stop'"):
+            SubsetSpec.from_config({"start": 5, "stop": 3})
 
     def test_non_integer_raises(self):
-        with pytest.raises(ValueError, match="pixel_start"):
-            SubsetSpec.from_config({"pixel_start": 0.5, "pixel_end": 500})
+        with pytest.raises(ValueError, match="'start'"):
+            SubsetSpec.from_config({"start": 0.5, "stop": 500})
 
     def test_parsed_from_toml(self):
-        parsed = Config.loads("[subset]\npixel_start = 0\npixel_end = 100\n").parse()
-        assert parsed.subset_spec == SubsetSpec(pixel_start=0, pixel_end=100)
+        parsed = Config.loads("[subset]\nstart = 0\nstop = 100\n").parse()
+        assert parsed.subset_spec == SubsetSpec(start=0, stop=100)
 
     def test_absent_section_gives_none(self):
         parsed = Config.loads("[grid]\n").parse()
@@ -71,8 +82,8 @@ class TestSubsetCorrectness:
 
     def test_pixel_coords_correct(self, pipeline_config, pipeline_inputs):
         """Each subset contains the right pixel coordinates."""
-        spec_a = SubsetSpec(pixel_start=0, pixel_end=2)
-        spec_b = SubsetSpec(pixel_start=2, pixel_end=4)
+        spec_a = SubsetSpec(start=0, stop=2)
+        spec_b = SubsetSpec(start=2, stop=4)
 
         inputs_a = load_inputs(pipeline_config.input_specs, subset_spec=spec_a)
         inputs_b = load_inputs(pipeline_config.input_specs, subset_spec=spec_b)
@@ -87,7 +98,7 @@ class TestSubsetCorrectness:
         """Non-pixel inputs (dates, scalars) pass through unchanged."""
         import pandas as pd
 
-        spec = SubsetSpec(pixel_start=0, pixel_end=2)
+        spec = SubsetSpec(start=0, stop=2)
         inputs_sub = load_inputs(pipeline_config.input_specs, subset_spec=spec)
 
         for name, full_val in pipeline_inputs.items():
@@ -160,8 +171,8 @@ path = "{out_path}"
 vars = ["mean_temperature"]
 
 [subset]
-pixel_start = 0
-pixel_end = 2
+start = 0
+stop = 2
 """
         p = tmp_path / "config.toml"
         p.write_text(content)

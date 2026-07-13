@@ -252,36 +252,45 @@ class BlockingSpec:
 class SubsetSpec:
     """Specification for the [subset] section.
 
-    Selects a contiguous slice of the stacked ``pixel`` dimension so that
-    independent ``conduit run`` processes can each handle a different spatial
-    chunk of the same input files.  ``pixel_end`` is exclusive (Python slice
+    Selects a contiguous slice ``[start, stop)`` of one dimension (``dim``, default
+    ``pixel``) so that independent ``conduit run`` processes can each handle a
+    different chunk of the same input files. ``stop`` is exclusive (Python slice
     convention).
+
+    ``dim`` mirrors `BlockingSpec.dim`: the two mechanisms partition the same way
+    and differ only in *who* runs the parts (one process sequentially vs. many
+    processes concurrently), so a non-gridded pipeline can subset over ``location``
+    or ``site`` just as it can block over it. The one place ``pixel`` is still
+    special is the gridded Zarr store (`conduit.gridded.io.create_output_store`),
+    whose layout *is* the pixel grid; it rejects any other ``dim``.
     """
 
-    pixel_start: int
-    pixel_end: int
+    start: int
+    stop: int
+    dim: str = "pixel"
 
     @classmethod
     def from_config(cls, entry: dict) -> "SubsetSpec":
         """Construct and validate from a raw [subset] TOML entry."""
-        pixel_start = entry.get("pixel_start")
-        pixel_end = entry.get("pixel_end")
-        if not isinstance(pixel_start, int) or pixel_start < 0:
+
+        def _index(key: str) -> int:
+            value = entry.get(key)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(
+                    f"[subset] {key!r} must be a non-negative integer, got {value!r}."
+                )
+            return value
+
+        start = _index("start")
+        stop = _index("stop")
+        if stop <= start:
             raise ValueError(
-                "[subset] 'pixel_start' must be a non-negative integer, "
-                f"got {pixel_start!r}."
+                f"[subset] 'stop' ({stop}) must be greater than 'start' ({start})."
             )
-        if not isinstance(pixel_end, int) or pixel_end < 0:
-            raise ValueError(
-                "[subset] 'pixel_end' must be a non-negative integer, "
-                f"got {pixel_end!r}."
-            )
-        if pixel_end <= pixel_start:
-            raise ValueError(
-                f"[subset] 'pixel_end' ({pixel_end}) must be greater than "
-                f"'pixel_start' ({pixel_start})."
-            )
-        return cls(pixel_start=pixel_start, pixel_end=pixel_end)
+        dim = entry.get("dim", "pixel")
+        if not isinstance(dim, str) or not dim:
+            raise ValueError(f"[subset] 'dim' must be a non-empty string, got {dim!r}.")
+        return cls(start=start, stop=stop, dim=dim)
 
 
 @dataclass
@@ -826,7 +835,7 @@ class Config:
         - [[resample]]    — preset desugaring to fan-out passthrough nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — pixel-blocked execution (block_size)
-        - [subset]        — spatial pixel slice (pixel_start, pixel_end)
+        - [subset]        — a slice of one dimension (dim, start, stop)
         - [annotations]   — contract validation policy (units + schema + temporal);
                             the legacy name [units] is a working alias
 

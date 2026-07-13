@@ -228,13 +228,13 @@ class TestAssertOutputPathsWritable:
 
     def test_subset_zarr_without_store_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "store.zarr"), vars=["gpp"])}
-        subset = SubsetSpec(pixel_start=0, pixel_end=10)
+        subset = SubsetSpec(start=0, stop=10)
         with pytest.raises(FileNotFoundError, match="does not exist"):
             assert_output_paths_writable(specs, subset)
 
     def test_subset_csv_unsupported_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "out.csv"), vars=["gpp"])}
-        subset = SubsetSpec(pixel_start=0, pixel_end=10)
+        subset = SubsetSpec(start=0, stop=10)
         with pytest.raises(ValueError, match=r"\[subset\] is only supported"):
             assert_output_paths_writable(specs, subset)
 

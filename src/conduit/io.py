@@ -259,16 +259,17 @@ def load_inputs(
 
 
 def subset_inputs(inputs: dict[str, Any], subset_spec: SubsetSpec) -> dict[str, Any]:
-    """Slice every pixel-bearing input to ``subset_spec``'s pixel range.
+    """Slice every input carrying ``subset_spec.dim`` to that spec's range.
 
-    Inputs without a ``pixel`` dimension pass through untouched. Shared by
-    `load_inputs` and by `conduit.gridded.io.create_output_store`, which reuses it
-    to derive a single-pixel probe of the pipeline.
+    Inputs without the dimension (a static scalar, say) pass through untouched.
+    Shared by `load_inputs` and by `conduit.gridded.io.create_output_store`, which
+    reuses it to derive a single-pixel probe of the pipeline.
     """
-    sl = slice(subset_spec.pixel_start, subset_spec.pixel_end)
+    dim = subset_spec.dim
+    sl = slice(subset_spec.start, subset_spec.stop)
     return {
-        name: val.isel(pixel=sl)
-        if isinstance(val, xr.DataArray) and "pixel" in val.dims
+        name: val.isel({dim: sl})
+        if isinstance(val, xr.DataArray) and dim in val.dims
         else val
         for name, val in inputs.items()
     }

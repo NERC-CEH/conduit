@@ -69,7 +69,11 @@ def stacked_reference(pipeline_config, pipeline_driver):
 
 class TestStackingHelpers:
     def test_subset_suffix(self):
-        assert subset_suffix(SubsetSpec(0, 500)) == "_p0-500"
+        assert subset_suffix(SubsetSpec(0, 500)) == "_pixel0-500"
+
+    def test_subset_suffix_names_the_dim(self):
+        spec = SubsetSpec(0, 10, dim="location")
+        assert subset_suffix(spec) == "_location0-10"
 
     def test_flatten_then_unstack_roundtrips(self, pipeline_driver, pipeline_config):
         """A flattened stacked dataset (the on-disk form) unstacks to a grid."""
@@ -100,42 +104,45 @@ class TestSubsetPartDiscovery:
         return tmp_path / "weekly.nc"
 
     def test_merge_sorts_parts_numerically(self, tmp_path):
-        # Lexicographically, '_p1000-1500' sorts before '_p500-1000'.
+        # Lexicographically, '_pixel1000-1500' sorts before '_pixel500-1000'.
         path = self._touch(
             tmp_path,
-            "weekly_p500-1000.nc",
-            "weekly_p1000-1500.nc",
-            "weekly_p0-500.nc",
+            "weekly_pixel500-1000.nc",
+            "weekly_pixel1000-1500.nc",
+            "weekly_pixel0-500.nc",
         )
         assert [p.name for p in _find_subset_parts(path)] == [
-            "weekly_p0-500.nc",
-            "weekly_p500-1000.nc",
-            "weekly_p1000-1500.nc",
+            "weekly_pixel0-500.nc",
+            "weekly_pixel500-1000.nc",
+            "weekly_pixel1000-1500.nc",
         ]
 
     def test_merge_missing_part_raises(self, tmp_path):
-        path = self._touch(tmp_path, "weekly_p0-500.nc", "weekly_p1000-1500.nc")
+        path = self._touch(tmp_path, "weekly_pixel0-500.nc", "weekly_pixel1000-1500.nc")
         with pytest.raises(ValueError, match="gap at pixel 500"):
             _find_subset_parts(path)
 
     def test_overlapping_parts_raise(self, tmp_path):
         path = self._touch(
-            tmp_path, "weekly_p0-500.nc", "weekly_p400-900.nc", "weekly_p900-1000.nc"
+            tmp_path,
+            "weekly_pixel0-500.nc",
+            "weekly_pixel400-900.nc",
+            "weekly_pixel900-1000.nc",
         )
         with pytest.raises(ValueError, match="overlap at pixel 500"):
             _find_subset_parts(path)
 
     def test_parts_not_starting_at_zero_raise(self, tmp_path):
-        path = self._touch(tmp_path, "weekly_p500-1000.nc")
+        path = self._touch(tmp_path, "weekly_pixel500-1000.nc")
         with pytest.raises(ValueError, match="gap at pixel 0"):
             _find_subset_parts(path)
 
     def test_merge_ignores_non_part_files(self, tmp_path):
         # A stray '_partial' file matches the old glob but is not a subset part.
         path = self._touch(
-            tmp_path, "weekly_p0-500.nc", "weekly_partial.nc", "weekly_pXX.nc"
+            tmp_path, "weekly_pixel0-500.nc", "weekly_partial.nc", "weekly_pixelXX.nc"
         )
-        assert [p.name for p in _find_subset_parts(path)] == ["weekly_p0-500.nc"]
+        assert [p.name for p in _find_subset_parts(path)] == ["weekly_pixel0-500.nc"]
 
     def test_no_parts_raises(self, tmp_path):
         path = self._touch(tmp_path, "weekly_partial.nc")
@@ -162,8 +169,8 @@ class TestNetcdfSubset:
                 subset_spec=spec,
             )
 
-        parts = sorted(tmp_path.glob("weekly_p*.nc"))
-        assert [p.name for p in parts] == ["weekly_p0-2.nc", "weekly_p2-4.nc"]
+        parts = sorted(tmp_path.glob("weekly_pixel*.nc"))
+        assert [p.name for p in parts] == ["weekly_pixel0-2.nc", "weekly_pixel2-4.nc"]
         assert not out.exists()  # un-suffixed path untouched until merge
 
         merge_subset_outputs(specs)
@@ -406,7 +413,7 @@ vars = ["{VAR}"]
 block_size = {block_size}
 """
     if subset is not None:
-        blocks += f"\n[subset]\npixel_start = {subset[0]}\npixel_end = {subset[1]}\n"
+        blocks += f"\n[subset]\nstart = {subset[0]}\nstop = {subset[1]}\n"
     return blocks
 
 

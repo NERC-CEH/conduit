@@ -67,16 +67,21 @@ dimension — e.g. a grid-mean aggregate — it cannot be recombined and conduit
 `ValueError`. Drop such variables from `[outputs]` when blocking.
 ///
 
-## Parallel subset runs over Zarr
+## Parallel subset runs
 
-For parallelism across the grid, run *independent* `conduit run` processes, each
-restricted to a contiguous slice of the stacked `pixel` dimension with `[subset]`:
+For parallelism across the domain, run *independent* `conduit run` processes, each
+restricted to a contiguous slice of one dimension with `[subset]`:
 
 ```toml
 [subset]
-pixel_start = 0      # inclusive, zero-based
-pixel_end   = 500    # exclusive (Python slice convention)
+start = 0            # inclusive, zero-based
+stop  = 500          # exclusive (Python slice convention)
+dim   = "pixel"      # optional; the default. Any dimension works.
 ```
+
+Like `[blocking]`, `dim` is free: a non-gridded pipeline can shard over `location` or
+`site`. The two mechanisms partition identically and differ only in who runs the
+parts — one process sequentially versus many processes concurrently.
 
 `load_inputs` reads only that slice (lazy NetCDF/Zarr I/O means the rest is never
 loaded). Because the processes share one config — and one output `path` — conduit
@@ -84,15 +89,20 @@ writes their outputs so they don't collide, then a `merge` step reassembles the 
 This is behind the optional `geo` extra and the `conduit gridded` command group.
 
 **NetCDF** — each process writes a uniquely-named part (`weekly.nc` →
-`weekly_p0-500.nc`); no setup needed beforehand:
+`weekly_pixel0-500.nc`); no setup needed beforehand:
 
 ```sh
-parallel conduit run config_{}.toml ::: 0 1 2 3   # writes weekly_p<start>-<end>.nc
-conduit gridded merge config.toml                  # concatenate parts into a gridded weekly.nc
+parallel conduit run config_{}.toml ::: 0 1 2 3   # writes weekly_<dim><start>-<stop>.nc
+conduit gridded merge config.toml                  # concatenate the parts back into weekly.nc
 ```
 
+`merge` refuses to proceed unless the parts *cover* the dimension end to end: a shard
+that died leaves a gap, and merging it anyway would silently produce unwritten (NaN)
+regions in the output.
+
 **Zarr** — all processes region-write into one shared store, which must be created
-**once** up front:
+**once** up front. A Zarr store *is* the stacked pixel grid, so this path is `pixel`-only
+(`create-store` rejects any other `dim`):
 
 ```sh
 conduit gridded create-store config.toml           # build the empty shared store(s)
@@ -127,8 +137,8 @@ store's pixel-chunk boundaries. `conduit gridded create-store` sets that chunk f
 misaligned raises a `ValueError`. Keep subset ranges as multiples of the chunk size.
 ///
 
-With a SLURM array job, vary `pixel_start`/`pixel_end` via environment variables or
-per-task config files.
+With a SLURM array job, vary `start`/`stop` via environment variables or per-task
+config files.
 
 ## See also
 

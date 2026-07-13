@@ -229,19 +229,38 @@ dim = "pixel"
 
 ## Subset
 
-`[subset]` restricts the run to a contiguous slice of the stacked `pixel` dimension, for
-parallel per-shard runs. See [Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs-over-zarr).
+`[subset]` restricts the run to a contiguous slice of one dimension, so independent
+processes can each handle a different shard of the same inputs. See
+[Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs).
 
 ```toml
 [subset]
-pixel_start = 0      # inclusive
-pixel_end   = 500    # exclusive
+start = 0            # inclusive
+stop  = 500          # exclusive
+dim   = "pixel"      # optional; the default
 ```
 
 | Key | Description |
 |-----|-------------|
-| `pixel_start` | **Required.** First pixel index (inclusive, zero-based). |
-| `pixel_end` | **Required.** One past the last index (exclusive); must exceed `pixel_start`. |
+| `start` | **Required.** First index along `dim` (inclusive, zero-based). |
+| `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
+| `dim` | Partition dimension (default `pixel`). |
+
+`dim` mirrors [`[blocking]`](#blocking): the two mechanisms partition the same way and
+differ only in *who* runs the parts — one process sequentially (`[blocking]`) versus many
+processes concurrently (`[subset]`). A non-gridded pipeline can subset over `location` or
+`site` just as it can block over it, and each part is written to its own suffixed file
+(`out_location0-500.nc`).
+
+/// admonition | Zarr stores are pixel-only
+    type: warning
+
+The one place `pixel` is still special is the shared Zarr store built by
+`conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
+`merge` unstacks back to `(y, x)`. Configuring `dim` as anything else alongside a Zarr
+output is an error. Use a NetCDF output instead — its subset parts are separate files
+and need no pre-created store.
+///
 
 ## Validation
 
