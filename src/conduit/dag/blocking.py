@@ -32,6 +32,24 @@ def _block_input_names(inputs: dict[str, Any], dim: str = "pixel") -> list[str]:
 _pixel_input_names = _block_input_names
 
 
+def _block_dim_size(inputs: dict[str, Any], block_names: list[str], dim: str) -> int:
+    """Return the size of ``dim``, shared by every blocked input.
+
+    Taking the first input's length on trust would silently clamp a longer input to
+    a shorter one's slices, surfacing (if at all) as a confusing broadcast error
+    inside a node. A disagreement is a config error, so say so.
+    """
+    sizes = {name: inputs[name].sizes[dim] for name in block_names}
+    distinct = set(sizes.values())
+    if len(distinct) > 1:
+        detail = ", ".join(f"{name}={size}" for name, size in sorted(sizes.items()))
+        raise ValueError(
+            f"Inputs disagree on the size of the blocking dimension {dim!r}: "
+            f"{detail}. Every input carrying {dim!r} must span the same domain."
+        )
+    return distinct.pop()
+
+
 def _make_blocks(
     inputs: dict[str, Any],
     block_names: list[str],
@@ -47,7 +65,7 @@ def _make_blocks(
         yield inputs
         return
 
-    n = inputs[block_names[0]].sizes[dim]
+    n = _block_dim_size(inputs, block_names, dim)
     for start in range(0, n, block_size):
         sl = slice(start, start + block_size)
         yield {

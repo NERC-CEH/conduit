@@ -62,6 +62,26 @@ class TestPixelInputNames:
         assert _pixel_input_names(inputs) == []
 
 
+class TestBlockDimSizeConsistency:
+    def test_mismatched_block_dim_sizes_raise(self):
+        inputs = {
+            "big": xr.DataArray(np.zeros(100), dims=["pixel"]),
+            "small": xr.DataArray(np.zeros(50), dims=["pixel"]),
+        }
+        with pytest.raises(ValueError, match="disagree on the size") as exc:
+            list(_make_blocks(inputs, ["big", "small"], block_size=10))
+        message = str(exc.value)
+        assert "big=100" in message
+        assert "small=50" in message
+
+    def test_matching_sizes_are_fine(self):
+        inputs = {
+            "a": xr.DataArray(np.zeros(10), dims=["pixel"]),
+            "b": xr.DataArray(np.zeros(10), dims=["pixel"]),
+        }
+        assert len(list(_make_blocks(inputs, ["a", "b"], block_size=5))) == 2
+
+
 class TestMakeBlocks:
     def _inputs(self, n_pixels: int) -> dict:
         da = xr.DataArray(
