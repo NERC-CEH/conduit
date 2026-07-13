@@ -181,6 +181,39 @@ class TestPathResolution:
         )
         assert config._data["inputs"]["daily"]["path"] == "relative/path.nc"
 
+    def test_dumps_preserves_relative_paths(self, tmp_path):
+        """Resolution happens in parse(), so dumps() is round-trip faithful."""
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            '[inputs.daily]\npath = "data/daily.nc"\nvars = ["t"]\n\n'
+            '[cache]\npath = ".conduit_cache"\n'
+        )
+        config = Config.load(cfg)
+
+        # The raw data still holds exactly what the user wrote ...
+        dumped = config.dumps()
+        assert 'path = "data/daily.nc"' in dumped
+        assert str(tmp_path) not in dumped
+
+        # ... while the parsed specs carry absolute paths.
+        parsed = config.parse()
+        assert Path(parsed.input_specs["daily"].path) == tmp_path / "data" / "daily.nc"
+        assert parsed.cache_spec is not None
+        assert Path(parsed.cache_spec.path) == tmp_path / ".conduit_cache"
+
+    def test_loads_leaves_paths_untouched(self):
+        """Config.loads has no base directory, so relative paths stay CWD-relative."""
+        config = Config.loads('[inputs.daily]\npath = "data/daily.nc"\nvars = ["t"]\n')
+        parsed = config.parse()
+        assert parsed.input_specs["daily"].path == "data/daily.nc"
+
+    def test_absolute_paths_are_left_alone(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        absolute = tmp_path / "elsewhere" / "daily.nc"
+        cfg.write_text(f'[inputs.daily]\npath = "{absolute}"\nvars = ["t"]\n')
+        parsed = Config.load(cfg).parse()
+        assert Path(parsed.input_specs["daily"].path) == absolute
+
 
 class TestValidation:
     """Tests for config validation behaviour."""

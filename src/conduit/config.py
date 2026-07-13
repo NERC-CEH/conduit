@@ -3,7 +3,7 @@
 import keyword
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Self, cast
 
@@ -511,11 +511,19 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
 
 
 class Config:
-    """Configuration class with loading, parsing, and serialization."""
+    """Configuration class with loading, parsing, and serialization.
 
-    def __init__(self, data: dict[str, Any]) -> None:
-        """Initialize with a config dict."""
+    The raw TOML data is held **exactly as written**: relative paths are resolved
+    against ``base`` (the config file's directory) as the specs are built in `parse`,
+    not by rewriting ``_data``. That keeps `dumps` round-trip faithful — it emits the
+    relative paths the user wrote, not absolutised ones — and keeps `load` and `loads`
+    behaving the same way apart from the base they resolve against.
+    """
+
+    def __init__(self, data: dict[str, Any], base: Path | None = None) -> None:
+        """Initialize with a config dict, and the base its paths resolve against."""
         self._data = data
+        self._base = base
 
     def __str__(self) -> str:
         """Return TOML string representation."""
@@ -523,17 +531,22 @@ class Config:
 
     @classmethod
     def load(cls, path: str | os.PathLike) -> Self:
-        """Load config from a TOML file."""
+        """Load a TOML file; relative paths resolve against its directory."""
         path = Path(path).resolve()
         with open(path, "rb") as f:
             data = tomllib.load(f)
-        _resolve_paths(data, base=path.parent)
-        return cls(data)
+        return cls(data, base=path.parent)
 
     @classmethod
     def loads(cls, toml_str: str) -> Self:
-        """Load config from a TOML string."""
+        """Load config from a TOML string; relative paths resolve against the CWD."""
         return cls(tomllib.loads(toml_str))
+
+    def _resolve(self, path: str) -> str:
+        """Resolve one config path against the config file's directory."""
+        if self._base is None or Path(path).is_absolute():
+            return path
+        return str(self._base / path)
 
     def dump(self, path: str | os.PathLike, overwrite_ok: bool = False) -> None:
         """Write config to a TOML file."""
@@ -590,7 +603,7 @@ class Config:
                     f"variable in the file."
                 )
             input_specs[label] = IOSpec(
-                path=params["path"],
+                path=self._resolve(params["path"]),
                 vars=(
                     None if vars_ is None else _validate_vars(f"inputs.{label}", vars_)
                 ),
@@ -613,7 +626,7 @@ class Config:
                     f"Output sections must specify a file path."
                 )
             output_specs[freq] = IOSpec(
-                path=params["path"],
+                path=self._resolve(params["path"]),
                 vars=_validate_vars(f"outputs.{freq}", vars_),
                 suffix=params.get("suffix"),
             )
@@ -651,7 +664,8 @@ class Config:
             return None
         if not entry.get("enabled", True):
             return None
-        return CacheSpec.from_config(entry)
+        spec = CacheSpec.from_config(entry)
+        return replace(spec, path=self._resolve(spec.path))
 
     def _parse_blocking(self, data: dict) -> "BlockingSpec | None":
         """Handle the [blocking] section.
@@ -884,17 +898,6 @@ class Config:
 def load_config(config_path: str | Path) -> ParsedConfig:
     """Load and parse a TOML config file."""
     return Config.load(config_path).parse()
-
-
-def _resolve_paths(data: dict, base: Path) -> None:
-    """Resolve relative paths in-place, relative to the config file's directory."""
-    for section in ("inputs", "outputs"):
-        for params in data.get(section, {}).values():
-            if "path" in params and not Path(params["path"]).is_absolute():
-                params["path"] = str(base / params["path"])
-    cache = data.get("cache")
-    if cache and "path" in cache and not Path(cache["path"]).is_absolute():
-        cache["path"] = str(base / cache["path"])
 
 
 def _is_valid_module_path(path: str) -> bool:
