@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from conduit.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
+from conduit.config import (
+    AnnotationPolicySpec,
+    Config,
+    IOSpec,
+    NodeSpec,
+    ParsedConfig,
+    load_config,
+)
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -576,21 +583,21 @@ class TestAnnotationsSection:
 
     def test_units_alias_mode_and_exact(self):
         parsed = Config({"units": {"mode": "strict", "exact": True}}).parse()
-        assert parsed.units_on_missing == "error"
-        assert parsed.units_on_inexact == "error"
-        assert parsed.on_mismatch is None
+        assert parsed.annotations.on_missing == "error"
+        assert parsed.annotations.on_inexact == "error"
+        assert parsed.annotations.on_mismatch is None
 
     def test_mode_off_disables(self):
         parsed = Config({"annotations": {"mode": "off"}}).parse()
-        assert parsed.units_enabled is False
+        assert parsed.annotations.enabled is False
 
     def test_on_mismatch_drives_schema_and_temporal(self):
         parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
-        assert parsed.on_mismatch == "warn"
+        assert parsed.annotations.on_mismatch == "warn"
 
     def test_on_uninferable(self):
         parsed = Config({"annotations": {"on_uninferable": "ignore"}}).parse()
-        assert parsed.on_uninferable == "ignore"
+        assert parsed.annotations.on_uninferable == "ignore"
 
     def test_invalid_on_mismatch_raises(self):
         with pytest.raises(ValueError, match="on_mismatch"):
@@ -606,9 +613,48 @@ class TestAnnotationsSection:
 
     def test_absent_section_is_all_none(self):
         parsed = Config({}).parse()
-        assert parsed.units_enabled is None
-        assert parsed.on_mismatch is None
-        assert parsed.on_uninferable is None
+        assert parsed.annotations.enabled is None
+        assert parsed.annotations.on_mismatch is None
+        assert parsed.annotations.on_uninferable is None
+
+
+class TestAnnotationPolicyApply:
+    """apply() pushes every axis into xarray-annotated's global policy."""
+
+    def test_annotation_policy_apply_sets_all_axes(self):
+        from xarray_annotated.schema import get_policy as schema_get_policy
+        from xarray_annotated.schema import policy as schema_policy
+        from xarray_annotated.temporal import get_policy as temporal_get_policy
+        from xarray_annotated.temporal import policy as temporal_policy
+        from xarray_annotated.units import get_policy as units_get_policy
+        from xarray_annotated.units import policy as units_policy
+
+        spec = AnnotationPolicySpec(
+            enabled=True,
+            on_missing="error",
+            on_inexact="error",
+            on_mismatch="warn",
+            on_uninferable="ignore",
+        )
+        # The three context managers restore the process-global policy on exit.
+        with units_policy(), schema_policy(), temporal_policy():
+            spec.apply()
+            units = units_get_policy()
+            assert units.enabled is True
+            assert units.on_missing == "error"
+            assert units.on_inexact == "error"
+            # on_mismatch drives *both* validate-only domains.
+            assert schema_get_policy().on_mismatch == "warn"
+            assert temporal_get_policy().on_mismatch == "warn"
+            assert temporal_get_policy().on_uninferable == "ignore"
+
+    def test_empty_policy_applies_nothing(self):
+        from xarray_annotated.units import get_policy, policy
+
+        with policy(enabled=True, on_missing="warn"):
+            AnnotationPolicySpec().apply()
+            assert get_policy().enabled is True
+            assert get_policy().on_missing == "warn"
 
 
 class TestExternalModules:

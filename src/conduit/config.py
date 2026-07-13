@@ -5,7 +5,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, cast
 
 import tomli_w
 
@@ -343,6 +343,61 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
     )
 
 
+@dataclass(frozen=True)
+class AnnotationPolicySpec:
+    """The [annotations] section: contract-validation policy, for every facet.
+
+    The section's user-facing keys (``mode``, ``exact``, ``on_mismatch``,
+    ``on_uninferable``) map onto xarray-annotated's three policy objects (units,
+    schema, temporal); `apply` is what pushes them into that library's
+    process-global policy. Every axis is ``None`` when unset, meaning "defer to the
+    process-wide default".
+
+    `apply` must be called by *every* entry point that builds a DAG — the build-time
+    contract check consults the global policy, so a command that skipped it would
+    accept a config that ``conduit run`` rejects.
+    """
+
+    enabled: bool | None = None
+    on_missing: str | None = None
+    on_inexact: str | None = None
+    on_mismatch: str | None = None
+    on_uninferable: str | None = None
+
+    def apply(self) -> None:
+        """Push this policy into xarray-annotated's process-global policy."""
+        if self.enabled is not None:
+            from xarray_annotated.units import set_policy
+
+            set_policy(enabled=self.enabled)
+
+        if self.on_missing is not None:
+            from xarray_annotated.units import OnMissing, set_policy
+
+            set_policy(on_missing=cast(OnMissing, self.on_missing))
+
+        if self.on_inexact is not None:
+            from xarray_annotated.units import OnInexact, set_policy
+
+            set_policy(on_inexact=cast(OnInexact, self.on_inexact))
+
+        # `on_mismatch` means the same thing in both validate-only domains ("the
+        # array contradicts its declaration"), so one config key drives both.
+        if self.on_mismatch is not None:
+            from xarray_annotated.schema import OnMismatch
+            from xarray_annotated.schema import set_policy as set_schema_policy
+            from xarray_annotated.temporal import set_policy as set_temporal_policy
+
+            set_schema_policy(on_mismatch=cast(OnMismatch, self.on_mismatch))
+            set_temporal_policy(on_mismatch=cast(OnMismatch, self.on_mismatch))
+
+        if self.on_uninferable is not None:
+            from xarray_annotated.temporal import OnUninferable
+            from xarray_annotated.temporal import set_policy as set_temporal_policy
+
+            set_temporal_policy(on_uninferable=cast(OnUninferable, self.on_uninferable))
+
+
 @dataclass
 class CheckSpec:
     """One entry of ``[validation].checks``: a named input-compatibility check.
@@ -370,11 +425,9 @@ class ParsedConfig:
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
     checks: list["CheckSpec"] = field(default_factory=list)
-    units_enabled: bool | None = None
-    units_on_missing: str | None = None
-    units_on_inexact: str | None = None
-    on_mismatch: str | None = None
-    on_uninferable: str | None = None
+    annotations: "AnnotationPolicySpec" = field(
+        default_factory=lambda: AnnotationPolicySpec()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -656,13 +709,10 @@ class Config:
             specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
         return specs
 
-    def _parse_annotations(
-        self, data: dict
-    ) -> tuple[bool | None, str | None, str | None, str | None, str | None]:
+    def _parse_annotations(self, data: dict) -> "AnnotationPolicySpec":
         """Handle the [annotations] section (``[units]`` is a working alias).
 
-        Returns ``(enabled, on_missing, on_inexact, on_mismatch, on_uninferable)``
-        mapping the section's keys to the xarray-annotated policy axes:
+        Maps the section's keys to the xarray-annotated policy axes:
 
         - ``mode`` (``strict`` / ``warn`` / ``off``) and ``exact`` (bool) drive the
           *units* policy (``enabled`` / ``on_missing`` / ``on_inexact``);
@@ -683,7 +733,7 @@ class Config:
             raise ValueError("Use either [annotations] or its alias [units], not both.")
         entry = annotations if annotations is not None else units
         if entry is None:
-            return None, None, None, None, None
+            return AnnotationPolicySpec()
         label = "annotations" if annotations is not None else "units"
         enabled: bool | None = None
         on_missing: str | None = None
@@ -707,9 +757,15 @@ class Config:
                 raise ValueError(f"[{label}] 'exact' must be a boolean, got {exact!r}.")
             if exact:
                 on_inexact = "error"
-        on_mismatch = _severity(entry.get("on_mismatch"), label, "on_mismatch")
-        on_uninferable = _severity(entry.get("on_uninferable"), label, "on_uninferable")
-        return enabled, on_missing, on_inexact, on_mismatch, on_uninferable
+        return AnnotationPolicySpec(
+            enabled=enabled,
+            on_missing=on_missing,
+            on_inexact=on_inexact,
+            on_mismatch=_severity(entry.get("on_mismatch"), label, "on_mismatch"),
+            on_uninferable=_severity(
+                entry.get("on_uninferable"), label, "on_uninferable"
+            ),
+        )
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
         """Handle remaining sections as external modules."""
@@ -771,13 +827,7 @@ class Config:
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data)
         subset_spec = self._parse_subset(data)
-        (
-            units_enabled,
-            units_on_missing,
-            units_on_inexact,
-            on_mismatch,
-            on_uninferable,
-        ) = self._parse_annotations(data)
+        annotations = self._parse_annotations(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
             modules=modules,
@@ -789,11 +839,7 @@ class Config:
             blocking_spec=blocking_spec,
             subset_spec=subset_spec,
             checks=checks,
-            units_enabled=units_enabled,
-            units_on_missing=units_on_missing,
-            units_on_inexact=units_on_inexact,
-            on_mismatch=on_mismatch,
-            on_uninferable=on_uninferable,
+            annotations=annotations,
         )
 
 

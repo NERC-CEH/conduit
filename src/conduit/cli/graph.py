@@ -352,6 +352,7 @@ def graph(
     This requires graphviz to be installed.
     """
     parsed = load_config(config_file)
+    parsed.annotations.apply()
     spec = load_graphviz_spec(style)
 
     if spec.style_function is not None:

@@ -11,6 +11,7 @@ from xarray_annotated.units import UnitsWarning, declare_units, use_cf_units
 
 from ._version import __version__
 from .config import (
+    AnnotationPolicySpec,
     BlockingSpec,
     CacheSpec,
     IOSpec,
@@ -30,6 +31,7 @@ from .io import (
 use_cf_units()
 
 __all__ = [
+    "AnnotationPolicySpec",
     "BlockingSpec",
     "CacheSpec",
     "Coords",

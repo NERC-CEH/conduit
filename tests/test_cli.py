@@ -50,6 +50,51 @@ vars = ["temperature"]
     return p
 
 
+@pytest.fixture
+def inexact_units_module():
+    """Register a module whose one DAG edge declares 'm' upstream and 'km' down.
+
+    Compatible (both lengths) but *inexact*, so the build-time contract check
+    flags it only when the units policy says ``on_inexact="error"`` — which is
+    what ``[annotations] exact = true`` asks for. That makes it a probe for
+    "did this command apply the config's policy?".
+    """
+    import sys
+    import types
+    from typing import Annotated
+
+    name = "conduit_test_inexact_units"
+    mod = types.ModuleType(name)
+
+    def metres() -> Annotated[xr.DataArray, "m"]:
+        return xr.DataArray([1.0])
+
+    def consumer(metres: Annotated[xr.DataArray, "km"]) -> xr.DataArray:
+        return metres
+
+    for fn in (metres, consumer):
+        fn.__module__ = name
+        setattr(mod, fn.__name__, fn)
+    sys.modules[name] = mod
+    yield name
+    del sys.modules[name]
+
+
+@pytest.fixture
+def inexact_units_config(tmp_path, inexact_units_module):
+    p = tmp_path / "inexact.toml"
+    p.write_text(
+        f"""\
+[annotations]
+exact = true
+
+[probe]
+_import_path = "{inexact_units_module}"
+"""
+    )
+    return p
+
+
 # ---------------------------------------------------------------------------
 # version
 # ---------------------------------------------------------------------------
@@ -104,6 +149,37 @@ class TestRunCommand:
 # ---------------------------------------------------------------------------
 # graph
 # ---------------------------------------------------------------------------
+
+
+class TestPolicyAppliedByEveryCommand:
+    """Every entry point applies the config's [annotations] policy before building.
+
+    The build-time contract check consults the *process-global* policy, so a
+    command that skipped `AnnotationPolicySpec.apply` would accept a config that
+    `conduit run` rejects. These pin `run` and `graph` to the same verdict.
+    """
+
+    def _invoke(self, args):
+        from xarray_annotated.units import policy
+
+        # The test session disables contract checking globally (conftest); re-enable
+        # it so the config's `exact = true` has something to tighten.
+        with policy(enabled=True):
+            return runner.invoke(app, args)
+
+    def test_run_rejects_inexact_edge_under_exact_policy(self, inexact_units_config):
+        result = self._invoke(["run", str(inexact_units_config)])
+        assert result.exit_code != 0
+        assert "exact match required" in str(result.exception)
+
+    def test_graph_applies_config_policy(self, inexact_units_config, tmp_path):
+        # Previously `graph` never applied the config policy, so it silently
+        # accepted a DAG that `conduit run` rejected on the very same config.
+        result = self._invoke(
+            ["graph", str(inexact_units_config), "--output", str(tmp_path / "g")]
+        )
+        assert result.exit_code != 0
+        assert "exact match required" in str(result.exception)
 
 
 class TestGraphCommand:

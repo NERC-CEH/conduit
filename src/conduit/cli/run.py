@@ -3,7 +3,7 @@
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -64,37 +64,7 @@ def run(
 ) -> None:
     """Execute a pipeline defined in a configuration file."""
     parsed = load_config(config_file)
-
-    if parsed.units_enabled is not None:
-        from xarray_annotated.units import set_policy
-
-        set_policy(enabled=parsed.units_enabled)
-
-    if parsed.units_on_missing is not None:
-        from xarray_annotated.units import OnMissing, set_policy
-
-        set_policy(on_missing=cast(OnMissing, parsed.units_on_missing))
-
-    if parsed.units_on_inexact is not None:
-        from xarray_annotated.units import OnInexact, set_policy
-
-        set_policy(on_inexact=cast(OnInexact, parsed.units_on_inexact))
-
-    # `on_mismatch` means the same thing in both validate-only domains ("the array
-    # contradicts its declaration"), so one config key drives both policies.
-    if parsed.on_mismatch is not None:
-        from xarray_annotated.schema import OnMismatch
-        from xarray_annotated.schema import set_policy as set_schema_policy
-        from xarray_annotated.temporal import set_policy as set_temporal_policy
-
-        set_schema_policy(on_mismatch=cast(OnMismatch, parsed.on_mismatch))
-        set_temporal_policy(on_mismatch=cast(OnMismatch, parsed.on_mismatch))
-
-    if parsed.on_uninferable is not None:
-        from xarray_annotated.temporal import OnUninferable
-        from xarray_annotated.temporal import set_policy as set_temporal_policy
-
-        set_temporal_policy(on_uninferable=cast(OnUninferable, parsed.on_uninferable))
+    parsed.annotations.apply()
 
     if dry_run:
         _dry_run(parsed, config_file, allow_overrides)

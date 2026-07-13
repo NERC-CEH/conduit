@@ -68,6 +68,7 @@ def create_store(
     Zarr store.
     """
     parsed = load_config(config_file)
+    parsed.annotations.apply()
 
     chunk = pixel_chunk
     if chunk is None and parsed.blocking_spec is not None:
@@ -105,6 +106,7 @@ def merge(
     ``*_gridded.zarr`` store.  Use ``--out`` to override the destination.
     """
     parsed = load_config(config_file)
+    parsed.annotations.apply()
     written = merge_subset_outputs(parsed.output_specs, out=out)
 
     if not written:

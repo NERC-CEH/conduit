@@ -361,8 +361,8 @@ class TestPolicyFromConfig:
         parsed = Config(
             {"annotations": {"on_mismatch": "warn", "on_uninferable": "ignore"}}
         ).parse()
-        assert parsed.on_mismatch == "warn"
-        assert parsed.on_uninferable == "ignore"
+        assert parsed.annotations.on_mismatch == "warn"
+        assert parsed.annotations.on_uninferable == "ignore"
 
 
 # ---------------------------------------------------------------------------
