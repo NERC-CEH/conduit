@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..config import IOSpec, SubsetSpec
+from ..config import IOSpec, ParsedConfig, SubsetSpec
 from .spatial import stack_spatial_dims
 
 
@@ -199,12 +199,44 @@ def subset_path(path: str, spec: SubsetSpec) -> Path:
     return p.with_name(f"{p.stem}{subset_suffix(spec)}{p.suffix}")
 
 
+def _assert_coords_match(ds: xr.Dataset, store: xr.Dataset, path: str) -> None:
+    """Raise unless ``ds``'s non-``pixel`` coordinates match the store's exactly.
+
+    The ``pixel`` dimension is excluded: it is the one axis a subset run *does*
+    partition, so its coordinate is legitimately a slice of the store's.
+    """
+    for dim in ds.dims:
+        if dim == "pixel" or dim not in ds.coords:
+            continue
+        if dim not in store.coords:
+            raise ValueError(
+                f"Zarr store '{path}' has no '{dim}' coordinate, but the data being "
+                f"written into it does. Re-create the store from the current config "
+                f"with `conduit gridded create-store`."
+            )
+        ours, theirs = ds.indexes[dim], store.indexes[dim]
+        if len(ours) != len(theirs) or not (ours == theirs).all():
+            raise ValueError(
+                f"'{dim}' coordinate does not match Zarr store '{path}': the store "
+                f"has {len(theirs)} value(s) ({theirs[0]} … {theirs[-1]}), the data "
+                f"being written has {len(ours)} ({ours[0]} … {ours[-1]}). Region "
+                f"writes do not write coordinates, so this would silently mislabel "
+                f"the store. Re-create it from the current config with "
+                f"`conduit gridded create-store --overwrite`."
+            )
+
+
 def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
     """Write a pixel subset into an existing Zarr store via a region write.
 
     The store must already exist (see ``conduit gridded create-store``).  Only the
     data variables are written; coordinates already live in the store, and writing
     them in region mode is both unnecessary and disallowed by xarray.
+
+    Because the coordinates are *not* written, they are checked instead: a store
+    whose non-``pixel`` coordinates (notably ``time``) disagree with the data being
+    written into it would be silently mislabelled. `_assert_coords_match` turns that
+    into an error at the write, rather than a wrong answer at the merge.
     """
     store = Path(path)
     if not store.exists():
@@ -214,6 +246,7 @@ def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
         )
 
     template = xr.open_zarr(store, consolidated=False)
+    _assert_coords_match(ds, template, path)
     n_pixel = template.sizes["pixel"]
     # Only the data variables are region-written, so their on-disk pixel chunking
     # is what governs concurrency safety (coords are written once by create-store).
@@ -264,8 +297,7 @@ def _pixel_template(inputs: dict[str, Any]) -> xr.Dataset:
 
 
 def create_output_store(
-    input_specs: dict[str, IOSpec],
-    output_specs: dict[str, IOSpec],
+    parsed: ParsedConfig,
     pixel_chunk: int | None = None,
     overwrite: bool = False,
 ) -> list[str]:
@@ -277,18 +309,29 @@ def create_output_store(
     full grid is never materialised).  NetCDF/CSV/Parquet outputs are skipped —
     they don't need a shared store.  Returns the list of store paths created.
 
+    The store's non-``pixel`` axes (notably ``time``) are **computed from the
+    outputs**, by running the pipeline over a single pixel and reading the real
+    coordinates, dims and dtype off the result. That makes the store's layout what
+    the subset runs will actually write *by construction* — the store cannot be
+    mislabelled, and a derived axis (a ``[[resample]]``'s weekly time axis, say)
+    needs no input file to have that axis already. Nothing is inferred from a
+    section's label.
+
     Refuses to clobber an existing store unless ``overwrite`` is set: re-running
     this after subset processes have populated a store would erase their data.
     """
     import dask.array as da
 
-    from ..io import load_inputs
+    from ..dag.driver import build_driver
+    from ..io import get_final_vars, load_inputs, subset_inputs, var_mapping
 
     zarr_specs = {
-        freq: spec
-        for freq, spec in output_specs.items()
+        label: spec
+        for label, spec in parsed.output_specs.items()
         if Path(spec.path).suffix.lower() == ".zarr"
     }
+    if not zarr_specs:
+        return []
     if not overwrite:
         existing = [
             spec.path for spec in zarr_specs.values() if Path(spec.path).exists()
@@ -300,28 +343,40 @@ def create_output_store(
                 f"(CLI: --overwrite) to recreate them from scratch."
             )
 
-    inputs = load_inputs(input_specs)
+    inputs = load_inputs(parsed.input_specs)
     skeleton = _pixel_template(inputs)
     n_pixel = skeleton.sizes["pixel"]
     chunk = pixel_chunk or n_pixel
 
-    created: list[str] = []
-    for freq, spec in zarr_specs.items():
-        coords = {name: skeleton.coords[name] for name in skeleton.coords}
-        # A section is temporal iff it contributed a ``dates_{label}`` index.
-        dates = inputs.get(f"dates_{freq}")
-        if dates is None:
-            shape, dims, chunks = (n_pixel,), ("pixel",), (chunk,)
-        else:
-            coords["time"] = dates
-            shape = (len(dates), n_pixel)
-            dims = ("time", "pixel")
-            chunks = (len(dates), chunk)
+    # Probe the pipeline over one pixel to learn each output's true layout. Caching
+    # is deliberately not enabled: the probe is an implementation detail of building
+    # the store and should neither consult nor populate the user's cache.
+    probe_inputs = subset_inputs(inputs, SubsetSpec(pixel_start=0, pixel_end=1))
+    dr = build_driver(modules=parsed.modules, config=parsed.driver_config)
+    probe = dr.execute(
+        get_final_vars(zarr_specs),  # type: ignore[reportArgumentType]
+        inputs=probe_inputs,
+    )
 
-        data_vars = {
-            var: (dims, da.full(shape, np.nan, chunks=chunks, dtype="float64"))
-            for var in spec.vars
-        }
+    created: list[str] = []
+    for label, spec in zarr_specs.items():
+        data_vars = {}
+        coords = {name: skeleton.coords[name] for name in skeleton.coords}
+        for node, file_var in var_mapping(label, spec).items():
+            probed = probe[node]
+            # Take dims (and their order), dtype and coords from what the pipeline
+            # actually produced; only ``pixel`` is resized to the full grid.
+            dims = tuple(str(d) for d in probed.dims)
+            shape = tuple(n_pixel if d == "pixel" else probed.sizes[d] for d in dims)
+            chunks = tuple(chunk if d == "pixel" else probed.sizes[d] for d in dims)
+            fill = da.full(shape, np.nan, chunks=chunks, dtype=probed.dtype)
+            data_vars[file_var] = (dims, fill)
+            coords |= {
+                str(d): probed.coords[d]
+                for d in dims
+                if d != "pixel" and d in probed.coords
+            }
+
         template = xr.Dataset(data_vars=data_vars, coords=coords)
         template.to_zarr(spec.path, compute=False, consolidated=False, mode="w")
         created.append(spec.path)

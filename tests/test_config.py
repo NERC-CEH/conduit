@@ -249,7 +249,7 @@ class TestResample:
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"}
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": "1ME"}
                 ],
             }
         )
@@ -266,7 +266,12 @@ class TestResample:
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp", "npp"], "from_freq": "daily", "to_freq": "weekly"}
+                    {
+                        "vars": ["gpp", "npp"],
+                        "from": "daily",
+                        "to": "weekly",
+                        "freq": "7D",
+                    }
                 ],
             }
         )
@@ -277,44 +282,56 @@ class TestResample:
         assert by_name["gpp_weekly"].passthrough is True
         assert "freq='7D'" in by_name["gpp_weekly"].expression
 
-    def test_explicit_freq_in_expression(self):
+    def test_from_and_to_are_bare_suffixes_not_frequencies(self):
+        # ``from``/``to`` name the input and output nodes and mean nothing else;
+        # the frequency is ``freq`` alone.
         config = Config(
             {
                 "resample": [
                     {
                         "vars": ["gpp"],
-                        "from_freq": "daily",
-                        "to_freq": "tenday",
+                        "from": "raw",
+                        "to": "smoothed",
                         "freq": "10D",
                     }
                 ],
             }
         )
         spec = config.parse().driver_config["node_specs"][0]
-        assert spec.name == "gpp_tenday"
+        assert spec.name == "gpp_smoothed"
+        assert spec.inputs == ["gpp_raw"]
+        assert spec.freq == "10D"
         assert "freq='10D'" in spec.expression
 
     def test_duplicate_resample_output_raises(self):
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"},
-                    {"vars": ["gpp"], "from_freq": "weekly", "to_freq": "monthly"},
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": "1ME"},
+                    {"vars": ["gpp"], "from": "weekly", "to": "monthly", "freq": "1ME"},
                 ],
             }
         )
         with pytest.raises(ValueError, match="Duplicate node name"):
             config.parse()
 
-    def test_unsupported_freq_pair_raises(self):
+    @pytest.mark.parametrize("missing", ["vars", "from", "to", "freq"])
+    def test_missing_required_key_raises(self, missing):
+        entry = {"vars": ["gpp"], "from": "daily", "to": "weekly", "freq": "7D"}
+        del entry[missing]
+        config = Config({"resample": [entry]})
+        with pytest.raises(ValueError, match=f"missing required key.*{missing}"):
+            config.parse()
+
+    def test_invalid_freq_raises_at_parse_time(self):
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "monthly", "to_freq": "daily"}
+                    {"vars": ["gpp"], "from": "daily", "to": "weekly", "freq": "nope"}
                 ],
             }
         )
-        with pytest.raises(ValueError, match="No default offset"):
+        with pytest.raises(ValueError, match="invalid frequency 'nope'"):
             config.parse()
 
 

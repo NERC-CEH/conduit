@@ -40,16 +40,19 @@ input is loaded.
 
 ## Temporal handling
 
-For NetCDF/Zarr inputs, files should carry a `time` dimension with a datetime
-coordinate, and data variables named **without** any frequency suffix (e.g.
-`temperature`, not `temperature_daily`) — conduit appends the suffix from the section
-label when building node names (see [Configuration › inputs](configuration.md#inputs)).
+Time-varying NetCDF/Zarr inputs carry a dimension with a datetime coordinate, and data
+variables named **without** any frequency suffix (e.g. `temperature`, not
+`temperature_daily`) — conduit appends the suffix from the section label when building
+node names (see [Configuration › inputs](configuration.md#inputs)).
+
+The time dimension is **detected, not assumed**: any dimension whose coordinate is
+datetime-like (NumPy `datetime64` or a cftime index) counts, so it need not be called
+`time`. An input dataset may carry **at most one** such dimension — a second datetime
+axis makes "the time dimension" ambiguous and is rejected at load. For CSV/Parquet, the
+first column must be a parseable date and is used as the time index.
 
 Section labels are **inert**: calling a section `daily` gives its node names the
-`_daily` suffix and nothing else — no frequency is inferred or enforced from the name. A
-section's time index only has to be a valid `DatetimeIndex`, and an input dataset may
-carry **at most one** time dimension. For CSV/Parquet, the first column must be a
-parseable date and is used as the time index.
+`_daily` suffix and nothing else — no frequency is inferred or enforced from the name.
 
 Frequency is validated where it is **declared**, not where it is named. Two independent
 mechanisms cover it:

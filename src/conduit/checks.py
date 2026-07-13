@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .io import _time_dims
+from .io import time_dims
 
 if TYPE_CHECKING:
     from .config import CheckSpec
@@ -42,11 +42,11 @@ class InputCheckError(ValueError):
 def _single_time_index(ds: xr.Dataset) -> pd.DatetimeIndex:
     """Return the dataset's single time index, raising if there is not exactly one.
 
-    Uses `conduit.io._time_dims` so arbitrarily-labelled time dimensions are
+    Uses `conduit.io.time_dims` so arbitrarily-labelled time dimensions are
     handled; the "at most one time dimension per input" invariant (enforced in
     `load_inputs`) guarantees ``len(tdims) <= 1``.
     """
-    tdims = _time_dims(ds)
+    tdims = time_dims(ds)
     if not tdims:
         raise ValueError(
             "dataset has no time dimension; a time check cannot be applied to it"

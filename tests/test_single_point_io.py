@@ -291,10 +291,8 @@ class TestLoadInputs:
         assert da.dims == ("pixel",)
         assert da.shape == (1,)
 
-    def test_dates_daily_present(self, sp_inputs):
-        idx = sp_inputs["dates_daily"]
-        assert isinstance(idx, pd.DatetimeIndex)
-        assert len(idx) == N_DAYS
+    def test_time_axis_length(self, sp_inputs):
+        assert sp_inputs["temperature_daily"].sizes["time"] == N_DAYS
 
 
 # ---------------------------------------------------------------------------

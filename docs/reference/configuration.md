@@ -138,26 +138,36 @@ preserving units and dims.
 
 ```toml
 [[resample]]
-from_freq = "daily"
-to_freq = "weekly"
 vars = ["temperature", "precipitation"]
+from = "daily"
+to = "weekly"
+freq = "7D"
 aggfunc = "mean"
 ```
 
 | Key | Description |
 |-----|-------------|
-| `vars` | **Required.** Variables to resample; each `{v}_{from_freq}` → `{v}_{to_freq}`. |
-| `from_freq` | **Required.** Source frequency label. |
-| `to_freq` | **Required.** Target frequency label. |
+| `vars` | **Required.** Variables to resample; each `{v}_{from}` → `{v}_{to}`. |
+| `from` | **Required.** Node-name suffix to read from. |
+| `to` | **Required.** Node-name suffix to write to. |
+| `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
-| `freq` | Explicit pandas offset alias (e.g. `"1D"`). Required unless the direction is a built-in default. |
 
-Built-in default directions (no `freq` needed): `daily`→`weekly`, `daily`→`monthly`,
-`weekly`→`monthly`. Any other direction needs an explicit `freq`.
+/// admonition | `from` and `to` are names, not frequencies
+    type: note
 
-The resolved offset also becomes the generated node's **declared output frequency**, so
-every resample carries a checkable frequency contract: a downstream consumer declaring
+They are **node-name suffixes** and nothing more: `from = "daily"` reads
+`{var}_daily`, `to = "weekly"` writes `{var}_weekly`. They are free-form —
+`from = "raw"`, `to = "smoothed"` is equally valid — and no frequency is inferred from
+them. `freq` alone says what actually happens to the time axis. There is no table of
+"supported directions": any pair of labels works, given a `freq`.
+///
+
+`freq` also becomes the generated node's **declared output frequency**, so every
+resample carries a checkable frequency contract: a downstream consumer declaring
 `Freq("W-SUN")` against a `freq = "W-WED"` resample fails at build time.
+
+The time axis is detected from the data, so it need not be called `time`.
 
 ## Cache
 
