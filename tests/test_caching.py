@@ -120,6 +120,24 @@ class TestDataArrayFingerprint:
         b = fingerprinting.hash_value(da.rename("y"))
         assert a != b
 
+    def test_fingerprint_changes_when_units_attr_changes(self):
+        # Same numbers, different meaning: must not serve a stale cached result.
+        kg = self._da([1, 2, 3])
+        kg.attrs["units"] = "kg"
+        g = self._da([1, 2, 3])
+        g.attrs["units"] = "g"
+        assert fingerprinting.hash_value(kg) != fingerprinting.hash_value(g)
+
+    def test_fingerprint_stable_for_identical_arrays(self):
+        # Guards against hashing object identity rather than content.
+        def build():
+            da = self._da([1, 2, 3])
+            da.attrs["units"] = "kg"
+            da.attrs["long_name"] = "mass"
+            return da
+
+        assert fingerprinting.hash_value(build()) == fingerprinting.hash_value(build())
+
 
 def _make_counting_module(counter: list) -> types.ModuleType:
     """Build a one-node Hamilton module that records each real computation."""
