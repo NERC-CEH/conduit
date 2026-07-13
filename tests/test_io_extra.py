@@ -2,7 +2,7 @@
 
 Covers:
 - load_dataset / _save_netcdf with Zarr files
-- _validate_dates error paths
+- time-index extraction (``dates_{label}``)
 - get_outputs and save_outputs public API
 - Multiple-CRS-dataset lat/lon computation
 """
@@ -18,7 +18,6 @@ from conduit.config import IOSpec
 from conduit.io import (
     _save_netcdf,
     _time_dims,
-    _validate_dates,
     get_final_vars,
     get_outputs,
     load_dataset,
@@ -97,64 +96,45 @@ class TestSaveNetcdfErrors:
 
 
 # ---------------------------------------------------------------------------
-# _validate_dates error paths
+# Time-index extraction (frequency is no longer inferred from the section label)
 # ---------------------------------------------------------------------------
 
 
-class TestValidateDatesErrors:
-    """_validate_dates raises for non-DatetimeIndex and wrong frequency."""
+class TestTimeIndex:
+    """``dates_{label}`` is emitted for any section with a time dim, unvalidated.
 
-    def test_frequency_mismatch_raises(self):
-        hourly = pd.date_range("2020-01-01", periods=24, freq="h")
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(24))},
-            coords={"time": hourly},
-        )
-        with pytest.raises(ValueError, match="Expected 'daily'"):
-            _validate_dates(ds, "daily")
+    Frequency validation is now opt-in via a consumer's ``Freq`` declaration (see
+    tests/test_freq.py), so a section labelled ``daily`` carrying weekly timestamps
+    is loaded without complaint — the label means nothing.
+    """
 
-    def test_wrong_freq_for_monthly(self):
-        daily = pd.date_range("2020-01-01", periods=30, freq="D")
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(30))},
-            coords={"time": daily},
-        )
-        with pytest.raises(ValueError, match="Expected 'monthly'"):
-            _validate_dates(ds, "monthly")
+    def _spec(self, tmp_path, times, label):
+        path = tmp_path / f"{label}.nc"
+        _simple_ds(times).to_netcdf(path)
+        return {label: IOSpec(path=str(path), vars=["var_a"])}
 
-    def test_irregular_times_raises(self):
-        # Irregular timestamps — pd.infer_freq returns None
+    @pytest.mark.parametrize(
+        ("label", "times"),
+        [
+            ("daily", DAILY_TIMES),
+            ("weekly", WEEKLY_TIMES),
+            ("monthly", MONTHLY_TIMES),
+            ("arbitrary", DAILY_TIMES),
+        ],
+    )
+    def test_dates_node_emitted(self, tmp_path, label, times):
+        inputs = load_inputs(self._spec(tmp_path, times, label))
+        assert isinstance(inputs[f"dates_{label}"], pd.DatetimeIndex)
+
+    def test_label_frequency_not_enforced(self, tmp_path):
+        # A section called "daily" holding weekly timestamps: no longer an error.
+        inputs = load_inputs(self._spec(tmp_path, WEEKLY_TIMES, "daily"))
+        assert len(inputs["dates_daily"]) == N_TIMES
+
+    def test_irregular_times_accepted(self, tmp_path):
         times = pd.to_datetime(["2020-01-01", "2020-01-03", "2020-01-10"])
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(3))},
-            coords={"time": times},
-        )
-        with pytest.raises(ValueError, match="Could not determine frequency"):
-            _validate_dates(ds, "daily")
-
-    def test_daily_passes(self):
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(N_TIMES))},
-            coords={"time": DAILY_TIMES},
-        )
-        idx = _validate_dates(ds, "daily")
-        assert isinstance(idx, pd.DatetimeIndex)
-
-    def test_weekly_passes(self):
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(N_TIMES))},
-            coords={"time": WEEKLY_TIMES},
-        )
-        idx = _validate_dates(ds, "weekly")
-        assert isinstance(idx, pd.DatetimeIndex)
-
-    def test_monthly_passes(self):
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(N_TIMES))},
-            coords={"time": MONTHLY_TIMES},
-        )
-        idx = _validate_dates(ds, "monthly")
-        assert isinstance(idx, pd.DatetimeIndex)
+        inputs = load_inputs(self._spec(tmp_path, times, "daily"))
+        assert len(inputs["dates_daily"]) == 3
 
 
 # ---------------------------------------------------------------------------

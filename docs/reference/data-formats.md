@@ -45,18 +45,20 @@ coordinate, and data variables named **without** any frequency suffix (e.g.
 `temperature`, not `temperature_daily`) — conduit appends the suffix from the section
 label when building node names (see [Configuration › inputs](configuration.md#inputs)).
 
-Input sections whose label is a **recognised temporal frequency** (`daily`, `weekly`,
-`monthly`) have their time index validated against that frequency:
+Section labels are **inert**: calling a section `daily` gives its node names the
+`_daily` suffix and nothing else — no frequency is inferred or enforced from the name. A
+section's time index only has to be a valid `DatetimeIndex`, and an input dataset may
+carry **at most one** time dimension. For CSV/Parquet, the first column must be a
+parseable date and is used as the time index.
 
-| Label | Expected frequency |
-|-------|--------------------|
-| `daily` | one entry per calendar day (`D`) |
-| `weekly` | `W` or `7D` |
-| `monthly` | month-end (`ME`) or month-start (`MS`) |
+Frequency is validated where it is **declared**, not where it is named. Two independent
+mechanisms cover it:
 
-Sections with any other label are not frequency-validated — their time index only has to
-be a valid `DatetimeIndex`. For CSV/Parquet, the first column must be a parseable date
-and is used as the time index.
+- a consumer declaring `Freq("7D")` on its input (or a `[[node]]` with `freq = "7D"` on
+  its output) — validated per node by the
+  [contract check](../concepts/contracts.md), at build time and in `--dry-run`;
+- the [`time_aligned` / `time_equal` / `time_subset` checks](configuration.md#validation)
+  — validated across whole input datasets.
 
 ## Units metadata
 

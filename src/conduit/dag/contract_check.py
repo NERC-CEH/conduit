@@ -14,22 +14,26 @@ units:
 
 - **units** — pint/CF physical units (`xarray_annotated.units`);
 - **dims**, **coords**, **dtype** — structural properties
-  (`xarray_annotated.schema`).
+  (`xarray_annotated.schema`);
+- **freq** — the spacing (and phase) of the time axis
+  (`xarray_annotated.temporal`).
 
 Each facet is a `_Facet` descriptor pairing a way to pull that facet off a
 `Declared` with a policy, a marker-vs-marker edge predicate (for the build-time
 check), and a marker-vs-array runtime check (for the input check). All of these
 come from `xarray-annotated`'s public API: the unified declaration reader
 (`declarations_from_signature`), the runtime checks (`check_units`,
-`check_schema`), and the marker-vs-marker predicates (units
-`units_compatible`/`units_equal`, schema `dims_compatible`/`dtype_compatible`).
-conduit only assembles them per facet.
+`check_schema`, `check_freq`), and the marker-vs-marker predicates (units
+`units_compatible`/`units_equal`, schema `dims_compatible`/`dtype_compatible`,
+temporal `freq_compatible`). conduit only assembles them per facet.
 
 **Edge vs input.** ``coords`` declarations are lower bounds ("at least these coords
 are present"), so two coord declarations on an edge can never be *proven*
 inconsistent — coords therefore participates in the input check but not the
-build-time edge check (``edge=None``). Units/dims/dtype are exact enough to compare
-at the edge.
+build-time edge check (``edge=None``). Units/dims/dtype/freq are exact enough to
+compare at the edge. ``freq`` is the one facet inferred from coordinate *values*
+rather than metadata, but reading a 1-D datetime coordinate still executes no node,
+so it remains a legitimate ``--dry-run`` pre-flight.
 
 **Provable-only.** A build-time edge is flagged only when the two declarations are
 *provably* inconsistent (e.g. dimensionally incompatible units, disjoint dim sets,
@@ -45,6 +49,12 @@ propagated across it — forward for the DAG check, backward for the input check
 This is generic: any passthrough-tagged node participates, with no module
 special-cased. Non-passthrough ``[[node]]`` modules can transform units arbitrarily
 and so are not propagated; they fall back to the runtime check.
+
+Propagation is *per facet* (`_Facet.passthrough_preserving`): a resample preserves
+its input's units but is precisely the thing that *changes* its frequency, so
+``freq`` is never propagated across a passthrough. A ``[[resample]]`` node instead
+declares its own output frequency (its offset), making it an ordinary producer for
+that one facet.
 """
 
 from collections.abc import Callable
@@ -56,6 +66,8 @@ from hamilton import graph_types
 from xarray_annotated import declarations_from_signature
 from xarray_annotated.schema import check_schema, dims_compatible, dtype_compatible
 from xarray_annotated.schema import get_policy as schema_get_policy
+from xarray_annotated.temporal import check_freq, freq_compatible
+from xarray_annotated.temporal import get_policy as temporal_get_policy
 from xarray_annotated.units import check_units, units_compatible, units_equal
 from xarray_annotated.units import get_policy as units_get_policy
 
@@ -65,7 +77,7 @@ if TYPE_CHECKING:
 
 # Facet map keys, in a stable order (units first so its messages/behaviour match
 # the original units-only checker).
-_FACET_NAMES = ("units", "dims", "coords", "dtype")
+_FACET_NAMES = ("units", "dims", "coords", "dtype", "freq")
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +103,10 @@ def _dtype_edge(a: Any, b: Any, _pol: Any) -> str | None:
     return None if dtype_compatible(a, b) else "dtypes incompatible"
 
 
+def _freq_edge(a: Any, b: Any, _pol: Any) -> str | None:
+    return None if freq_compatible(a, b) else "frequencies incompatible"
+
+
 # ---------------------------------------------------------------------------
 # Runtime (input) checks — marker(s) vs a loaded DataArray
 # ---------------------------------------------------------------------------
@@ -103,6 +119,10 @@ def _units_input_check(da: xr.DataArray, decls: list, name: str) -> None:
 
 def _schema_input_check(da: xr.DataArray, decls: list, name: str) -> None:
     check_schema(da, list(decls), name)
+
+
+def _freq_input_check(da: xr.DataArray, decls: list, name: str) -> None:
+    check_freq(da, list(decls), name)
 
 
 @dataclass(frozen=True)
@@ -155,6 +175,16 @@ _FACETS: tuple[_Facet, ...] = (
         lambda d: d.dtype,
         _dtype_edge,
         _schema_input_check,
+        False,
+    ),
+    _Facet(
+        "freq",
+        temporal_get_policy,
+        lambda d: d.freq,
+        _freq_edge,
+        _freq_input_check,
+        # A passthrough (e.g. [[resample]]) is exactly what *changes* a frequency,
+        # so a source's declared freq is never propagated across one.
         False,
     ),
 )
@@ -344,8 +374,8 @@ def _check_inputs(
 def check_dag_contracts(dr: "driver.Driver") -> None:
     """Verify declared contracts are consistent across every built-DAG edge.
 
-    Runs the build-time edge check for all facets (units, dims, dtype; coords is
-    skipped — its declarations are lower bounds). A provable mismatch always raises
+    Runs the build-time edge check for all facets (units, dims, dtype, freq; coords
+    is skipped — its declarations are lower bounds). A provable mismatch always raises
     `ValueError` (it is a genuine pipeline-definition error). Each facet is skipped
     when its policy is disabled (the conftest default), so this is a no-op for
     pipelines that opt out of contract handling.
@@ -366,11 +396,12 @@ def check_input_contracts(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
     """Validate loaded inputs' metadata against the contracts declared for them.
 
     The runtime leg that cannot be done statically, run for every facet: an input's
-    ``units`` attribute (units), and its dims / coords / dtype (schema), are checked
-    against the contract declared by its consumer(s). Dims/coords/dtype live in the
-    file header, so — like units — this executes no node and is suitable as a
-    ``run --dry-run`` pre-flight. Contracts are propagated backward through
-    unit-preserving passthrough edges to a fixpoint.
+    ``units`` attribute (units), its dims / coords / dtype (schema), and the inferred
+    frequency of its time axis (temporal), are checked against the contract declared
+    by its consumer(s). Dims/coords/dtype live in the file header and a frequency
+    needs only the 1-D datetime coordinate, so — like units — this executes no node
+    and is suitable as a ``run --dry-run`` pre-flight. Contracts are propagated
+    backward through unit-preserving passthrough edges to a fixpoint.
     """
     _check_inputs(dr, inputs, _FACETS)
 

@@ -82,9 +82,15 @@ ds.to_netcdf("data_with_crs.nc")
 
 ### Time index frequency mismatch
 
-For sections whose label is a recognised frequency, conduit validates the time index
-(`daily` → `D`, `weekly` → `W`/`7D`, `monthly` → `ME`/`MS`). Gaps or irregular spacing
-raise a validation error — fix the data, or use a non-frequency label to skip the check.
+`frequency mismatch on 'time': expected '7D', got 'D'` means a consumer declared a
+`Freq` contract the data contradicts. Section labels are not involved — nothing is
+inferred from a section being called `daily` — so either the declaration or the data is
+wrong. Fix whichever, or drop the declaration to opt that node out.
+
+`frequency of 'time' is uninferable` means the axis has fewer than three timestamps or
+irregular spacing, so the declaration could not be *tested*. It warns by default; set
+`on_uninferable` in [`[annotations]`](configuration.md#annotations) to `"error"` to make
+an untested contract fatal, or `"ignore"` to silence it (short test fixtures).
 
 ## Running pipelines
 
