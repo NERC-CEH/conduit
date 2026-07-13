@@ -216,7 +216,10 @@ class TestPipelineWithCache:
 
         def run(cache):
             dr = build_driver(
-                pipeline_config.modules, pipeline_config.driver_config, cache=cache
+                pipeline_config.modules,
+                pipeline_config.driver_config,
+                cache=cache,
+                node_specs=pipeline_config.node_specs,
             )
             return dr.execute(final_vars, inputs=pipeline_inputs)  # type: ignore[reportArgumentType]
 

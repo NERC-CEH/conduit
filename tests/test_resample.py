@@ -102,7 +102,9 @@ class TestResamplePresetPipeline:
     def _driver(self, entry: dict):
         parsed = Config({"resample": [entry]}).parse()
         assert parsed.modules == ["node"]  # no dedicated resample module
-        return build_driver(parsed.modules, parsed.driver_config)
+        return build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
 
     def test_weekly_offset(self):
         dr = self._driver(

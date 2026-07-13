@@ -115,12 +115,15 @@ class TestOutputSpecs:
 
 
 class TestDriverConfig:
-    """Tests for driver_config: module params and node/resample specs only."""
+    """Tests for driver_config: user module params only."""
 
-    def test_node_specs_stashed_in_driver_config(self, parsed_config):
-        dc = parsed_config.driver_config
-        assert "node_specs" in dc
-        assert [spec.name for spec in dc["node_specs"]] == ["mean_temperature_weekly"]
+    def test_node_specs_are_a_parsed_field(self, parsed_config):
+        assert [s.name for s in parsed_config.node_specs] == ["mean_temperature_weekly"]
+
+    def test_node_specs_not_in_driver_config(self, parsed_config):
+        # node_specs are a real ParsedConfig field, not smuggled through Hamilton's
+        # driver config (where every user module would see them as a config key).
+        assert "node_specs" not in parsed_config.driver_config
 
     def test_module_params_merged_into_driver_config(self):
         config = Config(
@@ -172,7 +175,9 @@ class TestValidation:
             from conduit.dag.driver import build_driver
 
             parsed = config.parse()
-            build_driver(parsed.modules, parsed.driver_config)
+            build_driver(
+                parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+            )
 
         with pytest.raises(ValueError, match="Cannot load module"):
             _build()
@@ -275,12 +280,12 @@ class TestResample:
                 ],
             }
         )
-        specs = config.parse().driver_config["node_specs"]
+        specs = config.parse().node_specs
         by_name = {s.name: s for s in specs}
         assert set(by_name) == {"gpp_weekly", "npp_weekly"}
         assert by_name["gpp_weekly"].inputs == ["gpp_daily"]
         assert by_name["gpp_weekly"].passthrough is True
-        assert "freq='7D'" in by_name["gpp_weekly"].expression
+        assert "freq='7D'" in (by_name["gpp_weekly"].expression or "")
 
     def test_from_and_to_are_bare_suffixes_not_frequencies(self):
         # ``from``/``to`` name the input and output nodes and mean nothing else;
@@ -297,11 +302,11 @@ class TestResample:
                 ],
             }
         )
-        spec = config.parse().driver_config["node_specs"][0]
+        spec = config.parse().node_specs[0]
         assert spec.name == "gpp_smoothed"
         assert spec.inputs == ["gpp_raw"]
         assert spec.freq == "10D"
-        assert "freq='10D'" in spec.expression
+        assert "freq='10D'" in (spec.expression or "")
 
     def test_duplicate_resample_output_raises(self):
         config = Config(
@@ -358,7 +363,7 @@ class TestNode:
         parsed = config.parse()
         assert "node" not in parsed.modules
 
-    def test_node_specs_in_driver_config(self):
+    def test_node_specs_parsed(self):
         config = Config(
             {
                 "node": [
@@ -371,7 +376,7 @@ class TestNode:
             }
         )
         parsed = config.parse()
-        specs = parsed.driver_config["node_specs"]
+        specs = parsed.node_specs
         assert len(specs) == 1
         assert isinstance(specs[0], NodeSpec)
         assert specs[0].name == "aridity_index_daily"
@@ -394,7 +399,7 @@ class TestNode:
             }
         )
         parsed = config.parse()
-        spec = parsed.driver_config["node_specs"][0]
+        spec = parsed.node_specs[0]
         assert isinstance(spec, NodeSpec)
         assert spec.expression is None
         assert spec.import_path == "mypackage.met_utils"
@@ -413,12 +418,12 @@ class TestNode:
                 ]
             }
         )
-        spec = config.parse().driver_config["node_specs"][0]
+        spec = config.parse().node_specs[0]
         assert spec.units == "1"
 
     def test_node_units_default_none(self):
         config = Config({"node": [{"name": "f", "inputs": ["a"], "expression": "a"}]})
-        assert config.parse().driver_config["node_specs"][0].units is None
+        assert config.parse().node_specs[0].units is None
 
     def test_invalid_node_units_raises(self):
         config = Config(

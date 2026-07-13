@@ -363,6 +363,7 @@ def graph(
     dr = build_driver(
         modules=parsed.modules,
         config=parsed.driver_config,
+        node_specs=parsed.node_specs,
         allow_module_overrides=allow_overrides,
     )
 

@@ -387,7 +387,7 @@ class TestResamplePropagation:
         specs = _resample_node_specs(
             ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME")
         )
-        return build_driver(["rs_prod", "node", "rs_cons"], {"node_specs": specs})
+        return build_driver(["rs_prod", "node", "rs_cons"], {}, node_specs=specs)
 
     def test_incompatible_consumer_of_resampled_var_raises(self, register):
         with (
@@ -423,7 +423,7 @@ class TestResamplePropagation:
             policy(enabled=True),
             pytest.raises(ValueError, match="gpp_monthly"),
         ):
-            build_driver(["crp_prod", "node", "crp_cons"], {"node_specs": specs})
+            build_driver(["crp_prod", "node", "crp_cons"], {}, node_specs=specs)
 
 
 # ---------------------------------------------------------------------------
@@ -444,7 +444,7 @@ class TestNodePropagation:
                 units="g m-2 d-1",
             )
         ]
-        return build_driver(["node", "dv_cons"], {"node_specs": specs})
+        return build_driver(["node", "dv_cons"], {}, node_specs=specs)
 
     def test_incompatible_consumer_of_node_var_raises(self, register):
         with (

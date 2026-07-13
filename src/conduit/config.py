@@ -332,6 +332,7 @@ class ParsedConfig:
 
     modules: list[str]
     driver_config: dict[str, Any]
+    node_specs: list["NodeSpec"] = field(default_factory=list)
     input_specs: dict[str, "IOSpec"] = field(default_factory=dict)
     output_specs: dict[str, "IOSpec"] = field(default_factory=dict)
     cache_spec: "CacheSpec | None" = None
@@ -507,7 +508,7 @@ class Config:
                 suffix=params.get("suffix"),
             )
 
-    def _parse_nodes(self, data: dict, driver_config: dict) -> list[str]:
+    def _parse_nodes(self, data: dict) -> list["NodeSpec"]:
         """Handle [[node]] and [[resample]] — both generate ``node`` module specs.
 
         ``[[resample]]`` is desugared to fan-out passthrough node entries
@@ -527,10 +528,7 @@ class Config:
                 raise ValueError(f"Duplicate node name '{spec.name}'")
             seen_names.add(spec.name)
             specs.append(spec)
-        if specs:
-            driver_config["node_specs"] = specs
-            return ["node"]
-        return []
+        return specs
 
     def _parse_cache(self, data: dict) -> "CacheSpec | None":
         """Handle the [cache] section.
@@ -736,7 +734,9 @@ class Config:
         self._parse_inputs(data, input_specs)
         checks = self._parse_checks(data, input_specs)
         self._parse_outputs(data, output_specs)
-        modules += self._parse_nodes(data, driver_config)
+        node_specs = self._parse_nodes(data)
+        if node_specs:
+            modules.append("node")
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data)
         subset_spec = self._parse_subset(data)
@@ -751,6 +751,7 @@ class Config:
         return ParsedConfig(
             modules=modules,
             driver_config=driver_config,
+            node_specs=node_specs,
             input_specs=input_specs,
             output_specs=output_specs,
             cache_spec=cache_spec,

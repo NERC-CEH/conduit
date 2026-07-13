@@ -170,7 +170,7 @@ class TestCheckInputUnitsPropagation:
             ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME")
         )
         specs = [NodeSpec.from_config(e) for e in expand_node_entries([entry])]
-        return build_driver(["node", "rs_cons"], {"node_specs": specs})
+        return build_driver(["node", "rs_cons"], {}, node_specs=specs)
 
     def test_resample_routed_input_is_validated(self, register):
         dr = self._resample_driver(register)
@@ -201,7 +201,7 @@ class TestCheckInputUnitsPropagation:
                 units="g m-2 d-1",
             )
         ]
-        dr = build_driver(["node", "dv_cons"], {"node_specs": specs})
+        dr = build_driver(["node", "dv_cons"], {}, node_specs=specs)
         with policy(enabled=True, on_missing="error"):
             check_input_units(dr, {"a": _input("kg"), "b": _input("kg")})
 

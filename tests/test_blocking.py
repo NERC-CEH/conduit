@@ -26,13 +26,21 @@ _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"
 
 
 def _run_unblocked(pipeline_config, pipeline_inputs):
-    dr = build_driver(pipeline_config.modules, pipeline_config.driver_config)
+    dr = build_driver(
+        pipeline_config.modules,
+        pipeline_config.driver_config,
+        node_specs=pipeline_config.node_specs,
+    )
     return dr.execute(_FINAL_VARS, inputs=pipeline_inputs)  # type: ignore[reportArgumentType]
 
 
 def _run_blocked(pipeline_config, pipeline_inputs, block_size):
     spec = BlockingSpec(block_size=block_size)
-    dr = build_driver(pipeline_config.modules, pipeline_config.driver_config)
+    dr = build_driver(
+        pipeline_config.modules,
+        pipeline_config.driver_config,
+        node_specs=pipeline_config.node_specs,
+    )
     return execute_blocked(dr, pipeline_inputs, _FINAL_VARS, spec)
 
 
@@ -213,7 +221,10 @@ class TestCachingWithBlocking:
 
         def _run_blocked_cached():
             dr = build_driver(
-                pipeline_config.modules, pipeline_config.driver_config, cache=cache
+                pipeline_config.modules,
+                pipeline_config.driver_config,
+                cache=cache,
+                node_specs=pipeline_config.node_specs,
             )
             return execute_blocked(dr, pipeline_inputs, _FINAL_VARS, spec)
 
@@ -295,7 +306,9 @@ block_size = 2
 
         parsed = load_config(config_path)
         parsed.blocking_spec = None
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         inputs = load_inputs(parsed.input_specs)
         final_vars = get_final_vars(parsed.output_specs)
         ref_results = dr.execute(final_vars, inputs=inputs)  # type: ignore[reportArgumentType]

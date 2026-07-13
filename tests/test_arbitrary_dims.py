@@ -77,7 +77,9 @@ class TestNonTemporalPipeline:
         )
         parsed = load_config(cfg)
         inputs = load_inputs(parsed.input_specs)
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         final_vars = get_final_vars(parsed.output_specs)
         assert final_vars == ["mean_reflectance_scene"]
         results = dr.execute(final_vars, inputs=inputs)  # type: ignore[reportArgumentType]
@@ -104,7 +106,9 @@ class TestBlockingArbitraryDim:
         )
         parsed = load_config(cfg)
         inputs = load_inputs(parsed.input_specs)
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         final = ["scaled_scene"]
 
         ref = dr.execute(final, inputs=inputs)  # type: ignore[reportArgumentType]

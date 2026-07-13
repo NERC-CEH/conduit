@@ -352,7 +352,11 @@ def create_output_store(
     # is deliberately not enabled: the probe is an implementation detail of building
     # the store and should neither consult nor populate the user's cache.
     probe_inputs = subset_inputs(inputs, SubsetSpec(pixel_start=0, pixel_end=1))
-    dr = build_driver(modules=parsed.modules, config=parsed.driver_config)
+    dr = build_driver(
+        modules=parsed.modules,
+        config=parsed.driver_config,
+        node_specs=parsed.node_specs,
+    )
     probe = dr.execute(
         get_final_vars(zarr_specs),  # type: ignore[reportArgumentType]
         inputs=probe_inputs,

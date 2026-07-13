@@ -108,7 +108,11 @@ class TestSubsetPipelineResult:
     """Running on subsets and concatenating reproduces the unsubsetted result."""
 
     def test_two_halves_match_full(self, pipeline_config, pipeline_inputs):
-        dr = build_driver(pipeline_config.modules, pipeline_config.driver_config)
+        dr = build_driver(
+            pipeline_config.modules,
+            pipeline_config.driver_config,
+            node_specs=pipeline_config.node_specs,
+        )
         reference = dr.execute(_FINAL_VARS, inputs=pipeline_inputs)  # type: ignore[reportArgumentType]
 
         inputs_a = load_inputs(
@@ -208,7 +212,9 @@ pixel_end = 2
 
         parsed = load_config(config_path)
         parsed.subset_spec = None
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         full_inputs = load_inputs(parsed.input_specs)
         final_vars: list[Any] = get_final_vars(parsed.output_specs)
         full_results = dr.execute(final_vars, inputs=full_inputs)  # type: ignore[reportArgumentType]
