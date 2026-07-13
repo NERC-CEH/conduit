@@ -17,17 +17,14 @@ from xarray_annotated.units import declare_units
 if TYPE_CHECKING:
     from conduit.specs import NodeSpec
 
-#: Hamilton tag marking a node whose output preserves its input's declared
-#: contract (units/dims/dtype). The contract check reads this to propagate a
-#: declaration across the node instead of requiring a fixed one. See
-#: `conduit.dag.contract_check`. Note the propagation is per facet: ``freq`` is
-#: *not* preserved (a resample changes it), so a passthrough node may still
-#: declare a frequency of its own.
+#: Hamilton tag marking a node whose output preserves its input's declared contract.
+#: The contract check reads it to propagate that declaration across the node — see
+#: `conduit.dag.contract_check` for the semantics (notably that it is per facet).
 PASSTHROUGH_TAG = "conduit_passthrough"
 
 #: Names bound in every generated module's namespace, and therefore unusable as a
 #: node name or node input: a node called ``xr`` would shadow the helper for every
-#: later node's expression. `conduit.config.NodeSpec.from_config` rejects them at
+#: later node's expression. `conduit.specs.NodeSpec.from_config` rejects them at
 #: parse time. Kept in step with `_node_namespace` by
 #: ``test_dag_node.py::test_reserved_names_match_generated_namespace``.
 RESERVED_NODE_NAMES: frozenset[str] = frozenset(
@@ -88,20 +85,17 @@ def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
 
 def _decorate(fn: Any, spec: "NodeSpec") -> Any:
     """Attach the node's declared output contract to the bare ``exec``'d function."""
-    # A passthrough node preserves its input's contract, so it declares none of its
-    # own — except its frequency, which a passthrough transform (the [[resample]]
-    # preset) is precisely what changes. It is tagged so the contract check
-    # propagates the *preserved* facets across it.
+    # A passthrough declares no contract of its own except its frequency (the one
+    # facet it does not preserve), and is tagged for the check to propagate the rest.
     if spec.passthrough:
         fn.__annotations__["return"] = annotate(freq=spec.freq)
         if spec.freq is not None:
             fn = declare_freq(fn)
         return tag(**{PASSTHROUGH_TAG: "true"})(fn)  # type: ignore[reportArgumentType]
 
-    # Otherwise a declared unit/dims/dtype/coords/freq makes the node a typed
-    # producer: validated/stamped at runtime (@declare_units / @declare_schema /
-    # @declare_freq) and read by the build-time contract check. Without any, it is
-    # an unchecked pass-through.
+    # Otherwise a declared unit/dims/dtype/coords/freq makes the node a typed producer:
+    # stamped/validated at runtime and read by the build-time check. Without any, the
+    # node is simply unchecked.
     fn.__annotations__["return"] = annotate(
         unit=spec.units,
         dims=spec.dims or None,

@@ -62,16 +62,14 @@ def _subst_var(value: Any, var: str) -> Any:
 def resample_to_node_entry(spec: ResampleSpec) -> dict:
     """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
 
-    Each variable ``v`` becomes a node ``{v}_{target}`` that applies
-    `conduit.transforms.resample` to ``{v}_{source}``; the node is a passthrough
-    (unit/dim preserving), so the contract check propagates the source's declared
-    contract across it.
+    Each variable ``v`` becomes a node ``{v}_{target}`` applying
+    `conduit.transforms.resample` to ``{v}_{source}``. The node is a **passthrough**
+    but declares its own ``freq`` — the one facet a resample does not preserve — so
+    every resample carries a checkable output-frequency contract, anchor included (a
+    fat-fingered ``W-WED`` is caught at build time). See `conduit.dag.contract_check`.
 
-    The one facet a resample does *not* preserve is the frequency — it is what the
-    node changes — so the node declares its own: ``freq``. Every resample therefore
-    carries a checkable output-frequency contract (including its anchor, so a
-    fat-fingered ``W-WED`` is caught), which a downstream consumer's ``Freq``
-    declaration is compared against at build time.
+    This preset is why ``[[resample]]`` needs no special-cased DAG module: it is an
+    ordinary generated node.
     """
     src = f"{{var}}_{spec.source}"
     return {

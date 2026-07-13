@@ -29,16 +29,13 @@ _VALID_AGGFUNCS: frozenset[str] = frozenset(
 class ResampleSpec:
     """Specification for a single [[resample]] entry.
 
-    ``[[resample]]`` is a thin *preset* over the fan-out ``[[node]]`` mechanism: it
-    desugars to one passthrough node per variable that applies
-    `conduit.transforms.resample` (see `resample_to_node_entry`).
-
     ``source`` and ``target`` (TOML ``from`` / ``to``) are **node-name suffixes**, not
-    frequencies: ``from = "daily"`` reads ``{var}_daily`` and ``to = "weekly"``
-    produces ``{var}_weekly``. They are free-form labels — ``from = "raw"``,
-    ``to = "smoothed"`` is equally valid — and nothing is inferred from them. The
-    frequency is ``freq`` alone: a required pandas offset alias, passed to the
-    transform and declared as the generated node's output-frequency contract.
+    frequencies: ``from = "daily"`` reads ``{var}_daily``, ``to = "weekly"`` writes
+    ``{var}_weekly``, and nothing is inferred from either (see `conduit.io.load_inputs`
+    on inert labels). ``freq`` alone says what happens to the time axis.
+
+    Desugared to fan-out passthrough nodes by
+    `conduit.config.resample_to_node_entry`.
     """
 
     vars: list[str]
@@ -109,12 +106,10 @@ class NodeSpec:
     """Specification for a single (already fan-out-expanded) [[node]] entry.
 
     ``units`` / ``dims`` / ``dtype`` / ``coords`` / ``freq`` declare the node's output
-    contract (read by the build-time contract check and stamped/validated at runtime).
-    A ``passthrough`` node instead declares *no* fixed output contract for the facets
-    a passthrough preserves, and is tagged so the contract check propagates its
-    input's declaration across it — the shape the ``[[resample]]`` preset generates.
-    ``freq`` is the exception: a resample *changes* the frequency, so it is declared
-    explicitly even on a passthrough node.
+    contract: validated and stamped at runtime, and read by the build-time check.
+    ``passthrough`` instead declares no fixed contract and tags the node so the check
+    propagates its input's declaration across it — per facet, so ``freq`` may still be
+    declared. See `conduit.dag.contract_check` for what propagation means.
     """
 
     name: str
