@@ -16,7 +16,7 @@ from hamilton import driver
 from hamilton.caching import fingerprinting
 
 if TYPE_CHECKING:
-    from conduit.config import CacheSpec
+    from conduit.specs import CacheSpec
 
 
 @fingerprinting.hash_value.register(xr.DataArray)

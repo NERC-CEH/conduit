@@ -16,7 +16,7 @@ import xarray as xr
 if TYPE_CHECKING:
     from hamilton import driver
 
-    from conduit.config import BlockingSpec
+    from conduit.specs import BlockingSpec
 
 
 def _block_input_names(inputs: dict[str, Any], dim: str = "pixel") -> list[str]:

@@ -44,6 +44,7 @@ nav = [
           "api/conduit.cli/run.md",
           "api/conduit.cli/version.md",
           "api/conduit.config.md",
+          "api/conduit.specs.md",
           "api/conduit.io.md",
           "api/conduit.formats.md",
           "api/conduit.transforms.md",

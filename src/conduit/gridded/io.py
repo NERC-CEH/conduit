@@ -26,8 +26,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..config import IOSpec, ParsedConfig, SubsetSpec
 from ..formats import FORMATS, format_for
+from ..specs import IOSpec, ParsedConfig, SubsetSpec
 from .spatial import stack_spatial_dims
 
 

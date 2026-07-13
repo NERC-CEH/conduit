@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated
 
 import typer
 
-from ..config import CacheSpec, load_config
+from ..config import load_config
 from ..dag.blocking import execute_blocked
 from ..dag.driver import build_driver
 from ..dag.wiring_check import check_wiring
@@ -19,9 +19,10 @@ from ..io import (
     load_inputs,
     save_outputs,
 )
+from ..specs import CacheSpec
 
 if TYPE_CHECKING:
-    from ..config import ParsedConfig
+    from ..specs import ParsedConfig
 
 app = typer.Typer(help="Execute a pipeline defined in a configuration file.")
 

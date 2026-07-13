@@ -15,7 +15,7 @@ from xarray_annotated.temporal import declare_freq
 from xarray_annotated.units import declare_units
 
 if TYPE_CHECKING:
-    from conduit.config import NodeSpec
+    from conduit.specs import NodeSpec
 
 #: Hamilton tag marking a node whose output preserves its input's declared
 #: contract (units/dims/dtype). The contract check reads this to propagate a

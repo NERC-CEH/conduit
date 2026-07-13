@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .config import IOSpec, SubsetSpec
 from .formats import (
     FORMATS,
     Format,
@@ -19,6 +18,7 @@ from .formats import (
     write_frame,
     write_in_group,
 )
+from .specs import IOSpec, SubsetSpec
 
 
 def effective_suffix(label: str, spec: IOSpec) -> str:

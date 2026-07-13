@@ -7,7 +7,7 @@ from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
 if TYPE_CHECKING:
-    from conduit.config import CacheSpec, NodeSpec
+    from conduit.specs import CacheSpec, NodeSpec
 
 # Built-in DAG module addressable by a short name in config. Every other section
 # is loaded by its dotted `_import_path`, so user-defined modules are first-class

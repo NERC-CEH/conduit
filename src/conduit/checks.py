@@ -25,7 +25,7 @@ import xarray as xr
 from .io import time_dims
 
 if TYPE_CHECKING:
-    from .config import CheckSpec
+    from .specs import CheckSpec
 
 logger = logging.getLogger(__name__)
 
