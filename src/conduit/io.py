@@ -10,6 +10,15 @@ import pandas as pd
 import xarray as xr
 
 from .config import IOSpec, SubsetSpec
+from .formats import (
+    FORMATS,
+    Format,
+    dataset_to_frame,
+    format_for,
+    read_in_group,
+    write_frame,
+    write_in_group,
+)
 
 
 def effective_suffix(label: str, spec: IOSpec) -> str:
@@ -51,16 +60,7 @@ def var_mapping(
 
 def load_dataset(path: str | PathLike) -> xr.Dataset:
     """Open a NetCDF or Zarr dataset with coordinates decoded."""
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix in (".nc", ".netcdf"):
-        return xr.open_dataset(path, engine="netcdf4", decode_coords="all")
-    elif suffix == ".zarr":
-        return xr.open_dataset(
-            path, engine="zarr", decode_coords="all", consolidated=False
-        )
-    else:
-        raise ValueError(f"Unsupported file extension: {p.suffix}.")
+    return read_in_group(path, "dataset")
 
 
 def load_timeseries(path: str | PathLike) -> xr.Dataset:
@@ -68,26 +68,7 @@ def load_timeseries(path: str | PathLike) -> xr.Dataset:
 
     Returns a Dataset with dims (time, pixel) where pixel has coordinate value 0.
     """
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix == ".csv":
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
-    elif suffix in (".parquet", ".pq"):
-        df = pd.read_parquet(path)
-    else:
-        raise ValueError(
-            f"Unsupported format: '{suffix}'. Use '.csv', '.parquet', or '.pq'."
-        )
-
-    if "time" in df.columns:
-        df = df.set_index("time")
-    if df.index.name != "time":
-        df.index.name = "time"
-    df.index = pd.to_datetime(df.index)
-
-    ds = df.to_xarray()
-    ds = ds.expand_dims({"pixel": [0]})
-    return ds.transpose("time", "pixel")
+    return read_in_group(path, "table")
 
 
 def load_static(path: str | PathLike) -> xr.Dataset:
@@ -95,38 +76,14 @@ def load_static(path: str | PathLike) -> xr.Dataset:
 
     Returns a Dataset with dim (pixel,) where pixel has coordinate value 0.
     """
-    import json
-    import tomllib
-
-    p = Path(path)
-    suffix = p.suffix.lower()
-
-    if suffix == ".json":
-        with open(p) as f:
-            data: dict = json.load(f)
-    elif suffix == ".toml":
-        with open(p, "rb") as f:
-            data = tomllib.load(f)
-    else:
-        raise ValueError(f"Unsupported format: '{suffix}'. Use '.json' or '.toml'.")
-
-    return xr.Dataset(
-        {
-            k: xr.DataArray(np.asarray([v], dtype=float), dims=["pixel"])
-            for k, v in data.items()
-        },
-        coords={"pixel": [0]},
-    )
+    return read_in_group(path, "scalar")
 
 
 def _load_raw(path: str) -> xr.Dataset:
-    """Dispatch to the right loader based on file extension."""
-    suffix = Path(path).suffix.lower()
-    if suffix in (".nc", ".netcdf", ".zarr"):
-        return load_dataset(path)
-    if suffix in (".json", ".toml"):
-        return load_static(path)
-    return load_timeseries(path)  # raises ValueError for unsupported extensions
+    """Open any supported input file (`conduit.formats` picks the reader)."""
+    fmt = format_for(path)
+    assert fmt.read is not None  # every registered format is readable
+    return fmt.read(path)
 
 
 # ---------------------------------------------------------------------------
@@ -184,45 +141,24 @@ def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
 
 def dataset_to_dataframe(ds: xr.Dataset) -> pd.DataFrame:
     """Convert output Dataset to DataFrame, squeezing size-1 pixel dim if present."""
-    if "pixel" in ds.dims:
-        ds = ds.squeeze("pixel", drop=True)
-    return ds.to_dataframe()
+    return dataset_to_frame(ds)
 
 
 def save_timeseries(df: pd.DataFrame, path: str | PathLike) -> None:
     """Save a DataFrame to CSV or Parquet, auto-detected by extension."""
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix == ".csv":
-        df.to_csv(path)
-    elif suffix in (".parquet", ".pq"):
-        df.to_parquet(path)
-    else:
-        raise ValueError(
-            f"Unsupported format: '{suffix}'. Use '.csv', '.parquet', or '.pq'."
-        )
+    write_frame(df, path)
 
 
 def _save_netcdf(ds: xr.Dataset, path: str | PathLike) -> None:
     """Save a dataset to NetCDF or Zarr based on extension."""
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix in (".nc", ".netcdf"):
-        ds.to_netcdf(path, engine="netcdf4")
-    elif suffix == ".zarr" or (not suffix and p.is_dir()):
-        ds.to_zarr(path, consolidated=False)
-    else:
-        raise ValueError(
-            f"Unsupported file extension: '{suffix}'. Use '.nc', '.netcdf', or '.zarr'."
-        )
+    write_in_group(ds, path, "dataset")
 
 
 def _save(ds: xr.Dataset, path: str) -> None:
-    suffix = Path(path).suffix.lower()
-    if suffix in (".nc", ".netcdf", ".zarr"):
-        _save_netcdf(ds, path)
-    else:
-        save_timeseries(dataset_to_dataframe(ds), path)
+    """Write ``ds`` to any writable format (`conduit.formats` picks the writer)."""
+    fmt = format_for(path, writable=True)
+    assert fmt.write is not None
+    fmt.write(ds, path)
 
 
 # ---------------------------------------------------------------------------
@@ -408,22 +344,23 @@ def save_outputs(
 
         from .gridded.io import save_zarr_region, subset_path
 
-        suffix = Path(path).suffix.lower()
-        if suffix in (".nc", ".netcdf"):
-            _save_netcdf(ds, subset_path(path, subset_spec))
-        elif suffix == ".zarr":
+        fmt = _subset_format(path, freq)
+        if fmt.needs_store:
             save_zarr_region(ds, path, subset_spec)
         else:
-            raise ValueError(
-                f"[subset] is only supported for NetCDF (.nc) and Zarr (.zarr) "
-                f"outputs, but output '{freq}' has path '{path}'."
-            )
+            _save_netcdf(ds, subset_path(path, subset_spec))
 
 
-#: Output file extensions `save_outputs` knows how to write.
-_SUPPORTED_OUTPUT_SUFFIXES: frozenset[str] = frozenset(
-    {".nc", ".netcdf", ".zarr", ".csv", ".parquet", ".pq"}
-)
+def _subset_format(path: str, label: str) -> "Format":
+    """Return the `Format` for a ``[subset]`` output, or raise if it cannot be one."""
+    fmt = format_for(path, writable=True)
+    if not fmt.supports_subset:
+        raise ValueError(
+            f"[subset] is only supported for "
+            f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
+            f"outputs, but output {label!r} has path {path!r}."
+        )
+    return fmt
 
 
 def assert_output_paths_writable(
@@ -435,27 +372,19 @@ def assert_output_paths_writable(
     Raises (before any computation) if a destination would fail at save time: an
     unsupported file extension, a missing or unwritable parent directory, a subset
     run targeting a Zarr store that has not been pre-created, or a subset run
-    targeting an unsupported (CSV/Parquet) output. This mirrors the dispatch and
-    guards in `save_outputs`, `_save` and `_save_zarr_region`, so a
-    clean pass here means ``save_outputs`` will not reject the path. Used by
-    ``conduit run --dry-run``.
+    targeting a format that cannot be partially written (CSV/Parquet). Both this and
+    `save_outputs` derive those rules from `conduit.formats`, so a clean pass here
+    means ``save_outputs`` will not reject the path. Used by ``conduit run
+    --dry-run``.
     """
     for freq, spec in output_specs.items():
         path = Path(spec.path)
-        suffix = path.suffix.lower()
-        if suffix not in _SUPPORTED_OUTPUT_SUFFIXES:
-            raise ValueError(
-                f"output {freq!r} has unsupported file extension "
-                f"{suffix or '(none)'!r} (path {spec.path!r}). Use one of "
-                f"{sorted(_SUPPORTED_OUTPUT_SUFFIXES)}."
-            )
+        # Raises with the full list of writable formats for an unknown extension.
+        format_for(spec.path, writable=True)
 
         if subset_spec is not None:
-            if suffix in (".nc", ".netcdf"):
-                from .gridded.io import subset_path
-
-                path = subset_path(spec.path, subset_spec)
-            elif suffix == ".zarr":
+            fmt = _subset_format(spec.path, freq)
+            if fmt.needs_store:
                 if not Path(spec.path).exists():
                     raise FileNotFoundError(
                         f"Zarr store {spec.path!r} for output {freq!r} does not exist. "
@@ -463,11 +392,9 @@ def assert_output_paths_writable(
                         f"`conduit gridded create-store <config>`."
                     )
                 continue  # store exists; the region write targets it directly
-            else:
-                raise ValueError(
-                    f"[subset] is only supported for NetCDF (.nc) and Zarr (.zarr) "
-                    f"outputs, but output {freq!r} has path {spec.path!r}."
-                )
+            from .gridded.io import subset_path
+
+            path = subset_path(spec.path, subset_spec)
 
         parent = path.parent
         if not parent.is_dir():

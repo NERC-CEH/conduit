@@ -576,7 +576,7 @@ class TestSubsetErrors:
     def test_csv_subset_raises(self, pipeline_config, pipeline_driver, tmp_path):
         specs = _output_specs(tmp_path / "weekly.csv")
         spec = SubsetSpec(0, 2)
-        with pytest.raises(ValueError, match="only supported for NetCDF"):
+        with pytest.raises(ValueError, match=r"\[subset\] is only supported for"):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,

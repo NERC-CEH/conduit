@@ -27,6 +27,7 @@ import pandas as pd
 import xarray as xr
 
 from ..config import IOSpec, ParsedConfig, SubsetSpec
+from ..formats import FORMATS, format_for
 from .spatial import stack_spatial_dims
 
 
@@ -337,7 +338,7 @@ def create_output_store(
     zarr_specs = {
         label: spec
         for label, spec in parsed.output_specs.items()
-        if Path(spec.path).suffix.lower() == ".zarr"
+        if format_for(spec.path).needs_store
     }
     if not zarr_specs:
         return []
@@ -472,17 +473,17 @@ def merge_subset_outputs(
     written: list[str] = []
     for freq, spec in output_specs.items():
         path = Path(spec.path)
-        suffix = path.suffix.lower()
+        fmt = format_for(spec.path, writable=True)
 
-        if suffix in (".nc", ".netcdf"):
-            parts = _find_subset_parts(path)
-            ds = xr.open_mfdataset(
-                parts, combine="nested", concat_dim="pixel", decode_coords="all"
+        if not fmt.supports_subset:
+            raise ValueError(
+                f"merge is only supported for "
+                f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
+                f"outputs, but output {freq!r} has path {spec.path!r}."
             )
-            dest = Path(out) if out is not None else path
-            unstack_pixel(ds).to_netcdf(dest, engine="netcdf4")
-            written.append(str(dest))
-        elif suffix == ".zarr":
+
+        if fmt.needs_store:
+            # One shared store, region-written by every subset run: read it whole.
             ds = xr.open_zarr(path, consolidated=False, decode_coords="all")
             dest = (
                 Path(out)
@@ -490,11 +491,13 @@ def merge_subset_outputs(
                 else path.with_name(f"{path.stem}{out_suffix}{path.suffix}")
             )
             unstack_pixel(ds).to_zarr(dest, consolidated=False, mode="w")
-            written.append(str(dest))
         else:
-            raise ValueError(
-                f"merge is only supported for NetCDF (.nc) and Zarr (.zarr) "
-                f"outputs, but output '{freq}' has path '{spec.path}'."
+            parts = _find_subset_parts(path)
+            ds = xr.open_mfdataset(
+                parts, combine="nested", concat_dim="pixel", decode_coords="all"
             )
+            dest = Path(out) if out is not None else path
+            unstack_pixel(ds).to_netcdf(dest, engine="netcdf4")
+        written.append(str(dest))
 
     return written

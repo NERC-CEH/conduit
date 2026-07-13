@@ -321,7 +321,9 @@ class TestSingleTimeDim:
     def test_time_dims_detects_a_cftime_axis(self):
         # A non-standard calendar gives a CFTimeIndex, not datetime64 — the second
         # limb of the detector, and the one no other test exercises.
-        times = xr.cftime_range("2020-01-01", periods=5, freq="D", calendar="noleap")
+        times = xr.date_range(
+            "2020-01-01", periods=5, freq="D", calendar="noleap", use_cftime=True
+        )
         ds = xr.Dataset(
             {"var_a": (("time",), np.zeros(5))},
             coords={"time": times},

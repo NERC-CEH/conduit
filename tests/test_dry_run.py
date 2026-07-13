@@ -218,7 +218,7 @@ class TestAssertOutputPathsWritable:
 
     def test_unsupported_extension_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "out.txt"), vars=["gpp"])}
-        with pytest.raises(ValueError, match="unsupported file extension"):
+        with pytest.raises(ValueError, match="Unsupported file extension"):
             assert_output_paths_writable(specs)
 
     def test_missing_parent_dir_raises(self, tmp_path):

@@ -45,6 +45,7 @@ nav = [
           "api/conduit.cli/version.md",
           "api/conduit.config.md",
           "api/conduit.io.md",
+          "api/conduit.formats.md",
           "api/conduit.transforms.md",
           "api/conduit.dag.driver.md",
           "api/conduit.dag/node.md",
