@@ -280,14 +280,14 @@ def get_outputs(
     output_specs: dict[str, IOSpec],
     stacked: bool = False,
 ) -> dict[str, xr.Dataset]:
-    """Merge model results into per-frequency Datasets.
+    """Merge model results into one Dataset per output section.
 
     Parameters
     ----------
     results:
         Dict returned by ``driver.execute()``, keyed by Hamilton node name.
     output_specs:
-        Mapping from frequency string to ``IOSpec``.
+        Mapping from section label to ``IOSpec``.
         Typically ``parsed_config.output_specs``.
     stacked:
         If ``False`` (default) gridded results are unstacked to a ``(y, x)`` grid.
@@ -299,13 +299,13 @@ def get_outputs(
 
     transform = flatten_pixel_index if stacked else unstack_if_gridded
     out: dict[str, xr.Dataset] = {}
-    for freq, spec in output_specs.items():
+    for label, spec in output_specs.items():
         # (Re-)assign the file variable name to each array so merging succeeds.
         arrays = [
             results[node].rename(file_var)
-            for node, file_var in var_mapping(freq, spec).items()
+            for node, file_var in var_mapping(label, spec).items()
         ]
-        out[freq] = transform(xr.merge(arrays))
+        out[label] = transform(xr.merge(arrays))
     return out
 
 
@@ -315,14 +315,14 @@ def save_outputs(
     subset_spec: SubsetSpec | None = None,
     provenance: dict[str, str] | None = None,
 ) -> None:
-    """Write per-frequency Datasets to disk.
+    """Write each output section's Dataset to disk.
 
     Parameters
     ----------
     output_datasets:
         Dict returned by ``get_outputs()``.
     output_specs:
-        Mapping from frequency string to ``IOSpec``.
+        Mapping from section label to ``IOSpec``.
         Typically ``parsed_config.output_specs``.
     subset_spec:
         If provided, the datasets are partial (a stacked pixel subset) and are
@@ -335,8 +335,8 @@ def save_outputs(
         subset/Zarr-region path, whose store attrs are written once by
         ``create-store``.
     """
-    for freq, ds in output_datasets.items():
-        path = output_specs[freq].path
+    for label, ds in output_datasets.items():
+        path = output_specs[label].path
         if provenance:
             ds = ds.assign_attrs(provenance)
         if subset_spec is None:
@@ -345,7 +345,7 @@ def save_outputs(
 
         from .gridded.io import save_zarr_region, subset_path
 
-        fmt = _subset_format(path, freq)
+        fmt = _subset_format(path, label)
         if fmt.needs_store:
             save_zarr_region(ds, path, subset_spec)
         else:
@@ -378,18 +378,18 @@ def assert_output_paths_writable(
     means ``save_outputs`` will not reject the path. Used by ``conduit run
     --dry-run``.
     """
-    for freq, spec in output_specs.items():
+    for label, spec in output_specs.items():
         path = Path(spec.path)
         # Raises with the full list of writable formats for an unknown extension.
         format_for(spec.path, writable=True)
 
         if subset_spec is not None:
-            fmt = _subset_format(spec.path, freq)
+            fmt = _subset_format(spec.path, label)
             if fmt.needs_store:
                 if not Path(spec.path).exists():
                     raise FileNotFoundError(
-                        f"Zarr store {spec.path!r} for output {freq!r} does not exist. "
-                        f"Create it once before subset runs with "
+                        f"Zarr store {spec.path!r} for output {label!r} does not "
+                        f"exist. Create it once before subset runs with "
                         f"`conduit gridded create-store <config>`."
                     )
                 continue  # store exists; the region write targets it directly
@@ -400,12 +400,12 @@ def assert_output_paths_writable(
         parent = path.parent
         if not parent.is_dir():
             raise FileNotFoundError(
-                f"output {freq!r} parent directory {str(parent)!r} does not exist "
+                f"output {label!r} parent directory {str(parent)!r} does not exist "
                 f"(path {spec.path!r})."
             )
         if not os.access(parent, os.W_OK):
             raise PermissionError(
-                f"output {freq!r} parent directory {str(parent)!r} is not writable "
+                f"output {label!r} parent directory {str(parent)!r} is not writable "
                 f"(path {spec.path!r})."
             )
 
@@ -425,16 +425,16 @@ def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
 def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     """Build Hamilton node names from output specifications.
 
-    Converts per-frequency variable lists into the flat list of node names
+    Converts each section's variable list into the flat list of node names
     expected by ``driver.execute(final_vars=...)``.
 
     Parameters
     ----------
     output_specs:
-        Mapping from frequency string to ``IOSpec``.  Pass the full
+        Mapping from section label to ``IOSpec``.  Pass the full
         ``parsed_config.output_specs`` for all outputs, or a subset
         (e.g. ``{"monthly": parsed.output_specs["monthly"]}``) to
-        request a single frequency.
+        request a single section's nodes.
 
     Returns
     -------
@@ -443,11 +443,11 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     """
     names: list[str] = []
     seen: set[str] = set()
-    for freq, spec in output_specs.items():
-        for node in var_mapping(freq, spec):
+    for label, spec in output_specs.items():
+        for node in var_mapping(label, spec):
             if node in seen:
                 raise ValueError(
-                    f"output node name {node!r} (from [outputs.{freq}]) is requested "
+                    f"output node name {node!r} (from [outputs.{label}]) is requested "
                     f"by more than one output section. Give each output a distinct "
                     f"node name (suffix or explicit mapping)."
                 )

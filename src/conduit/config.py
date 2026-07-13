@@ -593,22 +593,22 @@ class Config:
 
     def _parse_outputs(self, data: dict, output_specs: dict) -> None:
         """Handle [outputs.*] sections."""
-        for freq, params in data.pop("outputs", {}).items():
+        for label, params in data.pop("outputs", {}).items():
             vars_ = params.get("vars") or []
             if not vars_:
                 raise ValueError(
-                    f"[outputs.{freq}] has no 'vars'. "
+                    f"[outputs.{label}] has no 'vars'. "
                     f"Output sections must list at least one variable, "
                     f"or be removed from the config."
                 )
             if "path" not in params:
                 raise ValueError(
-                    f"[outputs.{freq}] is missing a 'path' key. "
+                    f"[outputs.{label}] is missing a 'path' key. "
                     f"Output sections must specify a file path."
                 )
-            output_specs[freq] = IOSpec(
+            output_specs[label] = IOSpec(
                 path=self._resolve(params["path"]),
-                vars=_validate_vars(f"outputs.{freq}", vars_),
+                vars=_validate_vars(f"outputs.{label}", vars_),
                 suffix=params.get("suffix"),
             )
 

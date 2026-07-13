@@ -496,7 +496,7 @@ def merge_subset_outputs(
         )
 
     written: list[str] = []
-    for freq, spec in output_specs.items():
+    for label, spec in output_specs.items():
         path = Path(spec.path)
         fmt = format_for(spec.path, writable=True)
 
@@ -504,7 +504,7 @@ def merge_subset_outputs(
             raise ValueError(
                 f"merge is only supported for "
                 f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
-                f"outputs, but output {freq!r} has path {spec.path!r}."
+                f"outputs, but output {label!r} has path {spec.path!r}."
             )
 
         if fmt.needs_store:
