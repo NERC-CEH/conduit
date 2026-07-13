@@ -151,7 +151,7 @@ def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
         coord = obj.coords.get(dim)
         if coord is not None and (
             np.issubdtype(coord.dtype, np.datetime64)
-            or type(obj.indexes.get(dim)).__name__ == "CFTimeIndex"
+            or isinstance(obj.indexes.get(dim), xr.CFTimeIndex)
         ):
             dims.append(str(dim))
     return dims

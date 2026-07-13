@@ -318,6 +318,18 @@ class TestSingleTimeDim:
     def test_time_dims_accepts_a_dataarray(self):
         assert time_dims(_simple_ds()["var_a"]) == ["time"]
 
+    def test_time_dims_detects_a_cftime_axis(self):
+        # A non-standard calendar gives a CFTimeIndex, not datetime64 — the second
+        # limb of the detector, and the one no other test exercises.
+        times = xr.cftime_range("2020-01-01", periods=5, freq="D", calendar="noleap")
+        ds = xr.Dataset(
+            {"var_a": (("time",), np.zeros(5))},
+            coords={"time": times},
+        )
+        assert not np.issubdtype(ds.time.dtype, np.datetime64)  # not the first limb
+        assert time_dims(ds) == ["time"]
+        assert sole_time_dim(ds, "ds") == "time"
+
     def test_sole_time_dim_returns_the_one_axis(self):
         assert sole_time_dim(_simple_ds(), "ds") == "time"
 
