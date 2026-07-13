@@ -84,11 +84,13 @@ class ResampleSpec:
 class NodeSpec:
     """Specification for a single (already fan-out-expanded) [[node]] entry.
 
-    ``units`` / ``dims`` / ``dtype`` / ``coords`` declare the node's output contract
-    (read by the build-time contract check and stamped/validated at runtime). A
-    ``passthrough`` node instead declares *no* fixed output contract and is tagged so
-    the contract check propagates its input's declaration across it — the shape the
-    ``[[resample]]`` preset generates.
+    ``units`` / ``dims`` / ``dtype`` / ``coords`` / ``freq`` declare the node's output
+    contract (read by the build-time contract check and stamped/validated at runtime).
+    A ``passthrough`` node instead declares *no* fixed output contract for the facets
+    a passthrough preserves, and is tagged so the contract check propagates its
+    input's declaration across it — the shape the ``[[resample]]`` preset generates.
+    ``freq`` is the exception: a resample *changes* the frequency, so it is declared
+    explicitly even on a passthrough node.
     """
 
     name: str
@@ -100,6 +102,7 @@ class NodeSpec:
     dims: list[str] | None = None
     dtype: str | None = None
     coords: list[str] | None = None
+    freq: str | None = None
     passthrough: bool = False
 
     @classmethod
@@ -131,6 +134,12 @@ class NodeSpec:
             from xarray_annotated.schema import Dtype, assert_valid_schema
 
             assert_valid_schema(Dtype(dtype), f"node '{name}' dtype")
+        freq = entry.get("freq")
+        if freq is not None:
+            # Fail fast on an unparseable pandas offset alias, at parse time.
+            from xarray_annotated.temporal import Freq, assert_valid_freq
+
+            assert_valid_freq(Freq(freq), f"node '{name}' freq")
         return cls(
             name=entry["name"],
             inputs=entry["inputs"],
@@ -141,6 +150,7 @@ class NodeSpec:
             dims=entry.get("dims"),
             dtype=dtype,
             coords=entry.get("coords"),
+            freq=freq,
             passthrough=bool(entry.get("passthrough", False)),
         )
 
@@ -271,6 +281,16 @@ class IOSpec:
     suffix: str | None = None
 
 
+def _severity(value: Any, label: str, key: str) -> str | None:
+    """Validate an ``error``/``warn``/``ignore`` policy key; ``None`` passes through."""
+    if value is not None and value not in ("error", "warn", "ignore"):
+        raise ValueError(
+            f"[{label}] {key!r} must be one of 'error', 'warn', 'ignore', "
+            f"got {value!r}."
+        )
+    return value
+
+
 def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
     """Validate a section's ``vars`` is a list[str] or a dict[str, str]."""
     if isinstance(vars_, dict):
@@ -322,7 +342,8 @@ class ParsedConfig:
     units_enabled: bool | None = None
     units_on_missing: str | None = None
     units_on_inexact: str | None = None
-    schema_on_mismatch: str | None = None
+    on_mismatch: str | None = None
+    on_uninferable: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +388,12 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
     `conduit.transforms.resample` to ``{v}_{source_freq}``; the node is a
     passthrough (unit/dim preserving), so the contract check propagates the
     source's declared contract across it.
+
+    The one facet a resample does *not* preserve is the frequency — it is what the
+    node changes — so the node declares its own: ``freq = spec.offset``. Every
+    resample therefore carries a checkable output-frequency contract (including its
+    anchor, so a fat-fingered ``W-WED`` is caught), which a downstream consumer's
+    ``Freq`` declaration is compared against at build time.
     """
     src = f"{{var}}_{spec.source_freq}"
     return {
@@ -377,6 +404,7 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
             f"__transforms.resample({src}, freq={spec.offset!r}, "
             f"aggfunc={spec.aggfunc!r})"
         ),
+        "freq": spec.offset,
         "passthrough": True,
     }
 
@@ -602,16 +630,20 @@ class Config:
 
     def _parse_annotations(
         self, data: dict
-    ) -> tuple[bool | None, str | None, str | None, str | None]:
+    ) -> tuple[bool | None, str | None, str | None, str | None, str | None]:
         """Handle the [annotations] section (``[units]`` is a working alias).
 
-        Returns ``(enabled, on_missing, on_inexact, on_mismatch)`` mapping the
-        section's keys to the xarray-annotated policy axes:
+        Returns ``(enabled, on_missing, on_inexact, on_mismatch, on_uninferable)``
+        mapping the section's keys to the xarray-annotated policy axes:
 
         - ``mode`` (``strict`` / ``warn`` / ``off``) and ``exact`` (bool) drive the
           *units* policy (``enabled`` / ``on_missing`` / ``on_inexact``);
         - ``on_mismatch`` (``error`` / ``warn`` / ``ignore``) drives the *schema*
-          (dims/coords/dtype) policy.
+          (dims/coords/dtype) *and* *temporal* (freq) policies — in both it means
+          "the array contradicts the declaration";
+        - ``on_uninferable`` (``error`` / ``warn`` / ``ignore``) drives the temporal
+          policy's second axis: a time axis too short or too irregular for a
+          frequency to be inferred at all, so the declaration went *untested*.
 
         ``mode = "off"`` disables validation for *every* facet via the shared
         master switch. ``None`` axes defer to the process-wide default. All are
@@ -623,12 +655,11 @@ class Config:
             raise ValueError("Use either [annotations] or its alias [units], not both.")
         entry = annotations if annotations is not None else units
         if entry is None:
-            return None, None, None, None
+            return None, None, None, None, None
         label = "annotations" if annotations is not None else "units"
         enabled: bool | None = None
         on_missing: str | None = None
         on_inexact: str | None = None
-        on_mismatch: str | None = None
         mode = entry.get("mode")
         if mode is not None:
             if mode == "off":
@@ -648,13 +679,9 @@ class Config:
                 raise ValueError(f"[{label}] 'exact' must be a boolean, got {exact!r}.")
             if exact:
                 on_inexact = "error"
-        on_mismatch = entry.get("on_mismatch")
-        if on_mismatch is not None and on_mismatch not in ("error", "warn", "ignore"):
-            raise ValueError(
-                f"[{label}] 'on_mismatch' must be one of 'error', 'warn', "
-                f"'ignore', got {on_mismatch!r}."
-            )
-        return enabled, on_missing, on_inexact, on_mismatch
+        on_mismatch = _severity(entry.get("on_mismatch"), label, "on_mismatch")
+        on_uninferable = _severity(entry.get("on_uninferable"), label, "on_uninferable")
+        return enabled, on_missing, on_inexact, on_mismatch, on_uninferable
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
         """Handle remaining sections as external modules."""
@@ -692,8 +719,8 @@ class Config:
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — pixel-blocked execution (block_size)
         - [subset]        — spatial pixel slice (pixel_start, pixel_end)
-        - [annotations]   — contract validation policy (units + schema); the
-                            legacy name [units] is a working alias
+        - [annotations]   — contract validation policy (units + schema + temporal);
+                            the legacy name [units] is a working alias
 
         All other top-level sections are treated as external modules and must
         include a '_import_path = "pkg.module"' key specifying the importable
@@ -718,7 +745,8 @@ class Config:
             units_enabled,
             units_on_missing,
             units_on_inexact,
-            schema_on_mismatch,
+            on_mismatch,
+            on_uninferable,
         ) = self._parse_annotations(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
@@ -733,7 +761,8 @@ class Config:
             units_enabled=units_enabled,
             units_on_missing=units_on_missing,
             units_on_inexact=units_on_inexact,
-            schema_on_mismatch=schema_on_mismatch,
+            on_mismatch=on_mismatch,
+            on_uninferable=on_uninferable,
         )
 
 

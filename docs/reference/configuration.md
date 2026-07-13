@@ -119,12 +119,16 @@ units = "1"
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). |
 | `coords` | Output coordinate contract (list of names). |
+| `freq` | Output temporal-frequency contract: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `passthrough` | Declare no fixed output contract; propagate the input's contract across the node. |
 | `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
 
-Declaring any of `units`/`dims`/`dtype`/`coords` makes the node a typed producer the
-[contract check](../concepts/contracts.md) can verify. See
+Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer
+the [contract check](../concepts/contracts.md) can verify. See
 [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) for worked examples.
+
+An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an
+unanchored one (`"7D"`, `"W"`) constrains the spacing only.
 
 ## Resample
 
@@ -150,6 +154,10 @@ aggfunc = "mean"
 
 Built-in default directions (no `freq` needed): `daily`→`weekly`, `daily`→`monthly`,
 `weekly`→`monthly`. Any other direction needs an explicit `freq`.
+
+The resolved offset also becomes the generated node's **declared output frequency**, so
+every resample carries a checkable frequency contract: a downstream consumer declaring
+`Freq("W-SUN")` against a `freq = "W-WED"` resample fails at build time.
 
 ## Cache
 
@@ -246,22 +254,24 @@ a warning, since they describe the whole domain rather than a single shard.
 
 ## Annotations
 
-`[annotations]` controls how contract declarations (units + schema: dims/coords/dtype)
-are validated. The legacy name `[units]` is a working alias for the same section. Omit
-it to keep the defaults.
+`[annotations]` controls how contract declarations (units, schema: dims/coords/dtype,
+and temporal: freq) are validated. The legacy name `[units]` is a working alias for the
+same section. Omit it to keep the defaults.
 
 ```toml
 [annotations]
-mode = "strict"      # "strict" | "warn" (default) | "off"
-exact = false        # reject value-changing unit conversions
-on_mismatch = "error"  # "error" | "warn" | "ignore" — for dims/coords/dtype
+mode = "strict"           # "strict" | "warn" (default) | "off"
+exact = false             # reject value-changing unit conversions
+on_mismatch = "error"     # "error" | "warn" | "ignore" — dims/coords/dtype/freq
+on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 ```
 
 | Key | Description |
 |-----|-------------|
 | `mode` | Units strictness. `strict` raises on a unit problem; `warn` reports and continues; `off` disables **all** contract checking (every facet). Default `warn`. |
 | `exact` | When `true`, a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared) is rejected rather than converted. Default `false`. |
-| `on_mismatch` | Schema (dims/coords/dtype) policy: `error`, `warn`, or `ignore`. |
+| `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
+| `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
 
 Validation happens at two points:
 

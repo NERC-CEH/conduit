@@ -130,10 +130,8 @@ def _load_raw(path: str) -> xr.Dataset:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers: datetime validation
+# Internal helpers: datetime handling
 # ---------------------------------------------------------------------------
-
-_FREQ_CODES: dict[str, str] = {"daily": "D", "weekly": "W", "monthly": "ME"}
 
 
 def _time_dims(ds: xr.Dataset) -> list[str]:
@@ -159,40 +157,16 @@ def _time_dims(ds: xr.Dataset) -> list[str]:
 def _time_index(ds: xr.Dataset, label: str = "time") -> pd.DatetimeIndex:
     """Return the dataset's ``time`` index, asserting it is a ``DatetimeIndex``.
 
-    Unlike `_validate_dates`, this performs no frequency validation; it is used
-    for input groups whose label is not a known temporal frequency.
+    No frequency validation happens here: an input's frequency is validated only
+    where a consumer *declares* one (`xarray_annotated.temporal.Freq`, checked by
+    `conduit.dag.contract_check`), and whole-Dataset temporal compatibility is the
+    job of the `conduit.checks` suite. A section's label carries no meaning.
     """
     idx = cast(pd.DatetimeIndex, ds.get_index("time"))
     if not isinstance(idx, pd.DatetimeIndex):
         raise ValueError(
             f"Expected a DatetimeIndex for '{label}' inputs, got {type(idx)}"
         )
-    return idx
-
-
-def _validate_dates(ds: xr.Dataset, freq: str) -> pd.DatetimeIndex:
-    """Extract and validate the time index from a dataset against a known freq."""
-    idx = _time_index(ds, freq)
-
-    expected = _FREQ_CODES[freq]
-    inferred = pd.infer_freq(idx)
-
-    if inferred is None:
-        raise ValueError(f"Could not determine frequency from '{freq}' time index")
-
-    if expected == "W":
-        passes = any(inferred.startswith(p) for p in ("W", "7D"))
-    elif expected == "ME":
-        passes = any(inferred.startswith(p) for p in ("ME", "MS"))
-    else:
-        passes = inferred == expected
-
-    if not passes:
-        raise ValueError(
-            f"Expected '{freq}' time index with frequency '{expected}', "
-            f"got '{inferred}'"
-        )
-
     return idx
 
 
@@ -268,12 +242,12 @@ def load_inputs(
 
     Node names are formed from each section's variables and its
     `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily``, or
-    ``elevation`` for a section that sets ``suffix = ""``). A ``time`` dimension
-    is auto-detected per
-    section: when present a ``dates_{label}`` index is emitted, and its frequency
-    is *validated* only for sections whose label is a known frequency
-    (``daily``/``weekly``/``monthly``) — arbitrary labels are accepted without
-    validation. Sections with no ``time`` dimension contribute no dates node.
+    ``elevation`` for a section that sets ``suffix = ""``). A ``time`` dimension is
+    auto-detected per section: when present a ``dates_{label}`` index is emitted.
+    Sections with no ``time`` dimension contribute no dates node. Section labels are
+    inert — nothing is inferred from ``daily``/``weekly``/``monthly``; an input's
+    frequency is validated only where a consumer declares a
+    `xarray_annotated.temporal.Freq` contract for it.
 
     The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
     ``latitude``/``longitude``) is **opt-in** and lazily loaded: it activates only
@@ -331,11 +305,7 @@ def load_inputs(
             inputs[node_name] = ds[file_var]
 
         if "time" in ds.dims:
-            inputs[f"dates_{label}"] = (
-                _validate_dates(ds_raw, label)
-                if label in _FREQ_CODES
-                else _time_index(ds_raw, label)
-            )
+            inputs[f"dates_{label}"] = _time_index(ds_raw, label)
 
     if geospatial:
         spatial = {label: ds for label, ds in raw_datasets.items() if has_crs(ds)}

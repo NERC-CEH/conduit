@@ -503,19 +503,27 @@ class TestAnnotationsSection:
         parsed = Config({"units": {"mode": "strict", "exact": True}}).parse()
         assert parsed.units_on_missing == "error"
         assert parsed.units_on_inexact == "error"
-        assert parsed.schema_on_mismatch is None
+        assert parsed.on_mismatch is None
 
     def test_mode_off_disables(self):
         parsed = Config({"annotations": {"mode": "off"}}).parse()
         assert parsed.units_enabled is False
 
-    def test_on_mismatch_drives_schema(self):
+    def test_on_mismatch_drives_schema_and_temporal(self):
         parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
-        assert parsed.schema_on_mismatch == "warn"
+        assert parsed.on_mismatch == "warn"
+
+    def test_on_uninferable(self):
+        parsed = Config({"annotations": {"on_uninferable": "ignore"}}).parse()
+        assert parsed.on_uninferable == "ignore"
 
     def test_invalid_on_mismatch_raises(self):
         with pytest.raises(ValueError, match="on_mismatch"):
             Config({"annotations": {"on_mismatch": "explode"}}).parse()
+
+    def test_invalid_on_uninferable_raises(self):
+        with pytest.raises(ValueError, match="on_uninferable"):
+            Config({"annotations": {"on_uninferable": "explode"}}).parse()
 
     def test_both_sections_raise(self):
         with pytest.raises(ValueError, match="not both"):
@@ -524,7 +532,8 @@ class TestAnnotationsSection:
     def test_absent_section_is_all_none(self):
         parsed = Config({}).parse()
         assert parsed.units_enabled is None
-        assert parsed.schema_on_mismatch is None
+        assert parsed.on_mismatch is None
+        assert parsed.on_uninferable is None
 
 
 class TestExternalModules:

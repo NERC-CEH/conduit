@@ -80,11 +80,21 @@ def run(
 
         set_policy(on_inexact=cast(OnInexact, parsed.units_on_inexact))
 
-    if parsed.schema_on_mismatch is not None:
+    # `on_mismatch` means the same thing in both validate-only domains ("the array
+    # contradicts its declaration"), so one config key drives both policies.
+    if parsed.on_mismatch is not None:
         from xarray_annotated.schema import OnMismatch
         from xarray_annotated.schema import set_policy as set_schema_policy
+        from xarray_annotated.temporal import set_policy as set_temporal_policy
 
-        set_schema_policy(on_mismatch=cast(OnMismatch, parsed.schema_on_mismatch))
+        set_schema_policy(on_mismatch=cast(OnMismatch, parsed.on_mismatch))
+        set_temporal_policy(on_mismatch=cast(OnMismatch, parsed.on_mismatch))
+
+    if parsed.on_uninferable is not None:
+        from xarray_annotated.temporal import OnUninferable
+        from xarray_annotated.temporal import set_policy as set_temporal_policy
+
+        set_temporal_policy(on_uninferable=cast(OnUninferable, parsed.on_uninferable))
 
     if dry_run:
         _dry_run(parsed, config_file, allow_overrides)
@@ -161,12 +171,13 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
     Runs the same setup as `run` up to (but excluding) execution: parse
     config, load inputs (lazily — file metadata only), build the driver (which runs
     the build-time contract check), validate the execution plan, validate the loaded
-    inputs' contracts (units + dims/coords/dtype) against what the DAG declares, and
-    confirm the output destinations are writable. Prints a per-stage summary. Hard
-    failures raise (non-zero exit); soft issues follow the active policy (warnings
-    stay warnings). No model runs and nothing is written.
+    inputs' contracts (units + dims/coords/dtype + freq) against what the DAG
+    declares, and confirm the output destinations are writable. Prints a per-stage
+    summary. Hard failures raise (non-zero exit); soft issues follow the active
+    policy (warnings stay warnings). No model runs and nothing is written.
     """
     from xarray_annotated.schema import get_policy as schema_get_policy
+    from xarray_annotated.temporal import get_policy as temporal_get_policy
     from xarray_annotated.units import get_policy
 
     from ..dag.contract_check import check_input_contracts
@@ -223,7 +234,8 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
     pol = get_policy()
     axes = (
         f"enabled={pol.enabled}, on_missing={pol.on_missing}, "
-        f"on_inexact={pol.on_inexact}, on_mismatch={schema_get_policy().on_mismatch}"
+        f"on_inexact={pol.on_inexact}, on_mismatch={schema_get_policy().on_mismatch}, "
+        f"on_uninferable={temporal_get_policy().on_uninferable}"
     )
     if caught:
         typer.echo(f"  ✓ input contracts checked ({axes}, {len(caught)} warning(s)):")
