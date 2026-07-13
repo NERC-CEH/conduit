@@ -143,6 +143,14 @@ class _Facet:
     runtime_check: Callable[[xr.DataArray, list, str], None]
     #: Whether a passthrough node preserves this facet (so it can be propagated).
     passthrough_preserving: bool
+    #: Apply `_check_dag`'s caller-supplied ``on_inexact`` override to this facet's
+    #: policy. Only units has an ``on_inexact`` axis, so only units supplies one;
+    #: for every other facet the override is simply not theirs to interpret.
+    override_policy: Callable[[Any, str], Any] | None = None
+
+
+def _units_override_policy(pol: Any, on_inexact: str) -> Any:
+    return replace(pol, on_inexact=on_inexact)
 
 
 _FACETS: tuple[_Facet, ...] = (
@@ -153,6 +161,7 @@ _FACETS: tuple[_Facet, ...] = (
         _units_edge,
         _units_input_check,
         True,
+        override_policy=_units_override_policy,
     ),
     _Facet(
         "dims",
@@ -322,8 +331,8 @@ def _check_dag(
         pol = facet.get_policy()
         if not pol.enabled or facet.edge is None:
             continue
-        if facet.name == "units" and on_inexact is not None:
-            pol = replace(pol, on_inexact=on_inexact)
+        if on_inexact is not None and facet.override_policy is not None:
+            pol = facet.override_policy(pol, on_inexact)
         produced, consumed = maps[facet.name]
         if facet.passthrough_preserving:
             _propagate_forward(produced, passthrough_edges)
