@@ -99,13 +99,13 @@ def time_subset(*datasets: xr.Dataset) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Spatial / CRS checks (lazy gridded import — optional `geo` extra)
+# Spatial / CRS checks (lazy: optional geo extra — see conduit.gridded)
 # ---------------------------------------------------------------------------
 
 
 def spatial_grid_equal(*datasets: xr.Dataset, atol: float = 1e-6) -> None:
     """Assert every dataset shares CRS + x/y dim names + coordinate values."""
-    from .gridded.io import _check_common_grid
+    from .gridded.io import _check_common_grid  # lazy: geo extra
 
     if len(datasets) < 2:
         return
@@ -118,7 +118,7 @@ def spatial_grid_equal(*datasets: xr.Dataset, atol: float = 1e-6) -> None:
 
 def crs_equal(*datasets: xr.Dataset) -> None:
     """Assert every dataset shares a CRS (ignoring resolution/extent)."""
-    from .gridded.io import _ensure_rio
+    from .gridded.io import _ensure_rio  # lazy: geo extra
 
     if len(datasets) < 2:
         return

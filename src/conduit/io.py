@@ -191,10 +191,9 @@ def load_inputs(
     `xarray_annotated.temporal.Freq` contract for it.
 
     The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
-    ``latitude``/``longitude``) is **opt-in** and lazily loaded: it activates only
-    when an input carries CRS metadata, importing the optional ``geo`` extra
-    (``rioxarray``/``pyproj``) at that point. Non-gridded pipelines never touch
-    those dependencies. Pass ``geospatial=True``/``False`` to force it on or off.
+    ``latitude``/``longitude``) is **opt-in**: it activates only when an input carries
+    CRS metadata (see `conduit.gridded`). Pass ``geospatial=True``/``False`` to force
+    it on or off.
 
     Parameters
     ----------
@@ -208,11 +207,11 @@ def load_inputs(
         Force the geospatial path on (``True``) or off (``False``). When ``None``
         (default) it is auto-detected from the presence of CRS metadata.
     """
-    # The gridded (CRS/pixel) layer is optional and domain-specific; import it
-    # lazily so non-gridded pipelines never touch it. `has_crs` is a cheap,
-    # dependency-free CF-metadata check; the stacking/reprojection it guards is
-    # what pulls the optional `geo` extra, and only when CRS metadata is present.
-    from .gridded.io import compute_lat_lon, has_crs, stack_if_gridded
+    from .gridded.io import (  # lazy: optional geo extra (see conduit.gridded)
+        compute_lat_lon,
+        has_crs,
+        stack_if_gridded,
+    )
 
     inputs: dict[str, xr.DataArray] = {}
     raw_datasets = load_raw_datasets(input_specs)
@@ -295,7 +294,10 @@ def get_outputs(
         flattened to serialisable 1D coords) so that subset processes can write
         partial outputs that are reassembled later — see `unstack_pixel`.
     """
-    from .gridded.io import flatten_pixel_index, unstack_if_gridded
+    from .gridded.io import (  # lazy: optional geo extra
+        flatten_pixel_index,
+        unstack_if_gridded,
+    )
 
     transform = flatten_pixel_index if stacked else unstack_if_gridded
     out: dict[str, xr.Dataset] = {}
@@ -343,7 +345,7 @@ def save_outputs(
             _save(ds, path)
             continue
 
-        from .gridded.io import save_zarr_region, subset_path
+        from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
 
         fmt = _subset_format(path, label)
         if fmt.needs_store:
@@ -393,7 +395,7 @@ def assert_output_paths_writable(
                         f"`conduit gridded create-store <config>`."
                     )
                 continue  # store exists; the region write targets it directly
-            from .gridded.io import subset_path
+            from .gridded.io import subset_path  # lazy: geo extra
 
             path = subset_path(spec.path, subset_spec)
 

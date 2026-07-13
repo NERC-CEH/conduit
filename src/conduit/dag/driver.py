@@ -87,9 +87,9 @@ def build_driver(
 
     built = dr.build()
 
-    # Build-time contract-consistency check (units + dims/dtype); a no-op in
-    # "off" mode (the conftest default), so this does not affect builds that opt
-    # out of contract handling.
+    # The flagship guarantee: every declared contract on the whole DAG is checked
+    # here, before any compute. A no-op when the policy is "off", so pipelines that
+    # opt out of contract handling are unaffected.
     from conduit.dag.contract_check import check_dag_contracts
 
     check_dag_contracts(built)

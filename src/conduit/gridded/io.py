@@ -10,11 +10,8 @@ owns everything to do with the stacked ``pixel`` model:
   independent ``[subset]`` slices into it, then reassembling
   (`create_output_store`, `save_zarr_region`, `merge_subset_outputs`).
 
-`conduit.io` imports from here **lazily**, only when an input carries CRS metadata
-or a ``[subset]`` is configured, so non-gridded pipelines never touch this module.
-The optional ``geo`` extra (``rioxarray``/``pyproj``) is imported lazily *within*
-the CRS functions (`_ensure_rio`), so importing this module itself is cheap and
-dependency-free — only actually using a CRS path requires the extra.
+See `conduit.gridded` for why every import of this module is lazy, and why importing
+it is nonetheless cheap and dependency-free.
 """
 
 import re
