@@ -145,6 +145,21 @@ class TestRunCommand:
         result = runner.invoke(app, ["run", str(tmp_path / "nonexistent.toml")])
         assert result.exit_code != 0
 
+    def test_run_without_outputs_prints_notice(self, tmp_path, synthetic_data_dir):
+        # Previously exited 0 with no output and no message, which looked like a
+        # successful run that had produced files somewhere.
+        cfg = tmp_path / "no_outputs.toml"
+        cfg.write_text(
+            f"""\
+[inputs.daily]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+"""
+        )
+        result = runner.invoke(app, ["run", str(cfg)])
+        assert result.exit_code == 0, result.output
+        assert "nothing to execute" in result.output
+
 
 # ---------------------------------------------------------------------------
 # graph

@@ -99,6 +99,14 @@ def run(
             subset_spec=parsed.subset_spec,
             provenance=_config_provenance(config_file),
         )
+    else:
+        # A config with no outputs is a legitimate checks-only invocation (it still
+        # parsed, loaded inputs, ran the input checks and built the DAG), so this
+        # exits 0 — but silently doing nothing looked like a successful run.
+        typer.echo(
+            "No [outputs.*] configured; nothing to execute. "
+            "Config, inputs and DAG were validated."
+        )
 
 
 def _run_input_checks(parsed: "ParsedConfig") -> int:
