@@ -249,7 +249,7 @@ class TestResample:
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"}
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": "1ME"}
                 ],
             }
         )
@@ -266,7 +266,12 @@ class TestResample:
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp", "npp"], "from_freq": "daily", "to_freq": "weekly"}
+                    {
+                        "vars": ["gpp", "npp"],
+                        "from": "daily",
+                        "to": "weekly",
+                        "freq": "7D",
+                    }
                 ],
             }
         )
@@ -277,44 +282,56 @@ class TestResample:
         assert by_name["gpp_weekly"].passthrough is True
         assert "freq='7D'" in by_name["gpp_weekly"].expression
 
-    def test_explicit_freq_in_expression(self):
+    def test_from_and_to_are_bare_suffixes_not_frequencies(self):
+        # ``from``/``to`` name the input and output nodes and mean nothing else;
+        # the frequency is ``freq`` alone.
         config = Config(
             {
                 "resample": [
                     {
                         "vars": ["gpp"],
-                        "from_freq": "daily",
-                        "to_freq": "tenday",
+                        "from": "raw",
+                        "to": "smoothed",
                         "freq": "10D",
                     }
                 ],
             }
         )
         spec = config.parse().driver_config["node_specs"][0]
-        assert spec.name == "gpp_tenday"
+        assert spec.name == "gpp_smoothed"
+        assert spec.inputs == ["gpp_raw"]
+        assert spec.freq == "10D"
         assert "freq='10D'" in spec.expression
 
     def test_duplicate_resample_output_raises(self):
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"},
-                    {"vars": ["gpp"], "from_freq": "weekly", "to_freq": "monthly"},
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": "1ME"},
+                    {"vars": ["gpp"], "from": "weekly", "to": "monthly", "freq": "1ME"},
                 ],
             }
         )
         with pytest.raises(ValueError, match="Duplicate node name"):
             config.parse()
 
-    def test_unsupported_freq_pair_raises(self):
+    @pytest.mark.parametrize("missing", ["vars", "from", "to", "freq"])
+    def test_missing_required_key_raises(self, missing):
+        entry = {"vars": ["gpp"], "from": "daily", "to": "weekly", "freq": "7D"}
+        del entry[missing]
+        config = Config({"resample": [entry]})
+        with pytest.raises(ValueError, match=f"missing required key.*{missing}"):
+            config.parse()
+
+    def test_invalid_freq_raises_at_parse_time(self):
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "monthly", "to_freq": "daily"}
+                    {"vars": ["gpp"], "from": "daily", "to": "weekly", "freq": "nope"}
                 ],
             }
         )
-        with pytest.raises(ValueError, match="No default offset"):
+        with pytest.raises(ValueError, match="invalid frequency 'nope'"):
             config.parse()
 
 
@@ -503,19 +520,27 @@ class TestAnnotationsSection:
         parsed = Config({"units": {"mode": "strict", "exact": True}}).parse()
         assert parsed.units_on_missing == "error"
         assert parsed.units_on_inexact == "error"
-        assert parsed.schema_on_mismatch is None
+        assert parsed.on_mismatch is None
 
     def test_mode_off_disables(self):
         parsed = Config({"annotations": {"mode": "off"}}).parse()
         assert parsed.units_enabled is False
 
-    def test_on_mismatch_drives_schema(self):
+    def test_on_mismatch_drives_schema_and_temporal(self):
         parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
-        assert parsed.schema_on_mismatch == "warn"
+        assert parsed.on_mismatch == "warn"
+
+    def test_on_uninferable(self):
+        parsed = Config({"annotations": {"on_uninferable": "ignore"}}).parse()
+        assert parsed.on_uninferable == "ignore"
 
     def test_invalid_on_mismatch_raises(self):
         with pytest.raises(ValueError, match="on_mismatch"):
             Config({"annotations": {"on_mismatch": "explode"}}).parse()
+
+    def test_invalid_on_uninferable_raises(self):
+        with pytest.raises(ValueError, match="on_uninferable"):
+            Config({"annotations": {"on_uninferable": "explode"}}).parse()
 
     def test_both_sections_raise(self):
         with pytest.raises(ValueError, match="not both"):
@@ -524,7 +549,8 @@ class TestAnnotationsSection:
     def test_absent_section_is_all_none(self):
         parsed = Config({}).parse()
         assert parsed.units_enabled is None
-        assert parsed.schema_on_mismatch is None
+        assert parsed.on_mismatch is None
+        assert parsed.on_uninferable is None
 
 
 class TestExternalModules:
@@ -590,3 +616,84 @@ class TestDump:
         config = Config.load(TEST_CONFIG_PATH)
         config.dump(out_path, overwrite_ok=True)
         assert out_path.stat().st_size > 0
+
+
+class TestCheckSpecs:
+    """Tests for the `[validation].checks` block parsing (_parse_checks)."""
+
+    def _cfg(self, checks):
+        return Config(
+            {
+                "inputs": {
+                    "climate": {"path": "c.nc", "vars": ["temperature"]},
+                    "land": {"path": "l.nc", "vars": ["elevation"]},
+                },
+                "validation": {"checks": checks},
+            }
+        )
+
+    def test_no_validation_section_defaults_empty(self):
+        assert Config({"inputs": {"a": {"path": "a.nc"}}}).parse().checks == []
+
+    def test_empty_validation_section_defaults_empty(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {}})
+        assert cfg.parse().checks == []
+
+    def test_unknown_validation_key_rejected(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {"chekcs": []}})
+        with pytest.raises(ValueError, match="unknown key"):
+            cfg.parse()
+
+    def test_basic_check_parsed(self):
+        parsed = self._cfg(
+            [{"check": "time_equal", "inputs": ["climate", "land"]}]
+        ).parse()
+        assert len(parsed.checks) == 1
+        spec = parsed.checks[0]
+        assert spec.check == "time_equal"
+        assert spec.inputs == ["climate", "land"]
+        assert spec.kwargs == {}
+
+    def test_wildcard_expands_to_all_inputs(self):
+        parsed = self._cfg([{"check": "time_equal", "inputs": ["*"]}]).parse()
+        assert parsed.checks[0].inputs == ["climate", "land"]
+
+    def test_wildcard_mixed_with_names_rejected(self):
+        with pytest.raises(ValueError, match="sole element"):
+            self._cfg([{"check": "time_equal", "inputs": ["*", "climate"]}]).parse()
+
+    def test_unknown_check_name_rejected(self):
+        with pytest.raises(ValueError, match="unknown check"):
+            self._cfg([{"check": "nope", "inputs": ["climate"]}]).parse()
+
+    def test_unknown_input_section_rejected(self):
+        with pytest.raises(ValueError, match="unknown input section"):
+            self._cfg([{"check": "time_equal", "inputs": ["climate", "sea"]}]).parse()
+
+    def test_kwargs_forwarded(self):
+        parsed = self._cfg(
+            [{"check": "coords_equal", "inputs": ["*"], "coords": ["latitude"]}]
+        ).parse()
+        assert parsed.checks[0].kwargs == {"coords": ["latitude"]}
+
+    def test_fixed_arity_violation_rejected(self):
+        # time_subset requires exactly 2 inputs; ["*"] expands to 2 here — OK —
+        # but 3 explicit inputs is a parse-time arity error.
+        cfg = Config(
+            {
+                "inputs": {
+                    "a": {"path": "a.nc"},
+                    "b": {"path": "b.nc"},
+                    "c": {"path": "c.nc"},
+                },
+                "validation": {
+                    "checks": [{"check": "time_subset", "inputs": ["a", "b", "c"]}]
+                },
+            }
+        )
+        with pytest.raises(ValueError, match="exactly 2 input"):
+            cfg.parse()
+
+    def test_missing_inputs_key_rejected(self):
+        with pytest.raises(ValueError, match="missing a non-empty 'inputs'"):
+            self._cfg([{"check": "time_equal"}]).parse()

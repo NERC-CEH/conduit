@@ -76,13 +76,16 @@ validation (units + dims/coords/dtype, via `xarray-annotated`).
 **`src/conduit/dag/wiring_check.py`** — `check_wiring`: the wiring analogue of the contract check. Diffs the DAG's required external inputs against what `load_inputs` produced — **unbound** inputs raise, **unused** inputs warn — before any compute.
 
 **`src/conduit/io.py`** — domain-agnostic I/O, outside the Hamilton DAG. Key public functions:
-- `load_inputs(input_specs)` — reads NetCDF/Zarr/CSV/Parquet/JSON/TOML; returns a flat dict of named `DataArray`s. `IOSpec.vars` maps file variables to node names, either by list (`{var}{suffix}`, `dates_{label}`) or an explicit `{node_name: file_var}` alias (`io.var_mapping`).
+- `load_inputs(input_specs)` — reads NetCDF/Zarr/CSV/Parquet/JSON/TOML; returns a flat dict of named `DataArray`s. `IOSpec.vars` maps file variables to node names, either by list (`{var}{suffix}`) or an explicit `{node_name: file_var}` alias (`io.var_mapping`). Section labels are inert — they name nodes and nothing else.
+- `time_dims` / `sole_time_dim` — the single time-axis detector (any datetime-like dimension coordinate; `time` is not assumed). Underpins the "at most one time dimension per input" invariant, `transforms.resample`, and `conduit.checks`.
 - `get_outputs` / `save_outputs` — assemble/write per-section `Dataset`s; `save_outputs` can stamp config provenance into outputs.
 - `get_final_vars(output_specs)` — the flat node-name list for `driver.execute(final_vars=...)`.
 
 Core `io` is CRS/pixel-free: it delegates the gridded path to `conduit.gridded` lazily (only when CRS metadata or a `[subset]` is present), so importing conduit never pulls `rioxarray`/`pyproj`.
 
 **`src/conduit/gridded/`** — optional geospatial + parallel-Zarr layer (behind the `geo` extra). `spatial.py` + `io.py`: CRS-aware `(y,x)`↔`pixel` stacking, `latitude`/`longitude` reprojection, `MisalignedGridError`, and the subset/Zarr-region parallel-write path (`create_output_store`, `save_zarr_region`, `merge_subset_outputs`). `cli.py`: the nested `conduit gridded` commands.
+
+`create_output_store` takes the whole `ParsedConfig` because it derives each output's non-`pixel` axes (time, above all) by **probing the DAG over a single pixel** — the store's layout is then by construction what the subset runs write, including axes no input file has (a `[[resample]]`'s). `save_zarr_region` drops coords when region-writing, so it first asserts the incoming coords match the store's.
 
 **`src/conduit/transforms.py`** — reusable annotation-preserving DAG transforms referenced from config (currently just `resample`); wired in as passthrough nodes by the `[[resample]]` preset. (A single module for now; promote to a package if a second transform needs its own file.)
 
@@ -98,7 +101,7 @@ model follows:
 
 - **Public node function name = the output node name** (single-output), or use `@extract_fields()` (from `hamilton.function_modifiers`) with a `TypedDict` return to split into multiple named outputs.
 - `@declare_units` (innermost) reads `Annotated[DataArray, "<unit>"]` from the signature/return and validates/stamps units.
-- **Parameter names = input node names** (following io.py's `{var}_{freq}` / bare-static / `dates_{freq}` / `latitude` conventions).
+- **Parameter names = input node names** (following io.py's `{var}{suffix}` / bare-static / `latitude` conventions).
 - **Keyword-only args (after `*`) = config parameters**, populated from the module's own config section.
 
 ### Configuration-driven composition

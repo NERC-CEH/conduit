@@ -61,6 +61,41 @@ class TestResampleTransform:
         assert inferred.startswith(("ME", "MS"))
 
 
+class TestResampleTimeDim:
+    """The time axis is detected, not assumed to be called ``time``."""
+
+    def test_time_axis_need_not_be_called_time(self):
+        da = _daily_da(14, 1).rename({"time": "acquired"})
+        out = resample(da, freq="7D")
+        assert out.sizes["acquired"] == 2
+
+    def test_explicit_dim_overrides_detection(self):
+        da = _daily_da(14, 1).rename({"time": "acquired"})
+        out = resample(da, freq="7D", dim="acquired")
+        assert out.sizes["acquired"] == 2
+
+    def test_no_time_axis_raises(self):
+        da = xr.DataArray(
+            np.zeros((3, 2)),
+            dims=("band", "pixel"),
+            coords={"band": ["r", "g", "b"], "pixel": [0, 1]},
+        )
+        with pytest.raises(ValueError, match="has no time dimension"):
+            resample(da, freq="7D")
+
+    def test_ambiguous_time_axis_raises(self):
+        da = xr.DataArray(
+            np.zeros((4, 3)),
+            dims=("time", "lead_time"),
+            coords={
+                "time": pd.date_range("2020-01-01", periods=4, freq="D"),
+                "lead_time": pd.date_range("2020-06-01", periods=3, freq="D"),
+            },
+        )
+        with pytest.raises(ValueError, match="multiple time dimensions"):
+            resample(da, freq="7D")
+
+
 class TestResamplePresetPipeline:
     """[[resample]] desugars to a passthrough node; the built driver executes it."""
 
@@ -69,9 +104,9 @@ class TestResamplePresetPipeline:
         assert parsed.modules == ["node"]  # no dedicated resample module
         return build_driver(parsed.modules, parsed.driver_config)
 
-    def test_default_direction_offset(self):
+    def test_weekly_offset(self):
         dr = self._driver(
-            {"vars": ["temperature"], "from_freq": "daily", "to_freq": "weekly"}
+            {"vars": ["temperature"], "from": "daily", "to": "weekly", "freq": "7D"}
         )
         da = _daily_da(14, 1)
         out = dr.execute(["temperature_weekly"], inputs={"temperature_daily": da})[
@@ -80,12 +115,13 @@ class TestResamplePresetPipeline:
         expected = da.isel(time=slice(0, 7)).mean("time").values
         np.testing.assert_allclose(out.isel(time=0).values, expected)
 
-    def test_explicit_freq_overrides_default(self):
+    def test_freq_is_independent_of_the_to_label(self):
+        # ``to`` only names the output node; ``freq`` alone sets the frequency.
         dr = self._driver(
             {
                 "vars": ["temperature"],
-                "from_freq": "daily",
-                "to_freq": "custom",
+                "from": "daily",
+                "to": "custom",
                 "freq": "1ME",
             }
         )
@@ -98,8 +134,9 @@ class TestResamplePresetPipeline:
         dr = self._driver(
             {
                 "vars": ["precip"],
-                "from_freq": "daily",
-                "to_freq": "weekly",
+                "from": "daily",
+                "to": "weekly",
+                "freq": "7D",
                 "aggfunc": "sum",
             }
         )
@@ -112,7 +149,7 @@ class TestResamplePresetPipeline:
 
     def test_multiple_vars_fan_out(self):
         dr = self._driver(
-            {"vars": ["a", "b"], "from_freq": "daily", "to_freq": "weekly"}
+            {"vars": ["a", "b"], "from": "daily", "to": "weekly", "freq": "7D"}
         )
         da = _daily_da(14, 1)
         results = dr.execute(
@@ -123,13 +160,13 @@ class TestResamplePresetPipeline:
 
 
 class TestResampleSpecValidation:
-    """ResampleSpec.from_config validation and offset resolution."""
+    """ResampleSpec.from_config validation."""
 
     def test_default_aggfunc_is_mean(self):
         from conduit.config import ResampleSpec
 
         spec = ResampleSpec.from_config(
-            {"vars": ["x"], "from_freq": "daily", "to_freq": "weekly"}
+            {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "7D"}
         )
         assert spec.aggfunc == "mean"
 
@@ -140,30 +177,36 @@ class TestResampleSpecValidation:
             ResampleSpec.from_config(
                 {
                     "vars": ["x"],
-                    "from_freq": "daily",
-                    "to_freq": "weekly",
+                    "from": "daily",
+                    "to": "weekly",
+                    "freq": "7D",
                     "aggfunc": "banana",
                 }
             )
 
-    def test_offset_from_default_map(self):
+    @pytest.mark.parametrize("missing", ["vars", "from", "to", "freq"])
+    def test_missing_required_key_raises(self, missing):
         from conduit.config import ResampleSpec
 
-        spec = ResampleSpec(vars=["x"], source_freq="daily", target_freq="weekly")
-        assert spec.offset == "7D"
+        entry = {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "7D"}
+        del entry[missing]
+        with pytest.raises(ValueError, match=f"missing required key.*{missing}"):
+            ResampleSpec.from_config(entry)
 
-    def test_explicit_freq_used_as_offset(self):
+    def test_any_direction_is_allowed_given_a_freq(self):
+        # There is no table of "supported directions" any more: the labels are
+        # arbitrary and ``freq`` says what actually happens.
         from conduit.config import ResampleSpec
 
-        spec = ResampleSpec(
-            vars=["x"], source_freq="daily", target_freq="10day", freq="10D"
+        spec = ResampleSpec.from_config(
+            {"vars": ["x"], "from": "monthly", "to": "seasonal", "freq": "QE"}
         )
-        assert spec.offset == "10D"
+        assert (spec.source, spec.target, spec.freq) == ("monthly", "seasonal", "QE")
 
-    def test_unknown_direction_without_freq_raises(self):
+    def test_invalid_freq_raises(self):
         from conduit.config import ResampleSpec
 
-        with pytest.raises(ValueError, match="No default offset"):
+        with pytest.raises(ValueError, match="invalid frequency 'banana'"):
             ResampleSpec.from_config(
-                {"vars": ["x"], "from_freq": "monthly", "to_freq": "daily"}
+                {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "banana"}
             )

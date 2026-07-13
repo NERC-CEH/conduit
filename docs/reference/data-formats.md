@@ -40,23 +40,28 @@ input is loaded.
 
 ## Temporal handling
 
-For NetCDF/Zarr inputs, files should carry a `time` dimension with a datetime
-coordinate, and data variables named **without** any frequency suffix (e.g.
-`temperature`, not `temperature_daily`) — conduit appends the suffix from the section
-label when building node names (see [Configuration › inputs](configuration.md#inputs)).
+Time-varying NetCDF/Zarr inputs carry a dimension with a datetime coordinate, and data
+variables named **without** any frequency suffix (e.g. `temperature`, not
+`temperature_daily`) — conduit appends the suffix from the section label when building
+node names (see [Configuration › inputs](configuration.md#inputs)).
 
-Input sections whose label is a **recognised temporal frequency** (`daily`, `weekly`,
-`monthly`) have their time index validated against that frequency:
+The time dimension is **detected, not assumed**: any dimension whose coordinate is
+datetime-like (NumPy `datetime64` or a cftime index) counts, so it need not be called
+`time`. An input dataset may carry **at most one** such dimension — a second datetime
+axis makes "the time dimension" ambiguous and is rejected at load. For CSV/Parquet, the
+first column must be a parseable date and is used as the time index.
 
-| Label | Expected frequency |
-|-------|--------------------|
-| `daily` | one entry per calendar day (`D`) |
-| `weekly` | `W` or `7D` |
-| `monthly` | month-end (`ME`) or month-start (`MS`) |
+Section labels are **inert**: calling a section `daily` gives its node names the
+`_daily` suffix and nothing else — no frequency is inferred or enforced from the name.
 
-Sections with any other label are not frequency-validated — their time index only has to
-be a valid `DatetimeIndex`. For CSV/Parquet, the first column must be a parseable date
-and is used as the time index.
+Frequency is validated where it is **declared**, not where it is named. Two independent
+mechanisms cover it:
+
+- a consumer declaring `Freq("7D")` on its input (or a `[[node]]` with `freq = "7D"` on
+  its output) — validated per node by the
+  [contract check](../concepts/contracts.md), at build time and in `--dry-run`;
+- the [`time_aligned` / `time_equal` / `time_subset` checks](configuration.md#validation)
+  — validated across whole input datasets.
 
 ## Units metadata
 

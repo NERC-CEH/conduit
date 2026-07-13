@@ -8,17 +8,6 @@ from typing import Any, Self
 
 import tomli_w
 
-# Default pandas offset for a (from, to) frequency direction. The ``[[resample]]``
-# preset falls back to this when no explicit ``freq`` is given; ``conduit.io`` also
-# uses it as the cross-frequency temporal-alignment convention. It is a *default
-# convention*, not a hard requirement — any direction is allowed with an explicit
-# ``freq`` offset.
-RESAMPLE_FREQ_MAP: dict[tuple[str, str], str] = {
-    ("daily", "weekly"): "7D",
-    ("daily", "monthly"): "1ME",
-    ("weekly", "monthly"): "1ME",
-}
-
 _VALID_AGGFUNCS: frozenset[str] = frozenset(
     {"mean", "sum", "max", "min", "first", "last"}
 )
@@ -35,31 +24,21 @@ class ResampleSpec:
 
     ``[[resample]]`` is a thin *preset* over the fan-out ``[[node]]`` mechanism: it
     desugars to one passthrough node per variable that applies
-    `conduit.transforms.resample` (see `resample_to_node_entry`). ``freq`` is the
-    pandas offset alias passed to that transform; when omitted it defaults from
-    `RESAMPLE_FREQ_MAP` for the ``source_freq -> target_freq`` direction.
+    `conduit.transforms.resample` (see `resample_to_node_entry`).
+
+    ``source`` and ``target`` (TOML ``from`` / ``to``) are **node-name suffixes**, not
+    frequencies: ``from = "daily"`` reads ``{var}_daily`` and ``to = "weekly"``
+    produces ``{var}_weekly``. They are free-form labels — ``from = "raw"``,
+    ``to = "smoothed"`` is equally valid — and nothing is inferred from them. The
+    frequency is ``freq`` alone: a required pandas offset alias, passed to the
+    transform and declared as the generated node's output-frequency contract.
     """
 
     vars: list[str]
-    source_freq: str
-    target_freq: str
+    source: str
+    target: str
+    freq: str
     aggfunc: str = "mean"
-    freq: str | None = None
-
-    @property
-    def offset(self) -> str:
-        """The resolved pandas offset: explicit ``freq`` or the direction default."""
-        if self.freq is not None:
-            return self.freq
-        try:
-            return RESAMPLE_FREQ_MAP[(self.source_freq, self.target_freq)]
-        except KeyError:
-            raise ValueError(
-                f"No default offset for resample direction '{self.source_freq}' → "
-                f"'{self.target_freq}'. Supported defaults: "
-                f"{sorted(RESAMPLE_FREQ_MAP)}. Specify an explicit 'freq' "
-                f"(pandas offset alias) instead."
-            ) from None
 
     @classmethod
     def from_config(cls, entry: dict) -> "ResampleSpec":
@@ -69,26 +48,39 @@ class ResampleSpec:
             raise ValueError(
                 f"Unsupported aggfunc '{aggfunc}'. Supported: {sorted(_VALID_AGGFUNCS)}"
             )
-        spec = cls(
+        missing = [key for key in ("vars", "from", "to", "freq") if key not in entry]
+        if missing:
+            raise ValueError(
+                f"[[resample]] entry is missing required key(s) {missing}. Every "
+                f"entry needs 'vars', 'from' and 'to' (the node-name suffixes to read "
+                f"from and write to) and 'freq' (the target pandas offset alias, e.g. "
+                f"'7D', '1ME', 'W-SUN')."
+            )
+
+        from xarray_annotated.temporal import Freq, assert_valid_freq
+
+        freq = entry["freq"]
+        assert_valid_freq(Freq(freq), f"[[resample]] to '{entry['to']}' freq")
+        return cls(
             vars=entry["vars"],
-            source_freq=entry["from_freq"],
-            target_freq=entry["to_freq"],
+            source=entry["from"],
+            target=entry["to"],
+            freq=freq,
             aggfunc=aggfunc,
-            freq=entry.get("freq"),
         )
-        _ = spec.offset  # validate the direction resolves (raises a clear message)
-        return spec
 
 
 @dataclass
 class NodeSpec:
     """Specification for a single (already fan-out-expanded) [[node]] entry.
 
-    ``units`` / ``dims`` / ``dtype`` / ``coords`` declare the node's output contract
-    (read by the build-time contract check and stamped/validated at runtime). A
-    ``passthrough`` node instead declares *no* fixed output contract and is tagged so
-    the contract check propagates its input's declaration across it — the shape the
-    ``[[resample]]`` preset generates.
+    ``units`` / ``dims`` / ``dtype`` / ``coords`` / ``freq`` declare the node's output
+    contract (read by the build-time contract check and stamped/validated at runtime).
+    A ``passthrough`` node instead declares *no* fixed output contract for the facets
+    a passthrough preserves, and is tagged so the contract check propagates its
+    input's declaration across it — the shape the ``[[resample]]`` preset generates.
+    ``freq`` is the exception: a resample *changes* the frequency, so it is declared
+    explicitly even on a passthrough node.
     """
 
     name: str
@@ -100,6 +92,7 @@ class NodeSpec:
     dims: list[str] | None = None
     dtype: str | None = None
     coords: list[str] | None = None
+    freq: str | None = None
     passthrough: bool = False
 
     @classmethod
@@ -131,6 +124,12 @@ class NodeSpec:
             from xarray_annotated.schema import Dtype, assert_valid_schema
 
             assert_valid_schema(Dtype(dtype), f"node '{name}' dtype")
+        freq = entry.get("freq")
+        if freq is not None:
+            # Fail fast on an unparseable pandas offset alias, at parse time.
+            from xarray_annotated.temporal import Freq, assert_valid_freq
+
+            assert_valid_freq(Freq(freq), f"node '{name}' freq")
         return cls(
             name=entry["name"],
             inputs=entry["inputs"],
@@ -141,6 +140,7 @@ class NodeSpec:
             dims=entry.get("dims"),
             dtype=dtype,
             coords=entry.get("coords"),
+            freq=freq,
             passthrough=bool(entry.get("passthrough", False)),
         )
 
@@ -271,6 +271,16 @@ class IOSpec:
     suffix: str | None = None
 
 
+def _severity(value: Any, label: str, key: str) -> str | None:
+    """Validate an ``error``/``warn``/``ignore`` policy key; ``None`` passes through."""
+    if value is not None and value not in ("error", "warn", "ignore"):
+        raise ValueError(
+            f"[{label}] {key!r} must be one of 'error', 'warn', 'ignore', "
+            f"got {value!r}."
+        )
+    return value
+
+
 def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
     """Validate a section's ``vars`` is a list[str] or a dict[str, str]."""
     if isinstance(vars_, dict):
@@ -294,6 +304,20 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
 
 
 @dataclass
+class CheckSpec:
+    """One entry of ``[validation].checks``: a named input-compatibility check.
+
+    ``check`` is a key in `conduit.checks.CHECKS`; ``inputs`` are the resolved
+    ``[inputs.*]`` section labels to pass (``["*"]`` already expanded at parse
+    time); ``kwargs`` are the remaining inline-table keys forwarded verbatim.
+    """
+
+    check: str
+    inputs: list[str]
+    kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ParsedConfig:
     """Parsed pipeline configuration, ready to pass to build_driver."""
 
@@ -304,10 +328,12 @@ class ParsedConfig:
     cache_spec: "CacheSpec | None" = None
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
+    checks: list["CheckSpec"] = field(default_factory=list)
     units_enabled: bool | None = None
     units_on_missing: str | None = None
     units_on_inexact: str | None = None
-    schema_on_mismatch: str | None = None
+    on_mismatch: str | None = None
+    on_uninferable: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -348,20 +374,27 @@ def _subst_var(value: Any, var: str) -> Any:
 def resample_to_node_entry(spec: ResampleSpec) -> dict:
     """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
 
-    Each variable ``v`` becomes a node ``{v}_{target_freq}`` that applies
-    `conduit.transforms.resample` to ``{v}_{source_freq}``; the node is a
-    passthrough (unit/dim preserving), so the contract check propagates the
-    source's declared contract across it.
+    Each variable ``v`` becomes a node ``{v}_{target}`` that applies
+    `conduit.transforms.resample` to ``{v}_{source}``; the node is a passthrough
+    (unit/dim preserving), so the contract check propagates the source's declared
+    contract across it.
+
+    The one facet a resample does *not* preserve is the frequency — it is what the
+    node changes — so the node declares its own: ``freq``. Every resample therefore
+    carries a checkable output-frequency contract (including its anchor, so a
+    fat-fingered ``W-WED`` is caught), which a downstream consumer's ``Freq``
+    declaration is compared against at build time.
     """
-    src = f"{{var}}_{spec.source_freq}"
+    src = f"{{var}}_{spec.source}"
     return {
         "for_each": list(spec.vars),
-        "name": f"{{var}}_{spec.target_freq}",
+        "name": f"{{var}}_{spec.target}",
         "inputs": [src],
         "expression": (
-            f"__transforms.resample({src}, freq={spec.offset!r}, "
+            f"__transforms.resample({src}, freq={spec.freq!r}, "
             f"aggfunc={spec.aggfunc!r})"
         ),
+        "freq": spec.freq,
         "passthrough": True,
     }
 
@@ -523,18 +556,84 @@ class Config:
             return None
         return SubsetSpec.from_config(entry)
 
+    def _parse_checks(
+        self, data: dict, input_specs: dict[str, "IOSpec"]
+    ) -> list["CheckSpec"]:
+        """Handle the ``[validation]`` table's ``checks`` array.
+
+        ``[validation]`` groups declared expectations to validate (as opposed to
+        DAG structure). For each entry in its ``checks`` list this validates the
+        check name (against the registry), expands ``["*"]`` to all input labels,
+        checks every named input exists, and validates arity — all at parse time.
+        Remaining inline-table keys become forwarded ``kwargs``.
+        """
+        section = data.pop("validation", {})
+        unknown_keys = set(section) - {"checks"}
+        if unknown_keys:
+            raise ValueError(
+                f"[validation] has unknown key(s) {sorted(unknown_keys)}; "
+                f"only 'checks' is supported"
+            )
+        entries = section.get("checks", [])
+        # Lazy import breaks the config -> checks -> io -> config cycle.
+        from .checks import CHECKS
+
+        specs: list[CheckSpec] = []
+        for entry in entries:
+            entry = dict(entry)
+            if "check" not in entry:
+                raise ValueError(f"checks entry {entry!r} is missing a 'check' key")
+            name = entry.pop("check")
+            if name not in CHECKS:
+                raise ValueError(
+                    f"unknown check {name!r}; known checks: {sorted(CHECKS)}"
+                )
+            raw_inputs = entry.pop("inputs", None)
+            if not raw_inputs:
+                raise ValueError(f"check {name!r} is missing a non-empty 'inputs' list")
+
+            if "*" in raw_inputs:
+                if raw_inputs != ["*"]:
+                    raise ValueError(
+                        f"check {name!r}: '*' must be the sole element of 'inputs', "
+                        f"got {raw_inputs!r}"
+                    )
+                inputs = list(input_specs)
+            else:
+                inputs = list(raw_inputs)
+                unknown = [s for s in inputs if s not in input_specs]
+                if unknown:
+                    raise ValueError(
+                        f"check {name!r} references unknown input section(s) "
+                        f"{unknown}; known: {sorted(input_specs)}"
+                    )
+
+            arity = CHECKS[name].arity
+            if arity != "variadic" and len(inputs) != arity:
+                raise ValueError(
+                    f"check {name!r} takes exactly {arity} input(s), "
+                    f"got {len(inputs)}: {inputs}"
+                )
+
+            specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
+        return specs
+
     def _parse_annotations(
         self, data: dict
-    ) -> tuple[bool | None, str | None, str | None, str | None]:
+    ) -> tuple[bool | None, str | None, str | None, str | None, str | None]:
         """Handle the [annotations] section (``[units]`` is a working alias).
 
-        Returns ``(enabled, on_missing, on_inexact, on_mismatch)`` mapping the
-        section's keys to the xarray-annotated policy axes:
+        Returns ``(enabled, on_missing, on_inexact, on_mismatch, on_uninferable)``
+        mapping the section's keys to the xarray-annotated policy axes:
 
         - ``mode`` (``strict`` / ``warn`` / ``off``) and ``exact`` (bool) drive the
           *units* policy (``enabled`` / ``on_missing`` / ``on_inexact``);
         - ``on_mismatch`` (``error`` / ``warn`` / ``ignore``) drives the *schema*
-          (dims/coords/dtype) policy.
+          (dims/coords/dtype) *and* *temporal* (freq) policies — in both it means
+          "the array contradicts the declaration";
+        - ``on_uninferable`` (``error`` / ``warn`` / ``ignore``) drives the temporal
+          policy's second axis: a time axis too short or too irregular for a
+          frequency to be inferred at all, so the declaration went *untested*.
 
         ``mode = "off"`` disables validation for *every* facet via the shared
         master switch. ``None`` axes defer to the process-wide default. All are
@@ -546,12 +645,11 @@ class Config:
             raise ValueError("Use either [annotations] or its alias [units], not both.")
         entry = annotations if annotations is not None else units
         if entry is None:
-            return None, None, None, None
+            return None, None, None, None, None
         label = "annotations" if annotations is not None else "units"
         enabled: bool | None = None
         on_missing: str | None = None
         on_inexact: str | None = None
-        on_mismatch: str | None = None
         mode = entry.get("mode")
         if mode is not None:
             if mode == "off":
@@ -571,13 +669,9 @@ class Config:
                 raise ValueError(f"[{label}] 'exact' must be a boolean, got {exact!r}.")
             if exact:
                 on_inexact = "error"
-        on_mismatch = entry.get("on_mismatch")
-        if on_mismatch is not None and on_mismatch not in ("error", "warn", "ignore"):
-            raise ValueError(
-                f"[{label}] 'on_mismatch' must be one of 'error', 'warn', "
-                f"'ignore', got {on_mismatch!r}."
-            )
-        return enabled, on_missing, on_inexact, on_mismatch
+        on_mismatch = _severity(entry.get("on_mismatch"), label, "on_mismatch")
+        on_uninferable = _severity(entry.get("on_uninferable"), label, "on_uninferable")
+        return enabled, on_missing, on_inexact, on_mismatch, on_uninferable
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
         """Handle remaining sections as external modules."""
@@ -605,6 +699,8 @@ class Config:
 
         Recognised top-level sections (processed directly):
         - [inputs.*]      — I/O specs; freq derived from subsection key
+        - [validation]    — declared expectations to validate; `checks` holds the
+                            input-Dataset compatibility checks (see conduit.checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [grid]          — silently accepted (grid computation is now in load_inputs())
         - [graphviz]      — silently ignored (DAG styling is a `graph --style` file)
@@ -613,8 +709,8 @@ class Config:
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — pixel-blocked execution (block_size)
         - [subset]        — spatial pixel slice (pixel_start, pixel_end)
-        - [annotations]   — contract validation policy (units + schema); the
-                            legacy name [units] is a working alias
+        - [annotations]   — contract validation policy (units + schema + temporal);
+                            the legacy name [units] is a working alias
 
         All other top-level sections are treated as external modules and must
         include a '_import_path = "pkg.module"' key specifying the importable
@@ -629,6 +725,7 @@ class Config:
         self._parse_grid(data)
         self._parse_graphviz(data)
         self._parse_inputs(data, input_specs)
+        checks = self._parse_checks(data, input_specs)
         self._parse_outputs(data, output_specs)
         modules += self._parse_nodes(data, driver_config)
         cache_spec = self._parse_cache(data)
@@ -638,7 +735,8 @@ class Config:
             units_enabled,
             units_on_missing,
             units_on_inexact,
-            schema_on_mismatch,
+            on_mismatch,
+            on_uninferable,
         ) = self._parse_annotations(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
@@ -649,10 +747,12 @@ class Config:
             cache_spec=cache_spec,
             blocking_spec=blocking_spec,
             subset_spec=subset_spec,
+            checks=checks,
             units_enabled=units_enabled,
             units_on_missing=units_on_missing,
             units_on_inexact=units_on_inexact,
-            schema_on_mismatch=schema_on_mismatch,
+            on_mismatch=on_mismatch,
+            on_uninferable=on_uninferable,
         )
 
 

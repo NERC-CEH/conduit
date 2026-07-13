@@ -10,6 +10,7 @@ import xarray as xr
 from hamilton.function_modifiers import tag
 from xarray_annotated import annotate
 from xarray_annotated.schema import declare_schema
+from xarray_annotated.temporal import declare_freq
 from xarray_annotated.units import declare_units
 
 if TYPE_CHECKING:
@@ -18,7 +19,9 @@ if TYPE_CHECKING:
 #: Hamilton tag marking a node whose output preserves its input's declared
 #: contract (units/dims/dtype). The contract check reads this to propagate a
 #: declaration across the node instead of requiring a fixed one. See
-#: `conduit.dag.contract_check`.
+#: `conduit.dag.contract_check`. Note the propagation is per facet: ``freq`` is
+#: *not* preserved (a resample changes it), so a passthrough node may still
+#: declare a frequency of its own.
 PASSTHROUGH_TAG = "conduit_passthrough"
 
 
@@ -52,25 +55,33 @@ def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
 def _decorate(fn: Any, spec: "NodeSpec") -> Any:
     """Attach the node's declared output contract to the bare ``exec``'d function."""
     # A passthrough node preserves its input's contract, so it declares none of its
-    # own; it is tagged so the contract check propagates the declaration across it
-    # (the shape the [[resample]] preset generates).
+    # own — except its frequency, which a passthrough transform (the [[resample]]
+    # preset) is precisely what changes. It is tagged so the contract check
+    # propagates the *preserved* facets across it.
     if spec.passthrough:
-        fn.__annotations__["return"] = annotate()
+        fn.__annotations__["return"] = annotate(freq=spec.freq)
+        if spec.freq is not None:
+            fn = declare_freq(fn)
         return tag(**{PASSTHROUGH_TAG: "true"})(fn)  # type: ignore[reportArgumentType]
 
-    # Otherwise a declared unit/dims/dtype/coords makes the node a typed producer:
-    # validated/stamped at runtime (@declare_units / @declare_schema) and read by
-    # the build-time contract check. Without any, it is an unchecked pass-through.
+    # Otherwise a declared unit/dims/dtype/coords/freq makes the node a typed
+    # producer: validated/stamped at runtime (@declare_units / @declare_schema /
+    # @declare_freq) and read by the build-time contract check. Without any, it is
+    # an unchecked pass-through.
     fn.__annotations__["return"] = annotate(
         unit=spec.units,
         dims=spec.dims or None,
         dtype=spec.dtype,
         coords=spec.coords or None,
+        freq=spec.freq,
     )
-    # Apply schema first, then units, so the composition is
-    # ``declare_units(declare_schema(fn))`` (declare_units outermost).
+    # Apply the validate-only decorators first, then units, so the composition is
+    # ``declare_units(declare_freq(declare_schema(fn)))`` (declare_units outermost,
+    # as it is the only one that may convert).
     if spec.dims or spec.dtype or spec.coords:
         fn = declare_schema(fn)
+    if spec.freq is not None:
+        fn = declare_freq(fn)
     if spec.units is not None:
         fn = declare_units(fn)
     return fn

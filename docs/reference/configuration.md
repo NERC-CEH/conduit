@@ -119,12 +119,16 @@ units = "1"
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). |
 | `coords` | Output coordinate contract (list of names). |
+| `freq` | Output temporal-frequency contract: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `passthrough` | Declare no fixed output contract; propagate the input's contract across the node. |
 | `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
 
-Declaring any of `units`/`dims`/`dtype`/`coords` makes the node a typed producer the
-[contract check](../concepts/contracts.md) can verify. See
+Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer
+the [contract check](../concepts/contracts.md) can verify. See
 [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) for worked examples.
+
+An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an
+unanchored one (`"7D"`, `"W"`) constrains the spacing only.
 
 ## Resample
 
@@ -134,22 +138,36 @@ preserving units and dims.
 
 ```toml
 [[resample]]
-from_freq = "daily"
-to_freq = "weekly"
 vars = ["temperature", "precipitation"]
+from = "daily"
+to = "weekly"
+freq = "7D"
 aggfunc = "mean"
 ```
 
 | Key | Description |
 |-----|-------------|
-| `vars` | **Required.** Variables to resample; each `{v}_{from_freq}` → `{v}_{to_freq}`. |
-| `from_freq` | **Required.** Source frequency label. |
-| `to_freq` | **Required.** Target frequency label. |
+| `vars` | **Required.** Variables to resample; each `{v}_{from}` → `{v}_{to}`. |
+| `from` | **Required.** Node-name suffix to read from. |
+| `to` | **Required.** Node-name suffix to write to. |
+| `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
-| `freq` | Explicit pandas offset alias (e.g. `"1D"`). Required unless the direction is a built-in default. |
 
-Built-in default directions (no `freq` needed): `daily`→`weekly`, `daily`→`monthly`,
-`weekly`→`monthly`. Any other direction needs an explicit `freq`.
+/// admonition | `from` and `to` are names, not frequencies
+    type: note
+
+They are **node-name suffixes** and nothing more: `from = "daily"` reads
+`{var}_daily`, `to = "weekly"` writes `{var}_weekly`. They are free-form —
+`from = "raw"`, `to = "smoothed"` is equally valid — and no frequency is inferred from
+them. `freq` alone says what actually happens to the time axis. There is no table of
+"supported directions": any pair of labels works, given a `freq`.
+///
+
+`freq` also becomes the generated node's **declared output frequency**, so every
+resample carries a checkable frequency contract: a downstream consumer declaring
+`Freq("W-SUN")` against a `freq = "W-WED"` resample fails at build time.
+
+The time axis is detected from the data, so it need not be called `time`.
 
 ## Cache
 
@@ -201,24 +219,69 @@ pixel_end   = 500    # exclusive
 | `pixel_start` | **Required.** First pixel index (inclusive, zero-based). |
 | `pixel_end` | **Required.** One past the last index (exclusive); must exceed `pixel_start`. |
 
+## Validation
+
+`[validation]` groups **declarations about properties you expect and want to check** — as
+opposed to the DAG's structure, which conduit derives on its own. Its `checks` array runs
+a suite of input-Dataset compatibility checks before compute (and as a stage of
+[`--dry-run`](../guides/validate-before-running.md)).
+
+```toml
+[validation]
+checks = [
+  { check = "spatial_grid_equal", inputs = ["*"] },
+  { check = "time_equal",         inputs = ["climate", "land"] },
+  { check = "coords_equal",       inputs = ["*"], coords = ["level"] },
+]
+```
+
+Each entry names a `check` and the `inputs` to pass it. `check` and `inputs` are reserved;
+**every other key is forwarded verbatim as a keyword argument** to the check (e.g.
+`coords`, `atol`).
+
+| Key | Description |
+|-----|-------------|
+| `check` | **Required.** The check to run (see below). |
+| `inputs` | **Required.** `[inputs.*]` labels to compare, in order. `["*"]` means *all* input sections (declaration order) and must be the sole element. |
+| *others* | Forwarded as keyword arguments to the named check. |
+
+Available checks:
+
+| `check` | Inputs | Asserts |
+|---------|--------|---------|
+| `time_equal` | any | all inputs share an identical time index |
+| `time_subset` | exactly 2 | the second input's timestamps are a subset of the first's |
+| `spatial_grid_equal` | any | all inputs share a CRS, x/y dims, and coordinate values (`atol`) |
+| `crs_equal` | any | all inputs share a CRS |
+| `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
+
+The checks are a real importable library (`conduit.checks`), so the
+[notebook-driven path](../guides/drive-from-python.md) calls them directly — the config
+list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
+block conduit performs no cross-input validation (it does not guess which inputs are
+*meant* to align — only you know that). Under [`[subset]`](#subset) they are skipped, with
+a warning, since they describe the whole domain rather than a single shard.
+
 ## Annotations
 
-`[annotations]` controls how contract declarations (units + schema: dims/coords/dtype)
-are validated. The legacy name `[units]` is a working alias for the same section. Omit
-it to keep the defaults.
+`[annotations]` controls how contract declarations (units, schema: dims/coords/dtype,
+and temporal: freq) are validated. The legacy name `[units]` is a working alias for the
+same section. Omit it to keep the defaults.
 
 ```toml
 [annotations]
-mode = "strict"      # "strict" | "warn" (default) | "off"
-exact = false        # reject value-changing unit conversions
-on_mismatch = "error"  # "error" | "warn" | "ignore" — for dims/coords/dtype
+mode = "strict"           # "strict" | "warn" (default) | "off"
+exact = false             # reject value-changing unit conversions
+on_mismatch = "error"     # "error" | "warn" | "ignore" — dims/coords/dtype/freq
+on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 ```
 
 | Key | Description |
 |-----|-------------|
 | `mode` | Units strictness. `strict` raises on a unit problem; `warn` reports and continues; `off` disables **all** contract checking (every facet). Default `warn`. |
 | `exact` | When `true`, a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared) is rejected rather than converted. Default `false`. |
-| `on_mismatch` | Schema (dims/coords/dtype) policy: `error`, `warn`, or `ignore`. |
+| `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
+| `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
 
 Validation happens at two points:
 
@@ -244,6 +307,8 @@ conversion), or set `exact = true` to forbid implicit temperature conversions.
 
 ## See also
 
+- [Validate before running](../guides/validate-before-running.md) — the `--dry-run`
+  pre-flight, the wiring check, and the `[validation]` input checks.
 - [Data formats](data-formats.md) — supported file types and spatial/temporal handling.
 - [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) — the `[[node]]` and
   `[[resample]]` guide.

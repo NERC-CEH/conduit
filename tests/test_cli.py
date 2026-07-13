@@ -192,13 +192,13 @@ class TestGraphPostProcessing:
         digraph = SimpleNamespace(
             body=[
                 "\tgpp_weekly [label=<<b>gpp_weekly</b><br /><br /><i>DataArray</i>>]\n",
-                "\tdates_weekly [label=<<b>dates_weekly</b><br /><br /><i>DatetimeIndex</i>>]\n",
+                "\tlatitude [label=<<b>latitude</b><br /><br /><i>DataArray</i>>]\n",
             ]
         )
         relabel_with_units(digraph, {"gpp_weekly": "g m-2 d-1"})  # type: ignore[arg-type]
         assert "<i>g m-2 d-1</i>" in digraph.body[0]
         # nodes without a declared unit keep their original type
-        assert "<i>DatetimeIndex</i>" in digraph.body[1]
+        assert "<i>DataArray</i>" in digraph.body[1]
 
     def test_relabel_input_table_rows(self):
         row = "<tr><td>temperature_daily</td><td>DataArray</td></tr>"

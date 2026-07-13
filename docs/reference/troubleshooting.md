@@ -48,12 +48,12 @@ A node's declared contract disagrees with its producer's. See
 To relax an over-strict check, adjust the [`[annotations]`](configuration.md#annotations)
 policy.
 
-### Resampling direction not supported
+### `[[resample]]` entry is missing required key `freq`
 
-The built-in default directions are `daily`→`weekly`, `daily`→`monthly`,
-`weekly`→`monthly`. For any other direction, give an explicit `freq` (pandas offset
-alias) on the `[[resample]]` entry. You cannot upsample to a finer resolution — provide
-finer data as input instead.
+Every `[[resample]]` needs an explicit `freq` (a pandas offset alias such as `"7D"`,
+`"1ME"` or `"W-SUN"`). `from` and `to` only name the nodes to read from and write to —
+no frequency is inferred from labels like `daily`/`weekly`. You cannot upsample to a
+finer resolution; provide finer data as input instead.
 
 ## Data
 
@@ -82,11 +82,34 @@ ds.to_netcdf("data_with_crs.nc")
 
 ### Time index frequency mismatch
 
-For sections whose label is a recognised frequency, conduit validates the time index
-(`daily` → `D`, `weekly` → `W`/`7D`, `monthly` → `ME`/`MS`). Gaps or irregular spacing
-raise a validation error — fix the data, or use a non-frequency label to skip the check.
+`frequency mismatch on 'time': expected '7D', got 'D'` means a consumer declared a
+`Freq` contract the data contradicts. Section labels are not involved — nothing is
+inferred from a section being called `daily` — so either the declaration or the data is
+wrong. Fix whichever, or drop the declaration to opt that node out.
+
+`frequency of 'time' is uninferable` means the axis has fewer than three timestamps or
+irregular spacing, so the declaration could not be *tested*. It warns by default; set
+`on_uninferable` in [`[annotations]`](configuration.md#annotations) to `"error"` to make
+an untested contract fatal, or `"ignore"` to silence it (short test fixtures).
 
 ## Running pipelines
+
+### `'time' coordinate does not match Zarr store`
+
+A subset run produced data whose time axis differs from the shared store's. Region
+writes don't write coordinates, so this is caught rather than allowed to silently
+mislabel the store.
+
+The store's axes are computed from the pipeline when it is created, so this means the
+config has changed since — a different `[[resample]]` `freq`, a different input file, a
+different date range. Re-create the store from the current config:
+
+```sh
+conduit gridded create-store config.toml --overwrite
+```
+
+Note `--overwrite` erases data already written into the store by other subset runs, so
+re-run them all afterwards.
 
 ### Empty or missing output
 

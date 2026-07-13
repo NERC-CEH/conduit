@@ -73,9 +73,7 @@ def create_store(
     if chunk is None and parsed.blocking_spec is not None:
         chunk = parsed.blocking_spec.block_size
 
-    created = create_output_store(
-        parsed.input_specs, parsed.output_specs, pixel_chunk=chunk, overwrite=overwrite
-    )
+    created = create_output_store(parsed, pixel_chunk=chunk, overwrite=overwrite)
 
     if not created:
         typer.echo("No Zarr outputs in config; nothing to create.")

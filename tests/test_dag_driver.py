@@ -13,7 +13,11 @@ class TestBuildDriverReturnType:
 
     def test_resample_preset_builds(self):
         parsed = Config(
-            {"resample": [{"vars": ["x"], "from_freq": "daily", "to_freq": "weekly"}]}
+            {
+                "resample": [
+                    {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "7D"}
+                ]
+            }
         ).parse()
         assert isinstance(
             build_driver(parsed.modules, parsed.driver_config), driver.Driver

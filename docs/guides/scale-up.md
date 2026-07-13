@@ -104,6 +104,20 @@ conduit gridded merge config.toml                  # unstack into a sibling *_gr
 `*_gridded.zarr`; pass `--out <path>` (single-output configs only) to choose a
 destination.
 
+/// admonition | What `create-store` computes
+    type: note
+
+To lay out the empty store, `create-store` needs each output's non-`pixel` axes — its
+time coordinate, above all. It gets them by **running the pipeline over a single pixel**
+and reading the real coordinates, dims and dtype off the result. So the store matches
+what the shards will write by construction, and a *derived* axis (a `[[resample]]`'s
+weekly time axis, say) needs no input file to already have it.
+
+The practical consequence: the store belongs to the config that created it. Change the
+config in a way that moves an output's time axis and the next `run` will refuse to write
+into the stale store rather than mislabel it — re-create it with `--overwrite`.
+///
+
 /// admonition | Chunk alignment for Zarr
     type: note
 
