@@ -2,7 +2,7 @@
 
 Three layers:
 
-- direct tests of :func:`conduit.dag.contract_check.check_input_units` (the runtime,
+- direct tests of :func:`conduit.dag.contract_check.check_input_contracts` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
 - direct tests of :func:`conduit.io.assert_output_paths_writable`;
@@ -21,7 +21,7 @@ from xarray_annotated.units import UnitsWarning, policy
 
 from conduit.cli import app
 from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec
-from conduit.dag.contract_check import check_input_units
+from conduit.dag.contract_check import check_input_contracts
 from conduit.dag.driver import build_driver
 from conduit.io import assert_output_paths_writable
 
@@ -81,7 +81,7 @@ def _input(units_attr: str | None = None) -> xr.DataArray:
 
 
 # ---------------------------------------------------------------------------
-# check_input_units — direct, against an external input consumed with a unit
+# check_input_contracts — direct, against an external input consumed with a unit
 # ---------------------------------------------------------------------------
 
 
@@ -94,69 +94,69 @@ class TestCheckInputUnitsDirect:
 
     def test_matching_units_pass(self, dr):
         with policy(enabled=True, on_missing="error"):
-            check_input_units(dr, {"vpd_weekly": _input("Pa")})
+            check_input_contracts(dr, {"vpd_weekly": _input("Pa")})
 
     def test_compatible_units_convert_without_error(self, dr):
         with policy(enabled=True, on_missing="error"):
-            check_input_units(dr, {"vpd_weekly": _input("hPa")})
+            check_input_contracts(dr, {"vpd_weekly": _input("hPa")})
 
     def test_exact_match_rejects_compatible_but_different(self, dr):
         with (
             policy(enabled=True, on_missing="error", on_inexact="error"),
             pytest.raises(ValueError, match="on_inexact"),
         ):
-            check_input_units(dr, {"vpd_weekly": _input("hPa")})
+            check_input_contracts(dr, {"vpd_weekly": _input("hPa")})
 
     def test_incompatible_units_raise(self, dr):
         with (
             policy(enabled=True, on_missing="error"),
             pytest.raises(pint.DimensionalityError),
         ):
-            check_input_units(dr, {"vpd_weekly": _input("kg")})
+            check_input_contracts(dr, {"vpd_weekly": _input("kg")})
 
     def test_missing_units_strict_raises(self, dr):
         with (
             policy(enabled=True, on_missing="error"),
             pytest.raises(ValueError, match="no 'units' attribute"),
         ):
-            check_input_units(dr, {"vpd_weekly": _input(None)})
+            check_input_contracts(dr, {"vpd_weekly": _input(None)})
 
     def test_missing_units_warn_warns(self, dr):
         with (
             policy(enabled=True, on_missing="warn"),
             pytest.warns(UnitsWarning, match="unvalidated"),
         ):
-            check_input_units(dr, {"vpd_weekly": _input(None)})
+            check_input_contracts(dr, {"vpd_weekly": _input(None)})
 
     def test_unparseable_units_strict_raises(self, dr):
         with (
             policy(enabled=True, on_missing="error"),
             pytest.raises(ValueError, match="unparseable"),
         ):
-            check_input_units(dr, {"vpd_weekly": _input("fraction")})
+            check_input_contracts(dr, {"vpd_weekly": _input("fraction")})
 
     def test_unparseable_units_warn_warns(self, dr):
         with (
             policy(enabled=True, on_missing="warn"),
             pytest.warns(UnitsWarning, match="unparseable"),
         ):
-            check_input_units(dr, {"vpd_weekly": _input("fraction")})
+            check_input_contracts(dr, {"vpd_weekly": _input("fraction")})
 
     def test_off_mode_skips_everything(self, dr):
         with policy(enabled=False):
-            check_input_units(dr, {"vpd_weekly": _input("kg")})
+            check_input_contracts(dr, {"vpd_weekly": _input("kg")})
 
     def test_input_without_declared_consumer_ignored(self, dr):
         with policy(enabled=True, on_missing="error"):
-            check_input_units(dr, {"some_other_var": _input("kg")})
+            check_input_contracts(dr, {"some_other_var": _input("kg")})
 
     def test_non_dataarray_inputs_ignored(self, dr):
         with policy(enabled=True, on_missing="error"):
-            check_input_units(dr, {"vpd_weekly": 3.0})
+            check_input_contracts(dr, {"vpd_weekly": 3.0})
 
 
 # ---------------------------------------------------------------------------
-# check_input_units — propagation through resample (covered) and derive (not)
+# check_input_contracts — propagation through resample (covered) and derive (not)
 # ---------------------------------------------------------------------------
 
 
@@ -170,7 +170,7 @@ class TestCheckInputUnitsPropagation:
             ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME")
         )
         specs = [NodeSpec.from_config(e) for e in expand_node_entries([entry])]
-        return build_driver(["node", "rs_cons"], {"node_specs": specs})
+        return build_driver(["node", "rs_cons"], {}, node_specs=specs)
 
     def test_resample_routed_input_is_validated(self, register):
         dr = self._resample_driver(register)
@@ -178,12 +178,12 @@ class TestCheckInputUnitsPropagation:
             policy(enabled=True, on_missing="error"),
             pytest.raises(pint.DimensionalityError),
         ):
-            check_input_units(dr, {"gpp_weekly": _input("kg")})
+            check_input_contracts(dr, {"gpp_weekly": _input("kg")})
 
     def test_resample_routed_input_passes_when_correct(self, register):
         dr = self._resample_driver(register)
         with policy(enabled=True, on_missing="error"):
-            check_input_units(dr, {"gpp_weekly": _input("g m-2 d-1")})
+            check_input_contracts(dr, {"gpp_weekly": _input("g m-2 d-1")})
 
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
@@ -201,9 +201,9 @@ class TestCheckInputUnitsPropagation:
                 units="g m-2 d-1",
             )
         ]
-        dr = build_driver(["node", "dv_cons"], {"node_specs": specs})
+        dr = build_driver(["node", "dv_cons"], {}, node_specs=specs)
         with policy(enabled=True, on_missing="error"):
-            check_input_units(dr, {"a": _input("kg"), "b": _input("kg")})
+            check_input_contracts(dr, {"a": _input("kg"), "b": _input("kg")})
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ class TestAssertOutputPathsWritable:
 
     def test_unsupported_extension_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "out.txt"), vars=["gpp"])}
-        with pytest.raises(ValueError, match="unsupported file extension"):
+        with pytest.raises(ValueError, match="Unsupported file extension"):
             assert_output_paths_writable(specs)
 
     def test_missing_parent_dir_raises(self, tmp_path):
@@ -228,13 +228,13 @@ class TestAssertOutputPathsWritable:
 
     def test_subset_zarr_without_store_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "store.zarr"), vars=["gpp"])}
-        subset = SubsetSpec(pixel_start=0, pixel_end=10)
+        subset = SubsetSpec(start=0, stop=10)
         with pytest.raises(FileNotFoundError, match="does not exist"):
             assert_output_paths_writable(specs, subset)
 
     def test_subset_csv_unsupported_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "out.csv"), vars=["gpp"])}
-        subset = SubsetSpec(pixel_start=0, pixel_end=10)
+        subset = SubsetSpec(start=0, stop=10)
         with pytest.raises(ValueError, match=r"\[subset\] is only supported"):
             assert_output_paths_writable(specs, subset)
 
@@ -251,8 +251,6 @@ def _config(tmp_path, synthetic_data_dir, outputs: str = "") -> str:
 name = "mean_temperature_weekly"
 inputs = ["temperature_daily"]
 expression = "temperature_daily.resample(time='7D').mean()"
-
-[grid]
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"

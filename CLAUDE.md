@@ -22,6 +22,17 @@ transform; and extraction of the geospatial + parallel-Zarr code into the option
 **`conduit.gridded`** subpackage so the core is domain-agnostic. Backwards
 compatibility remained a non-constraint throughout.
 
+A **code-review remediation pass** (`notes/CODE_REVIEW_2026-07-13.md` and its
+plan) then fixed the correctness gaps that survived, and removed the shims this
+file says shouldn't exist. Notable results a returning reader should know:
+`conduit.specs` (the data model) is now separate from `conduit.config` (the
+parser), which breaks the old import cycle; `conduit.formats` is the single
+file-format registry; `[subset]` takes `dim`/`start`/`stop` (not
+`pixel_start`/`pixel_end`) and, like `[blocking]`, partitions any dimension; the
+`[units]` alias, `[grid]` and `[graphviz]` sections are gone (unknown sections are
+now an error, not silently ignored); and `conduit graph` derives its frequency
+grouping from declared `Freq` contracts rather than name suffixes.
+
 ## Guiding philosophy
 
 conduit is an opinionated integration of Apache Hamilton (DAG), xarray (+ dask
@@ -67,32 +78,35 @@ validation (units + dims/coords/dtype, via `xarray-annotated`).
 
 ### Core modules
 
-**`src/conduit/config.py`** — parses TOML config files into a `ParsedConfig` dataclass. Recognised top-level sections: `[inputs.*]`, `[outputs.*]`, `[grid]` (silently accepted), `[[node]]`, `[[resample]]`, `[cache]`, `[blocking]`, `[subset]`, `[annotations]` (legacy alias `[units]`). **Any other section is treated as a user module and must include `_import_path = "pkg.module"`** — there is no special "models" namespace; user models are just modules. Key types exported: `Config`, `ParsedConfig`, `IOSpec`, `ResampleSpec`, `NodeSpec`, `CacheSpec`, `BlockingSpec`, `SubsetSpec`. Fan-out helpers: `expand_node_entries` (`{var}`/`for_each` templating), `resample_to_node_entry` (the `[[resample]]` preset desugarer).
+Each module's own docstring is the canonical explanation of its design; these are
+one-line pointers, deliberately not restatements. When a design changes, the module
+docstring is what must be right.
 
-**`src/conduit/dag/driver.py`** — builds Hamilton `Driver` objects from a `ParsedConfig`. The `MODULES` dict maps the one built-in short name (`"node"`) to its path; every other module identifier is a dotted `_import_path` imported directly ([[resample]] desugars into `node` specs). `build_driver` also runs the build-time contract check (`check_dag_contracts`).
+| Module | What it is |
+|---|---|
+| **`specs.py`** | The parsed data model: one dataclass per config section (`IOSpec`, `NodeSpec`, `SubsetSpec`, `AnnotationPolicySpec`, `ParsedConfig`, …), each self-validating in `from_config`. A **leaf** — imports nothing from conduit, which is what keeps `config`/`io`/`checks` acyclic. |
+| **`config.py`** | TOML → `ParsedConfig`. Section dispatch, `{var}`/`for_each` fan-out (`expand_node_entries`), the `[[resample]]` desugarer (`resample_to_node_entry`), path resolution. **Any section not recognised is a user module and must carry `_import_path`** — there is no "models" namespace, and unknown sections are an error, not ignored. |
+| **`formats.py`** | The single file-format registry. Every extension-based decision (which reader, which writer, subset-capable?, needs a store?) is one `Format` entry and a `format_for()` lookup. Adding a format means adding one row. |
+| **`io.py`** | Domain-agnostic I/O, outside the DAG: `load_inputs` / `get_outputs` / `save_outputs` / `get_final_vars`, plus `time_dims` / `sole_time_dim` (the single time-axis detector — `time` is never assumed). CRS/pixel-free. |
+| **`dag/contract_check.py`** | **The flagship.** Lifts `xarray-annotated`'s per-function contracts to the whole DAG, before compute, generic over every facet via a facet registry. Its module docstring is the canonical essay on facets and passthrough propagation. |
+| **`dag/wiring_check.py`** | The wiring analogue: unbound inputs raise, unused inputs warn, before any compute. |
+| **`dag/driver.py`** | `ParsedConfig` → Hamilton `Driver`. `"node"` is the one built-in short name (generated from `node_specs`); every other identifier is a dotted `_import_path`. Runs the build-time contract check. |
+| **`dag/node.py`** | Generates Hamilton modules from `[[node]]` entries via `exec()` — the "user model in TOML" path. Node names/inputs are validated as identifiers at parse time. |
+| **`dag/caching.py`** | Content-based `DataArray` fingerprint (values, name, dims, coords **and attrs**) + `Builder.with_cache()`. |
+| **`dag/blocking.py`** | Blocked execution over a partition dim (default `pixel`). |
+| **`transforms.py`** | Annotation-preserving transforms referenced from config (currently just `resample`), wired in as passthrough nodes. |
+| **`gridded/`** | Optional geospatial + parallel-Zarr layer (the `geo` extra). Its `__init__` docstring states the lazy-import policy once. |
+| **`checks.py`** | Input-compatibility checks declared under `[validation]`, run before compute. |
 
-**`src/conduit/dag/contract_check.py`** — the flagship subsystem: lifts `xarray-annotated`'s per-function contract validation to the **whole DAG, before compute**, generic over every facet (units + dims/coords/dtype) via a facet registry. `check_dag_contracts` verifies every internal edge whose producer and consumer both declare a contract; `check_input_contracts` validates loaded inputs' metadata against declared consumers without executing a node (the basis of `run --dry-run`). Passthrough-tagged nodes (`conduit.dag.node.PASSTHROUGH_TAG`) propagate contracts generically. Units/policy machinery lives in the `xarray-annotated` dependency (`declare_units`/`declare_schema`, `[annotations]` policy), not in conduit.
+Two things worth knowing that are *not* obvious from any one module:
 
-**`src/conduit/dag/wiring_check.py`** — `check_wiring`: the wiring analogue of the contract check. Diffs the DAG's required external inputs against what `load_inputs` produced — **unbound** inputs raise, **unused** inputs warn — before any compute.
-
-**`src/conduit/io.py`** — domain-agnostic I/O, outside the Hamilton DAG. Key public functions:
-- `load_inputs(input_specs)` — reads NetCDF/Zarr/CSV/Parquet/JSON/TOML; returns a flat dict of named `DataArray`s. `IOSpec.vars` maps file variables to node names, either by list (`{var}{suffix}`) or an explicit `{node_name: file_var}` alias (`io.var_mapping`). Section labels are inert — they name nodes and nothing else.
-- `time_dims` / `sole_time_dim` — the single time-axis detector (any datetime-like dimension coordinate; `time` is not assumed). Underpins the "at most one time dimension per input" invariant, `transforms.resample`, and `conduit.checks`.
-- `get_outputs` / `save_outputs` — assemble/write per-section `Dataset`s; `save_outputs` can stamp config provenance into outputs.
-- `get_final_vars(output_specs)` — the flat node-name list for `driver.execute(final_vars=...)`.
-
-Core `io` is CRS/pixel-free: it delegates the gridded path to `conduit.gridded` lazily (only when CRS metadata or a `[subset]` is present), so importing conduit never pulls `rioxarray`/`pyproj`.
-
-**`src/conduit/gridded/`** — optional geospatial + parallel-Zarr layer (behind the `geo` extra). `spatial.py` + `io.py`: CRS-aware `(y,x)`↔`pixel` stacking, `latitude`/`longitude` reprojection, `MisalignedGridError`, and the subset/Zarr-region parallel-write path (`create_output_store`, `save_zarr_region`, `merge_subset_outputs`). `cli.py`: the nested `conduit gridded` commands.
-
-`create_output_store` takes the whole `ParsedConfig` because it derives each output's non-`pixel` axes (time, above all) by **probing the DAG over a single pixel** — the store's layout is then by construction what the subset runs write, including axes no input file has (a `[[resample]]`'s). `save_zarr_region` drops coords when region-writing, so it first asserts the incoming coords match the store's.
-
-**`src/conduit/transforms.py`** — reusable annotation-preserving DAG transforms referenced from config (currently just `resample`); wired in as passthrough nodes by the `[[resample]]` preset. (A single module for now; promote to a package if a second transform needs its own file.)
-
-**`src/conduit/dag/`** — other built-in DAG machinery:
-- `node.py` — generates Hamilton modules from `[[node]]` entries via `exec()`: inline expressions or import-path + function, optional declared `units`/`dims`/`dtype`/`coords`, `for_each` fan-out, and passthrough tagging. The "user model in TOML" path.
-- `caching.py` — content-based fingerprint for `xarray.DataArray` + `Builder.with_cache()` from a `CacheSpec`
-- `blocking.py` — blocked driver execution over a partition dim (default `pixel`)
+- **Section labels are inert.** `daily` / `weekly` / `static` name nodes via a suffix and
+  mean nothing else — no frequency, no semantics, is inferred from them. A pipeline may
+  label sections `raw`/`smoothed` and everything (including `graph`'s clustering) works
+  identically. Frequency comes from *declared* `Freq` contracts, never from a name.
+- **`create_output_store` probes the DAG over a single pixel** to derive each output's
+  non-`pixel` axes, so the store's layout is by construction what subset runs write —
+  including axes no input file has (a `[[resample]]`'s time axis).
 
 ### Hamilton DAG conventions (for user-defined modules)
 
@@ -102,7 +116,7 @@ model follows:
 - **Public node function name = the output node name** (single-output), or use `@extract_fields()` (from `hamilton.function_modifiers`) with a `TypedDict` return to split into multiple named outputs.
 - `@declare_units` (innermost) reads `Annotated[DataArray, "<unit>"]` from the signature/return and validates/stamps units.
 - **Parameter names = input node names** (following io.py's `{var}{suffix}` / bare-static / `latitude` conventions).
-- **Keyword-only args (after `*`) = config parameters**, populated from the module's own config section.
+- **Keyword-only args (after `*`) = config parameters**, populated from the module's own config section. These share one flat namespace across all sections (that is how Hamilton resolves them by name), so a collision is a parse-time error naming both sections.
 
 ### Configuration-driven composition
 

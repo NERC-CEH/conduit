@@ -1,344 +1,32 @@
-"""Configuration management for conduit."""
+"""Configuration management: parse a TOML file into a `ParsedConfig`.
+
+The data model itself lives in `conduit.specs` (a leaf module); this module owns
+the TOML -> spec translation: section dispatch, the `[[node]]` fan-out expansion,
+the `[[resample]]` preset desugaring, and path resolution.
+"""
 
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Self
 
 import tomli_w
 
-_VALID_AGGFUNCS: frozenset[str] = frozenset(
-    {"mean", "sum", "max", "min", "first", "last"}
+from .checks import CHECKS
+from .specs import (
+    AnnotationPolicySpec,
+    BlockingSpec,
+    CacheSpec,
+    CheckSpec,
+    IOSpec,
+    NodeSpec,
+    ParsedConfig,
+    ResampleSpec,
+    SubsetSpec,
+    _severity,
+    _validate_vars,
 )
-
-
-# ---------------------------------------------------------------------------
-# Spec dataclasses (the parsed data model)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class ResampleSpec:
-    """Specification for a single [[resample]] entry.
-
-    ``[[resample]]`` is a thin *preset* over the fan-out ``[[node]]`` mechanism: it
-    desugars to one passthrough node per variable that applies
-    `conduit.transforms.resample` (see `resample_to_node_entry`).
-
-    ``source`` and ``target`` (TOML ``from`` / ``to``) are **node-name suffixes**, not
-    frequencies: ``from = "daily"`` reads ``{var}_daily`` and ``to = "weekly"``
-    produces ``{var}_weekly``. They are free-form labels — ``from = "raw"``,
-    ``to = "smoothed"`` is equally valid — and nothing is inferred from them. The
-    frequency is ``freq`` alone: a required pandas offset alias, passed to the
-    transform and declared as the generated node's output-frequency contract.
-    """
-
-    vars: list[str]
-    source: str
-    target: str
-    freq: str
-    aggfunc: str = "mean"
-
-    @classmethod
-    def from_config(cls, entry: dict) -> "ResampleSpec":
-        """Construct and validate from a raw [[resample]] TOML entry."""
-        aggfunc = entry.get("aggfunc", "mean")
-        if aggfunc not in _VALID_AGGFUNCS:
-            raise ValueError(
-                f"Unsupported aggfunc '{aggfunc}'. Supported: {sorted(_VALID_AGGFUNCS)}"
-            )
-        missing = [key for key in ("vars", "from", "to", "freq") if key not in entry]
-        if missing:
-            raise ValueError(
-                f"[[resample]] entry is missing required key(s) {missing}. Every "
-                f"entry needs 'vars', 'from' and 'to' (the node-name suffixes to read "
-                f"from and write to) and 'freq' (the target pandas offset alias, e.g. "
-                f"'7D', '1ME', 'W-SUN')."
-            )
-
-        from xarray_annotated.temporal import Freq, assert_valid_freq
-
-        freq = entry["freq"]
-        assert_valid_freq(Freq(freq), f"[[resample]] to '{entry['to']}' freq")
-        return cls(
-            vars=entry["vars"],
-            source=entry["from"],
-            target=entry["to"],
-            freq=freq,
-            aggfunc=aggfunc,
-        )
-
-
-@dataclass
-class NodeSpec:
-    """Specification for a single (already fan-out-expanded) [[node]] entry.
-
-    ``units`` / ``dims`` / ``dtype`` / ``coords`` / ``freq`` declare the node's output
-    contract (read by the build-time contract check and stamped/validated at runtime).
-    A ``passthrough`` node instead declares *no* fixed output contract for the facets
-    a passthrough preserves, and is tagged so the contract check propagates its
-    input's declaration across it — the shape the ``[[resample]]`` preset generates.
-    ``freq`` is the exception: a resample *changes* the frequency, so it is declared
-    explicitly even on a passthrough node.
-    """
-
-    name: str
-    inputs: list[str]
-    expression: str | None
-    import_path: str | None
-    function: str | None
-    units: str | None = None
-    dims: list[str] | None = None
-    dtype: str | None = None
-    coords: list[str] | None = None
-    freq: str | None = None
-    passthrough: bool = False
-
-    @classmethod
-    def from_config(cls, entry: dict) -> "NodeSpec":
-        """Construct and validate from a raw (expanded) [[node]] TOML entry."""
-        name = entry.get("name")
-        has_expression = "expression" in entry
-        has_function = "_import_path" in entry or "function" in entry
-        if has_expression and has_function:
-            raise ValueError(
-                f"Node entry for '{name}' must specify either "
-                "'expression' or ('_import_path' + 'function'), not both."
-            )
-        if not has_expression and not has_function:
-            raise ValueError(
-                f"Node entry for '{name}' must specify either "
-                "'expression' or ('_import_path' + 'function')."
-            )
-        units = entry.get("units")
-        if units is not None:
-            # Fail fast on a malformed/unknown unit, at parse time.
-            from xarray_annotated.units import assert_valid_unit
-
-            assert_valid_unit(units, f"node '{name}' units")
-        dtype = entry.get("dtype")
-        if dtype is not None:
-            # Fail fast on a malformed dtype, at parse time, via the same
-            # declaration validator the schema decorator uses.
-            from xarray_annotated.schema import Dtype, assert_valid_schema
-
-            assert_valid_schema(Dtype(dtype), f"node '{name}' dtype")
-        freq = entry.get("freq")
-        if freq is not None:
-            # Fail fast on an unparseable pandas offset alias, at parse time.
-            from xarray_annotated.temporal import Freq, assert_valid_freq
-
-            assert_valid_freq(Freq(freq), f"node '{name}' freq")
-        return cls(
-            name=entry["name"],
-            inputs=entry["inputs"],
-            expression=entry.get("expression"),
-            import_path=entry.get("_import_path"),
-            function=entry.get("function"),
-            units=units,
-            dims=entry.get("dims"),
-            dtype=dtype,
-            coords=entry.get("coords"),
-            freq=freq,
-            passthrough=bool(entry.get("passthrough", False)),
-        )
-
-
-@dataclass
-class CacheSpec:
-    """Specification for the [cache] section.
-
-    ``recompute`` and ``disable`` follow Hamilton's caching API: each is either
-    a boolean (apply to all nodes) or a list of node names.
-    """
-
-    path: str = ".conduit_cache"
-    recompute: bool | list[str] = field(default_factory=list)
-    disable: bool | list[str] = field(default_factory=list)
-
-    @classmethod
-    def from_config(cls, entry: dict) -> "CacheSpec":
-        """Construct and validate from a raw [cache] TOML entry."""
-
-        def _coerce(key: str) -> bool | list[str]:
-            val = entry.get(key, [])
-            if isinstance(val, bool):
-                return val
-            if isinstance(val, list) and all(isinstance(v, str) for v in val):
-                return val
-            raise ValueError(
-                f"[cache] '{key}' must be a boolean or a list of node names, "
-                f"got {val!r}."
-            )
-
-        return cls(
-            path=entry.get("path", ".conduit_cache"),
-            recompute=_coerce("recompute"),
-            disable=_coerce("disable"),
-        )
-
-
-@dataclass
-class BlockingSpec:
-    """Specification for the [blocking] section.
-
-    Controls how a partition dimension (``dim``, default ``pixel``) is split into
-    fixed-size sequential blocks to bound peak memory usage. Set ``dim`` to block
-    over any other dimension (e.g. ``location``) for non-gridded pipelines.
-    """
-
-    block_size: int
-    dim: str = "pixel"
-
-    @classmethod
-    def from_config(cls, entry: dict) -> "BlockingSpec":
-        """Construct and validate from a raw [blocking] TOML entry."""
-        block_size = entry.get("block_size")
-        if not isinstance(block_size, int) or block_size < 1:
-            raise ValueError(
-                "[blocking] 'block_size' must be a positive integer, "
-                f"got {block_size!r}."
-            )
-        dim = entry.get("dim", "pixel")
-        if not isinstance(dim, str) or not dim:
-            raise ValueError(
-                f"[blocking] 'dim' must be a non-empty string, got {dim!r}."
-            )
-        return cls(block_size=block_size, dim=dim)
-
-
-@dataclass
-class SubsetSpec:
-    """Specification for the [subset] section.
-
-    Selects a contiguous slice of the stacked ``pixel`` dimension so that
-    independent ``conduit run`` processes can each handle a different spatial
-    chunk of the same input files.  ``pixel_end`` is exclusive (Python slice
-    convention).
-    """
-
-    pixel_start: int
-    pixel_end: int
-
-    @classmethod
-    def from_config(cls, entry: dict) -> "SubsetSpec":
-        """Construct and validate from a raw [subset] TOML entry."""
-        pixel_start = entry.get("pixel_start")
-        pixel_end = entry.get("pixel_end")
-        if not isinstance(pixel_start, int) or pixel_start < 0:
-            raise ValueError(
-                "[subset] 'pixel_start' must be a non-negative integer, "
-                f"got {pixel_start!r}."
-            )
-        if not isinstance(pixel_end, int) or pixel_end < 0:
-            raise ValueError(
-                "[subset] 'pixel_end' must be a non-negative integer, "
-                f"got {pixel_end!r}."
-            )
-        if pixel_end <= pixel_start:
-            raise ValueError(
-                f"[subset] 'pixel_end' ({pixel_end}) must be greater than "
-                f"'pixel_start' ({pixel_start})."
-            )
-        return cls(pixel_start=pixel_start, pixel_end=pixel_end)
-
-
-@dataclass
-class IOSpec:
-    """I/O specification for a single input or output section.
-
-    ``vars`` maps this section's file variables to Hamilton node names, in one of
-    two forms:
-
-    - a **list** ``["temperature", ...]`` — the node name is derived from the file
-      variable and the section's suffix (``{var}{suffix}``), the convenient default;
-    - a **mapping** ``{node_name: file_var}`` — an explicit, suffix-free alias, e.g.
-      ``{temperature_daily = "t2m"}`` (input: read file var ``t2m`` as node
-      ``temperature_daily``) or ``{gpp_daily = "gpp"}`` (output: write node
-      ``gpp_daily`` to file var ``gpp``). Use this to decouple file naming from DAG
-      naming, or to alias a variable without renaming the file.
-
-    ``suffix`` controls the list form's node names. When ``None`` (the default) the
-    effective suffix is derived from the section label (``_<label>``). Set
-    ``suffix = ""`` on any section for bare names, or ``suffix = "_x"`` to choose an
-    explicit suffix. It is ignored for the mapping form (which is already explicit).
-    See ``conduit.io.effective_suffix``.
-    """
-
-    path: str
-    vars: list[str] | dict[str, str]
-    suffix: str | None = None
-
-
-def _severity(value: Any, label: str, key: str) -> str | None:
-    """Validate an ``error``/``warn``/``ignore`` policy key; ``None`` passes through."""
-    if value is not None and value not in ("error", "warn", "ignore"):
-        raise ValueError(
-            f"[{label}] {key!r} must be one of 'error', 'warn', 'ignore', "
-            f"got {value!r}."
-        )
-    return value
-
-
-def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
-    """Validate a section's ``vars`` is a list[str] or a dict[str, str]."""
-    if isinstance(vars_, dict):
-        bad = [
-            (k, v)
-            for k, v in vars_.items()
-            if not isinstance(k, str) or not isinstance(v, str)
-        ]
-        if bad:
-            raise ValueError(
-                f"[{label}] 'vars' mapping must be {{node_name = file_var}} with "
-                f"string keys and values, got offending entries {bad!r}."
-            )
-        return dict(vars_)
-    if isinstance(vars_, list) and all(isinstance(v, str) for v in vars_):
-        return list(vars_)
-    raise ValueError(
-        f"[{label}] 'vars' must be a list of names or a {{node_name = file_var}} "
-        f"mapping, got {vars_!r}."
-    )
-
-
-@dataclass
-class CheckSpec:
-    """One entry of ``[validation].checks``: a named input-compatibility check.
-
-    ``check`` is a key in `conduit.checks.CHECKS`; ``inputs`` are the resolved
-    ``[inputs.*]`` section labels to pass (``["*"]`` already expanded at parse
-    time); ``kwargs`` are the remaining inline-table keys forwarded verbatim.
-    """
-
-    check: str
-    inputs: list[str]
-    kwargs: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class ParsedConfig:
-    """Parsed pipeline configuration, ready to pass to build_driver."""
-
-    modules: list[str]
-    driver_config: dict[str, Any]
-    input_specs: dict[str, "IOSpec"] = field(default_factory=dict)
-    output_specs: dict[str, "IOSpec"] = field(default_factory=dict)
-    cache_spec: "CacheSpec | None" = None
-    blocking_spec: "BlockingSpec | None" = None
-    subset_spec: "SubsetSpec | None" = None
-    checks: list["CheckSpec"] = field(default_factory=list)
-    units_enabled: bool | None = None
-    units_on_missing: str | None = None
-    units_on_inexact: str | None = None
-    on_mismatch: str | None = None
-    on_uninferable: str | None = None
-
-
-# ---------------------------------------------------------------------------
-# Fan-out / desugaring helpers ([[node]] for_each + [[resample]] preset)
-# ---------------------------------------------------------------------------
 
 
 def expand_node_entries(entries: list[dict]) -> list[dict]:
@@ -374,16 +62,14 @@ def _subst_var(value: Any, var: str) -> Any:
 def resample_to_node_entry(spec: ResampleSpec) -> dict:
     """Desugar a `ResampleSpec` into a fan-out passthrough ``[[node]]`` entry.
 
-    Each variable ``v`` becomes a node ``{v}_{target}`` that applies
-    `conduit.transforms.resample` to ``{v}_{source}``; the node is a passthrough
-    (unit/dim preserving), so the contract check propagates the source's declared
-    contract across it.
+    Each variable ``v`` becomes a node ``{v}_{target}`` applying
+    `conduit.transforms.resample` to ``{v}_{source}``. The node is a **passthrough**
+    but declares its own ``freq`` — the one facet a resample does not preserve — so
+    every resample carries a checkable output-frequency contract, anchor included (a
+    fat-fingered ``W-WED`` is caught at build time). See `conduit.dag.contract_check`.
 
-    The one facet a resample does *not* preserve is the frequency — it is what the
-    node changes — so the node declares its own: ``freq``. Every resample therefore
-    carries a checkable output-frequency contract (including its anchor, so a
-    fat-fingered ``W-WED`` is caught), which a downstream consumer's ``Freq``
-    declaration is compared against at build time.
+    This preset is why ``[[resample]]`` needs no special-cased DAG module: it is an
+    ordinary generated node.
     """
     src = f"{{var}}_{spec.source}"
     return {
@@ -405,11 +91,19 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
 
 
 class Config:
-    """Configuration class with loading, parsing, and serialization."""
+    """Configuration class with loading, parsing, and serialization.
 
-    def __init__(self, data: dict[str, Any]) -> None:
-        """Initialize with a config dict."""
+    The raw TOML data is held **exactly as written**: relative paths are resolved
+    against ``base`` (the config file's directory) as the specs are built in `parse`,
+    not by rewriting ``_data``. That keeps `dumps` round-trip faithful — it emits the
+    relative paths the user wrote, not absolutised ones — and keeps `load` and `loads`
+    behaving the same way apart from the base they resolve against.
+    """
+
+    def __init__(self, data: dict[str, Any], base: Path | None = None) -> None:
+        """Initialize with a config dict, and the base its paths resolve against."""
         self._data = data
+        self._base = base
 
     def __str__(self) -> str:
         """Return TOML string representation."""
@@ -417,17 +111,22 @@ class Config:
 
     @classmethod
     def load(cls, path: str | os.PathLike) -> Self:
-        """Load config from a TOML file."""
+        """Load a TOML file; relative paths resolve against its directory."""
         path = Path(path).resolve()
         with open(path, "rb") as f:
             data = tomllib.load(f)
-        _resolve_paths(data, base=path.parent)
-        return cls(data)
+        return cls(data, base=path.parent)
 
     @classmethod
     def loads(cls, toml_str: str) -> Self:
-        """Load config from a TOML string."""
+        """Load config from a TOML string; relative paths resolve against the CWD."""
         return cls(tomllib.loads(toml_str))
+
+    def _resolve(self, path: str) -> str:
+        """Resolve one config path against the config file's directory."""
+        if self._base is None or Path(path).is_absolute():
+            return path
+        return str(self._base / path)
 
     def dump(self, path: str | os.PathLike, overwrite_ok: bool = False) -> None:
         """Write config to a TOML file."""
@@ -444,61 +143,56 @@ class Config:
         """Dump config to a TOML str."""
         return tomli_w.dumps(self._data)
 
-    def _parse_grid(self, data: dict) -> list[str]:
-        """Handle [grid] section.
-
-        Silently accepted; grid computation moved to load_inputs().
-        """
-        data.pop("grid", None)
-        return []
-
-    def _parse_graphviz(self, data: dict) -> list[str]:
-        """Handle a stray [graphviz] section.
-
-        DAG-visualisation styling lives in its own file passed to ``conduit
-        graph --style`` (see ``conduit.cli.graph_style``), not in the science
-        config.  A misplaced [graphviz] section here is silently ignored rather
-        than mistaken for an external module missing ``_import_path``.
-        """
-        data.pop("graphviz", None)
-        return []
-
     def _parse_inputs(self, data: dict, input_specs: dict) -> None:
-        """Handle [inputs.*] sections."""
-        for freq, params in data.pop("inputs", {}).items():
+        """Handle [inputs.*] sections.
+
+        An input section may omit ``vars`` entirely, which binds every variable in
+        the file through the section's suffix. It may not list *no* variables: an
+        empty list previously parsed fine and then silently bound nothing.
+        """
+        for label, params in data.pop("inputs", {}).items():
             if "path" not in params:
                 raise ValueError(
-                    f"[inputs.{freq}] is missing a 'path' key. "
+                    f"[inputs.{label}] is missing a 'path' key. "
                     f"Input sections must specify a file path."
                 )
-            input_specs[freq] = IOSpec(
-                path=params["path"],
-                vars=_validate_vars(f"inputs.{freq}", params.get("vars") or []),
+            vars_ = params.get("vars")
+            if vars_ is not None and len(vars_) == 0:
+                raise ValueError(
+                    f"[inputs.{label}] has an empty 'vars'. Either list the "
+                    f"variables to load, or omit 'vars' entirely to load every "
+                    f"variable in the file."
+                )
+            input_specs[label] = IOSpec(
+                path=self._resolve(params["path"]),
+                vars=(
+                    None if vars_ is None else _validate_vars(f"inputs.{label}", vars_)
+                ),
                 suffix=params.get("suffix"),
             )
 
     def _parse_outputs(self, data: dict, output_specs: dict) -> None:
         """Handle [outputs.*] sections."""
-        for freq, params in data.pop("outputs", {}).items():
+        for label, params in data.pop("outputs", {}).items():
             vars_ = params.get("vars") or []
             if not vars_:
                 raise ValueError(
-                    f"[outputs.{freq}] has no 'vars'. "
+                    f"[outputs.{label}] has no 'vars'. "
                     f"Output sections must list at least one variable, "
                     f"or be removed from the config."
                 )
             if "path" not in params:
                 raise ValueError(
-                    f"[outputs.{freq}] is missing a 'path' key. "
+                    f"[outputs.{label}] is missing a 'path' key. "
                     f"Output sections must specify a file path."
                 )
-            output_specs[freq] = IOSpec(
-                path=params["path"],
-                vars=_validate_vars(f"outputs.{freq}", vars_),
+            output_specs[label] = IOSpec(
+                path=self._resolve(params["path"]),
+                vars=_validate_vars(f"outputs.{label}", vars_),
                 suffix=params.get("suffix"),
             )
 
-    def _parse_nodes(self, data: dict, driver_config: dict) -> list[str]:
+    def _parse_nodes(self, data: dict) -> list["NodeSpec"]:
         """Handle [[node]] and [[resample]] — both generate ``node`` module specs.
 
         ``[[resample]]`` is desugared to fan-out passthrough node entries
@@ -518,10 +212,7 @@ class Config:
                 raise ValueError(f"Duplicate node name '{spec.name}'")
             seen_names.add(spec.name)
             specs.append(spec)
-        if specs:
-            driver_config["node_specs"] = specs
-            return ["node"]
-        return []
+        return specs
 
     def _parse_cache(self, data: dict) -> "CacheSpec | None":
         """Handle the [cache] section.
@@ -534,7 +225,8 @@ class Config:
             return None
         if not entry.get("enabled", True):
             return None
-        return CacheSpec.from_config(entry)
+        spec = CacheSpec.from_config(entry)
+        return replace(spec, path=self._resolve(spec.path))
 
     def _parse_blocking(self, data: dict) -> "BlockingSpec | None":
         """Handle the [blocking] section.
@@ -575,9 +267,6 @@ class Config:
                 f"only 'checks' is supported"
             )
         entries = section.get("checks", [])
-        # Lazy import breaks the config -> checks -> io -> config cycle.
-        from .checks import CHECKS
-
         specs: list[CheckSpec] = []
         for entry in entries:
             entry = dict(entry)
@@ -618,13 +307,10 @@ class Config:
             specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
         return specs
 
-    def _parse_annotations(
-        self, data: dict
-    ) -> tuple[bool | None, str | None, str | None, str | None, str | None]:
-        """Handle the [annotations] section (``[units]`` is a working alias).
+    def _parse_annotations(self, data: dict) -> "AnnotationPolicySpec":
+        """Handle the [annotations] section.
 
-        Returns ``(enabled, on_missing, on_inexact, on_mismatch, on_uninferable)``
-        mapping the section's keys to the xarray-annotated policy axes:
+        Maps the section's keys to the xarray-annotated policy axes:
 
         - ``mode`` (``strict`` / ``warn`` / ``off``) and ``exact`` (bool) drive the
           *units* policy (``enabled`` / ``on_missing`` / ``on_inexact``);
@@ -637,16 +323,12 @@ class Config:
 
         ``mode = "off"`` disables validation for *every* facet via the shared
         master switch. ``None`` axes defer to the process-wide default. All are
-        ``None`` if there is neither an [annotations] nor a [units] section.
+        ``None`` if there is no [annotations] section.
         """
-        annotations = data.pop("annotations", None)
-        units = data.pop("units", None)
-        if annotations is not None and units is not None:
-            raise ValueError("Use either [annotations] or its alias [units], not both.")
-        entry = annotations if annotations is not None else units
+        entry = data.pop("annotations", None)
         if entry is None:
-            return None, None, None, None, None
-        label = "annotations" if annotations is not None else "units"
+            return AnnotationPolicySpec()
+        label = "annotations"
         enabled: bool | None = None
         on_missing: str | None = None
         on_inexact: str | None = None
@@ -669,13 +351,26 @@ class Config:
                 raise ValueError(f"[{label}] 'exact' must be a boolean, got {exact!r}.")
             if exact:
                 on_inexact = "error"
-        on_mismatch = _severity(entry.get("on_mismatch"), label, "on_mismatch")
-        on_uninferable = _severity(entry.get("on_uninferable"), label, "on_uninferable")
-        return enabled, on_missing, on_inexact, on_mismatch, on_uninferable
+        return AnnotationPolicySpec(
+            enabled=enabled,
+            on_missing=on_missing,
+            on_inexact=on_inexact,
+            on_mismatch=_severity(entry.get("on_mismatch"), label, "on_mismatch"),
+            on_uninferable=_severity(
+                entry.get("on_uninferable"), label, "on_uninferable"
+            ),
+        )
 
     def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
-        """Handle remaining sections as external modules."""
+        """Handle remaining sections as external modules.
+
+        Module params share one flat `driver_config` namespace (that is how Hamilton
+        resolves a node's keyword-only config arguments), so ``defined_by`` tracks
+        which section contributed each key — enough to name *both* sides of a
+        collision rather than just the key.
+        """
         modules: list[str] = []
+        defined_by: dict[str, str] = {}
         for section_label, params in data.items():
             params = dict(params)
             import_path = params.pop("_import_path", None)
@@ -690,7 +385,7 @@ class Config:
                     f"'_import_path = {import_path!r}' in [{section_label!r}] "
                     f"is not a valid dotted module path."
                 )
-            _merge_params(section_label, params, driver_config)
+            _merge_params(section_label, params, driver_config, defined_by)
             modules.append(import_path)
         return modules
 
@@ -702,15 +397,12 @@ class Config:
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks (see conduit.checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
-        - [grid]          — silently accepted (grid computation is now in load_inputs())
-        - [graphviz]      — silently ignored (DAG styling is a `graph --style` file)
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
         - [[resample]]    — preset desugaring to fan-out passthrough nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — pixel-blocked execution (block_size)
-        - [subset]        — spatial pixel slice (pixel_start, pixel_end)
-        - [annotations]   — contract validation policy (units + schema + temporal);
-                            the legacy name [units] is a working alias
+        - [subset]        — a slice of one dimension (dim, start, stop)
+        - [annotations]   — contract validation policy (units + schema + temporal)
 
         All other top-level sections are treated as external modules and must
         include a '_import_path = "pkg.module"' key specifying the importable
@@ -722,37 +414,28 @@ class Config:
         input_specs: dict[str, IOSpec] = {}
         output_specs: dict[str, IOSpec] = {}
         modules: list[str] = []
-        self._parse_grid(data)
-        self._parse_graphviz(data)
         self._parse_inputs(data, input_specs)
         checks = self._parse_checks(data, input_specs)
         self._parse_outputs(data, output_specs)
-        modules += self._parse_nodes(data, driver_config)
+        node_specs = self._parse_nodes(data)
+        if node_specs:
+            modules.append("node")
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data)
         subset_spec = self._parse_subset(data)
-        (
-            units_enabled,
-            units_on_missing,
-            units_on_inexact,
-            on_mismatch,
-            on_uninferable,
-        ) = self._parse_annotations(data)
+        annotations = self._parse_annotations(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
             modules=modules,
             driver_config=driver_config,
+            node_specs=node_specs,
             input_specs=input_specs,
             output_specs=output_specs,
             cache_spec=cache_spec,
             blocking_spec=blocking_spec,
             subset_spec=subset_spec,
             checks=checks,
-            units_enabled=units_enabled,
-            units_on_missing=units_on_missing,
-            units_on_inexact=units_on_inexact,
-            on_mismatch=on_mismatch,
-            on_uninferable=on_uninferable,
+            annotations=annotations,
         )
 
 
@@ -766,29 +449,29 @@ def load_config(config_path: str | Path) -> ParsedConfig:
     return Config.load(config_path).parse()
 
 
-def _resolve_paths(data: dict, base: Path) -> None:
-    """Resolve relative paths in-place, relative to the config file's directory."""
-    for section in ("inputs", "outputs"):
-        for params in data.get(section, {}).values():
-            if "path" in params and not Path(params["path"]).is_absolute():
-                params["path"] = str(base / params["path"])
-    cache = data.get("cache")
-    if cache and "path" in cache and not Path(cache["path"]).is_absolute():
-        cache["path"] = str(base / cache["path"])
-
-
 def _is_valid_module_path(path: str) -> bool:
     """Return True if path is a non-empty dotted Python identifier."""
     return bool(path) and all(part.isidentifier() for part in path.split("."))
 
 
-def _merge_params(section: str, params: dict, driver_config: dict) -> None:
-    """Merge params into driver_config, raising ValueError on key conflicts."""
-    conflicts = set(params) & set(driver_config)
-    if conflicts:
+def _merge_params(
+    section: str,
+    params: dict,
+    driver_config: dict,
+    defined_by: dict[str, str],
+) -> None:
+    """Merge one section's params into the shared driver_config namespace.
+
+    Raises on a key already contributed by another section, naming both — the user
+    cannot fix a collision without knowing who they are colliding with.
+    """
+    for key in sorted(set(params) & set(driver_config)):
         raise ValueError(
-            f"Parameter(s) {sorted(conflicts)} in [{section}] conflict "
-            f"with an already-defined key. Use a module-specific prefix to "
-            f"disambiguate (e.g. mymodel_threshold)."
+            f"Parameter {key!r} is defined by both [{defined_by[key]}] and "
+            f"[{section}]. Module parameters share one flat namespace, so give the "
+            f"two parameters distinct names (e.g. {defined_by[key]}_{key} and "
+            f"{section}_{key}) and rename the keyword argument in each module to "
+            f"match."
         )
     driver_config |= params
+    defined_by.update(dict.fromkeys(params, section))

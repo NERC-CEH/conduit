@@ -9,7 +9,16 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .config import IOSpec, SubsetSpec
+from .formats import (
+    FORMATS,
+    Format,
+    dataset_to_frame,
+    format_for,
+    read_in_group,
+    write_frame,
+    write_in_group,
+)
+from .specs import IOSpec, SubsetSpec
 
 
 def effective_suffix(label: str, spec: IOSpec) -> str:
@@ -34,8 +43,8 @@ def var_mapping(
 
     - a **mapping** ``{node_name: file_var}`` is used verbatim (suffix-free);
     - a **list** yields ``{f"{var}{suffix}": var}`` using `effective_suffix`;
-    - ``vars is None`` (programmatic "load everything") maps every name in
-      ``available`` through the suffix.
+    - ``vars is None`` — an input section that omits ``vars`` — maps every name in
+      ``available`` (the file's variables) through the suffix.
     """
     if isinstance(spec.vars, dict):
         return dict(spec.vars)
@@ -51,16 +60,7 @@ def var_mapping(
 
 def load_dataset(path: str | PathLike) -> xr.Dataset:
     """Open a NetCDF or Zarr dataset with coordinates decoded."""
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix in (".nc", ".netcdf"):
-        return xr.open_dataset(path, engine="netcdf4", decode_coords="all")
-    elif suffix == ".zarr":
-        return xr.open_dataset(
-            path, engine="zarr", decode_coords="all", consolidated=False
-        )
-    else:
-        raise ValueError(f"Unsupported file extension: {p.suffix}.")
+    return read_in_group(path, "dataset")
 
 
 def load_timeseries(path: str | PathLike) -> xr.Dataset:
@@ -68,26 +68,7 @@ def load_timeseries(path: str | PathLike) -> xr.Dataset:
 
     Returns a Dataset with dims (time, pixel) where pixel has coordinate value 0.
     """
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix == ".csv":
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
-    elif suffix in (".parquet", ".pq"):
-        df = pd.read_parquet(path)
-    else:
-        raise ValueError(
-            f"Unsupported format: '{suffix}'. Use '.csv', '.parquet', or '.pq'."
-        )
-
-    if "time" in df.columns:
-        df = df.set_index("time")
-    if df.index.name != "time":
-        df.index.name = "time"
-    df.index = pd.to_datetime(df.index)
-
-    ds = df.to_xarray()
-    ds = ds.expand_dims({"pixel": [0]})
-    return ds.transpose("time", "pixel")
+    return read_in_group(path, "table")
 
 
 def load_static(path: str | PathLike) -> xr.Dataset:
@@ -95,38 +76,14 @@ def load_static(path: str | PathLike) -> xr.Dataset:
 
     Returns a Dataset with dim (pixel,) where pixel has coordinate value 0.
     """
-    import json
-    import tomllib
-
-    p = Path(path)
-    suffix = p.suffix.lower()
-
-    if suffix == ".json":
-        with open(p) as f:
-            data: dict = json.load(f)
-    elif suffix == ".toml":
-        with open(p, "rb") as f:
-            data = tomllib.load(f)
-    else:
-        raise ValueError(f"Unsupported format: '{suffix}'. Use '.json' or '.toml'.")
-
-    return xr.Dataset(
-        {
-            k: xr.DataArray(np.asarray([v], dtype=float), dims=["pixel"])
-            for k, v in data.items()
-        },
-        coords={"pixel": [0]},
-    )
+    return read_in_group(path, "scalar")
 
 
 def _load_raw(path: str) -> xr.Dataset:
-    """Dispatch to the right loader based on file extension."""
-    suffix = Path(path).suffix.lower()
-    if suffix in (".nc", ".netcdf", ".zarr"):
-        return load_dataset(path)
-    if suffix in (".json", ".toml"):
-        return load_static(path)
-    return load_timeseries(path)  # raises ValueError for unsupported extensions
+    """Open any supported input file (`conduit.formats` picks the reader)."""
+    fmt = format_for(path)
+    assert fmt.read is not None  # every registered format is readable
+    return fmt.read(path)
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +108,7 @@ def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
         coord = obj.coords.get(dim)
         if coord is not None and (
             np.issubdtype(coord.dtype, np.datetime64)
-            or type(obj.indexes.get(dim)).__name__ == "CFTimeIndex"
+            or isinstance(obj.indexes.get(dim), xr.CFTimeIndex)
         ):
             dims.append(str(dim))
     return dims
@@ -184,45 +141,24 @@ def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
 
 def dataset_to_dataframe(ds: xr.Dataset) -> pd.DataFrame:
     """Convert output Dataset to DataFrame, squeezing size-1 pixel dim if present."""
-    if "pixel" in ds.dims:
-        ds = ds.squeeze("pixel", drop=True)
-    return ds.to_dataframe()
+    return dataset_to_frame(ds)
 
 
 def save_timeseries(df: pd.DataFrame, path: str | PathLike) -> None:
     """Save a DataFrame to CSV or Parquet, auto-detected by extension."""
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix == ".csv":
-        df.to_csv(path)
-    elif suffix in (".parquet", ".pq"):
-        df.to_parquet(path)
-    else:
-        raise ValueError(
-            f"Unsupported format: '{suffix}'. Use '.csv', '.parquet', or '.pq'."
-        )
+    write_frame(df, path)
 
 
 def _save_netcdf(ds: xr.Dataset, path: str | PathLike) -> None:
     """Save a dataset to NetCDF or Zarr based on extension."""
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix in (".nc", ".netcdf"):
-        ds.to_netcdf(path, engine="netcdf4")
-    elif suffix == ".zarr" or (not suffix and p.is_dir()):
-        ds.to_zarr(path, consolidated=False)
-    else:
-        raise ValueError(
-            f"Unsupported file extension: '{suffix}'. Use '.nc', '.netcdf', or '.zarr'."
-        )
+    write_in_group(ds, path, "dataset")
 
 
 def _save(ds: xr.Dataset, path: str) -> None:
-    suffix = Path(path).suffix.lower()
-    if suffix in (".nc", ".netcdf", ".zarr"):
-        _save_netcdf(ds, path)
-    else:
-        save_timeseries(dataset_to_dataframe(ds), path)
+    """Write ``ds`` to any writable format (`conduit.formats` picks the writer)."""
+    fmt = format_for(path, writable=True)
+    assert fmt.write is not None
+    fmt.write(ds, path)
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +180,7 @@ def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
     geospatial: bool | None = None,
-) -> dict[str, Any]:
+) -> dict[str, xr.DataArray]:
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
     Node names are formed from each section's variables and its
@@ -255,10 +191,9 @@ def load_inputs(
     `xarray_annotated.temporal.Freq` contract for it.
 
     The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
-    ``latitude``/``longitude``) is **opt-in** and lazily loaded: it activates only
-    when an input carries CRS metadata, importing the optional ``geo`` extra
-    (``rioxarray``/``pyproj``) at that point. Non-gridded pipelines never touch
-    those dependencies. Pass ``geospatial=True``/``False`` to force it on or off.
+    ``latitude``/``longitude``) is **opt-in**: it activates only when an input carries
+    CRS metadata (see `conduit.gridded`). Pass ``geospatial=True``/``False`` to force
+    it on or off.
 
     Parameters
     ----------
@@ -272,13 +207,13 @@ def load_inputs(
         Force the geospatial path on (``True``) or off (``False``). When ``None``
         (default) it is auto-detected from the presence of CRS metadata.
     """
-    # The gridded (CRS/pixel) layer is optional and domain-specific; import it
-    # lazily so non-gridded pipelines never touch it. `has_crs` is a cheap,
-    # dependency-free CF-metadata check; the stacking/reprojection it guards is
-    # what pulls the optional `geo` extra, and only when CRS metadata is present.
-    from .gridded.io import compute_lat_lon, has_crs, stack_if_gridded
+    from .gridded.io import (  # lazy: optional geo extra (see conduit.gridded)
+        compute_lat_lon,
+        has_crs,
+        stack_if_gridded,
+    )
 
-    inputs: dict[str, Any] = {}
+    inputs: dict[str, xr.DataArray] = {}
     raw_datasets = load_raw_datasets(input_specs)
 
     # Invariant: at most one time dimension per input dataset. A second datetime
@@ -322,18 +257,19 @@ def load_inputs(
     return inputs
 
 
-def subset_inputs(inputs: dict[str, Any], subset_spec: SubsetSpec) -> dict[str, Any]:
-    """Slice every pixel-bearing input to ``subset_spec``'s pixel range.
+def subset_inputs(
+    inputs: dict[str, xr.DataArray], subset_spec: SubsetSpec
+) -> dict[str, xr.DataArray]:
+    """Slice every input carrying ``subset_spec.dim`` to that spec's range.
 
-    Inputs without a ``pixel`` dimension pass through untouched. Shared by
-    `load_inputs` and by `conduit.gridded.io.create_output_store`, which reuses it
-    to derive a single-pixel probe of the pipeline.
+    Inputs without the dimension (a static scalar, say) pass through untouched.
+    Shared by `load_inputs` and by `conduit.gridded.io.create_output_store`, which
+    reuses it to derive a single-pixel probe of the pipeline.
     """
-    sl = slice(subset_spec.pixel_start, subset_spec.pixel_end)
+    dim = subset_spec.dim
+    sl = slice(subset_spec.start, subset_spec.stop)
     return {
-        name: val.isel(pixel=sl)
-        if isinstance(val, xr.DataArray) and "pixel" in val.dims
-        else val
+        name: val.isel({dim: sl}) if dim in val.dims else val
         for name, val in inputs.items()
     }
 
@@ -343,14 +279,14 @@ def get_outputs(
     output_specs: dict[str, IOSpec],
     stacked: bool = False,
 ) -> dict[str, xr.Dataset]:
-    """Merge model results into per-frequency Datasets.
+    """Merge model results into one Dataset per output section.
 
     Parameters
     ----------
     results:
         Dict returned by ``driver.execute()``, keyed by Hamilton node name.
     output_specs:
-        Mapping from frequency string to ``IOSpec``.
+        Mapping from section label to ``IOSpec``.
         Typically ``parsed_config.output_specs``.
     stacked:
         If ``False`` (default) gridded results are unstacked to a ``(y, x)`` grid.
@@ -358,17 +294,20 @@ def get_outputs(
         flattened to serialisable 1D coords) so that subset processes can write
         partial outputs that are reassembled later — see `unstack_pixel`.
     """
-    from .gridded.io import flatten_pixel_index, unstack_if_gridded
+    from .gridded.io import (  # lazy: optional geo extra
+        flatten_pixel_index,
+        unstack_if_gridded,
+    )
 
     transform = flatten_pixel_index if stacked else unstack_if_gridded
     out: dict[str, xr.Dataset] = {}
-    for freq, spec in output_specs.items():
+    for label, spec in output_specs.items():
         # (Re-)assign the file variable name to each array so merging succeeds.
         arrays = [
             results[node].rename(file_var)
-            for node, file_var in var_mapping(freq, spec).items()
+            for node, file_var in var_mapping(label, spec).items()
         ]
-        out[freq] = transform(xr.merge(arrays))
+        out[label] = transform(xr.merge(arrays))
     return out
 
 
@@ -378,14 +317,14 @@ def save_outputs(
     subset_spec: SubsetSpec | None = None,
     provenance: dict[str, str] | None = None,
 ) -> None:
-    """Write per-frequency Datasets to disk.
+    """Write each output section's Dataset to disk.
 
     Parameters
     ----------
     output_datasets:
         Dict returned by ``get_outputs()``.
     output_specs:
-        Mapping from frequency string to ``IOSpec``.
+        Mapping from section label to ``IOSpec``.
         Typically ``parsed_config.output_specs``.
     subset_spec:
         If provided, the datasets are partial (a stacked pixel subset) and are
@@ -398,32 +337,33 @@ def save_outputs(
         subset/Zarr-region path, whose store attrs are written once by
         ``create-store``.
     """
-    for freq, ds in output_datasets.items():
-        path = output_specs[freq].path
+    for label, ds in output_datasets.items():
+        path = output_specs[label].path
         if provenance:
             ds = ds.assign_attrs(provenance)
         if subset_spec is None:
             _save(ds, path)
             continue
 
-        from .gridded.io import save_zarr_region, subset_path
+        from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
 
-        suffix = Path(path).suffix.lower()
-        if suffix in (".nc", ".netcdf"):
-            _save_netcdf(ds, subset_path(path, subset_spec))
-        elif suffix == ".zarr":
+        fmt = _subset_format(path, label)
+        if fmt.needs_store:
             save_zarr_region(ds, path, subset_spec)
         else:
-            raise ValueError(
-                f"[subset] is only supported for NetCDF (.nc) and Zarr (.zarr) "
-                f"outputs, but output '{freq}' has path '{path}'."
-            )
+            _save_netcdf(ds, subset_path(path, subset_spec))
 
 
-#: Output file extensions `save_outputs` knows how to write.
-_SUPPORTED_OUTPUT_SUFFIXES: frozenset[str] = frozenset(
-    {".nc", ".netcdf", ".zarr", ".csv", ".parquet", ".pq"}
-)
+def _subset_format(path: str, label: str) -> "Format":
+    """Return the `Format` for a ``[subset]`` output, or raise if it cannot be one."""
+    fmt = format_for(path, writable=True)
+    if not fmt.supports_subset:
+        raise ValueError(
+            f"[subset] is only supported for "
+            f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
+            f"outputs, but output {label!r} has path {path!r}."
+        )
+    return fmt
 
 
 def assert_output_paths_writable(
@@ -435,49 +375,39 @@ def assert_output_paths_writable(
     Raises (before any computation) if a destination would fail at save time: an
     unsupported file extension, a missing or unwritable parent directory, a subset
     run targeting a Zarr store that has not been pre-created, or a subset run
-    targeting an unsupported (CSV/Parquet) output. This mirrors the dispatch and
-    guards in `save_outputs`, `_save` and `_save_zarr_region`, so a
-    clean pass here means ``save_outputs`` will not reject the path. Used by
-    ``conduit run --dry-run``.
+    targeting a format that cannot be partially written (CSV/Parquet). Both this and
+    `save_outputs` derive those rules from `conduit.formats`, so a clean pass here
+    means ``save_outputs`` will not reject the path. Used by ``conduit run
+    --dry-run``.
     """
-    for freq, spec in output_specs.items():
+    for label, spec in output_specs.items():
         path = Path(spec.path)
-        suffix = path.suffix.lower()
-        if suffix not in _SUPPORTED_OUTPUT_SUFFIXES:
-            raise ValueError(
-                f"output {freq!r} has unsupported file extension "
-                f"{suffix or '(none)'!r} (path {spec.path!r}). Use one of "
-                f"{sorted(_SUPPORTED_OUTPUT_SUFFIXES)}."
-            )
+        # Raises with the full list of writable formats for an unknown extension.
+        format_for(spec.path, writable=True)
 
         if subset_spec is not None:
-            if suffix in (".nc", ".netcdf"):
-                from .gridded.io import subset_path
-
-                path = subset_path(spec.path, subset_spec)
-            elif suffix == ".zarr":
+            fmt = _subset_format(spec.path, label)
+            if fmt.needs_store:
                 if not Path(spec.path).exists():
                     raise FileNotFoundError(
-                        f"Zarr store {spec.path!r} for output {freq!r} does not exist. "
-                        f"Create it once before subset runs with "
+                        f"Zarr store {spec.path!r} for output {label!r} does not "
+                        f"exist. Create it once before subset runs with "
                         f"`conduit gridded create-store <config>`."
                     )
                 continue  # store exists; the region write targets it directly
-            else:
-                raise ValueError(
-                    f"[subset] is only supported for NetCDF (.nc) and Zarr (.zarr) "
-                    f"outputs, but output {freq!r} has path {spec.path!r}."
-                )
+            from .gridded.io import subset_path  # lazy: geo extra
+
+            path = subset_path(spec.path, subset_spec)
 
         parent = path.parent
         if not parent.is_dir():
             raise FileNotFoundError(
-                f"output {freq!r} parent directory {str(parent)!r} does not exist "
+                f"output {label!r} parent directory {str(parent)!r} does not exist "
                 f"(path {spec.path!r})."
             )
         if not os.access(parent, os.W_OK):
             raise PermissionError(
-                f"output {freq!r} parent directory {str(parent)!r} is not writable "
+                f"output {label!r} parent directory {str(parent)!r} is not writable "
                 f"(path {spec.path!r})."
             )
 
@@ -497,16 +427,16 @@ def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
 def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     """Build Hamilton node names from output specifications.
 
-    Converts per-frequency variable lists into the flat list of node names
+    Converts each section's variable list into the flat list of node names
     expected by ``driver.execute(final_vars=...)``.
 
     Parameters
     ----------
     output_specs:
-        Mapping from frequency string to ``IOSpec``.  Pass the full
+        Mapping from section label to ``IOSpec``.  Pass the full
         ``parsed_config.output_specs`` for all outputs, or a subset
         (e.g. ``{"monthly": parsed.output_specs["monthly"]}``) to
-        request a single frequency.
+        request a single section's nodes.
 
     Returns
     -------
@@ -515,11 +445,11 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     """
     names: list[str] = []
     seen: set[str] = set()
-    for freq, spec in output_specs.items():
-        for node in var_mapping(freq, spec):
+    for label, spec in output_specs.items():
+        for node in var_mapping(label, spec):
             if node in seen:
                 raise ValueError(
-                    f"output node name {node!r} (from [outputs.{freq}]) is requested "
+                    f"output node name {node!r} (from [outputs.{label}]) is requested "
                     f"by more than one output section. Give each output a distinct "
                     f"node name (suffix or explicit mapping)."
                 )

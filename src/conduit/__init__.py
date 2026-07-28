@@ -10,15 +10,7 @@ from xarray_annotated.schema import (
 from xarray_annotated.units import UnitsWarning, declare_units, use_cf_units
 
 from ._version import __version__
-from .config import (
-    BlockingSpec,
-    CacheSpec,
-    IOSpec,
-    ParsedConfig,
-    ResampleSpec,
-    SubsetSpec,
-    load_config,
-)
+from .config import load_config
 from .dag.driver import build_driver
 from .io import (
     get_final_vars,
@@ -26,10 +18,20 @@ from .io import (
     load_inputs,
     save_outputs,
 )
+from .specs import (
+    AnnotationPolicySpec,
+    BlockingSpec,
+    CacheSpec,
+    IOSpec,
+    ParsedConfig,
+    ResampleSpec,
+    SubsetSpec,
+)
 
 use_cf_units()
 
 __all__ = [
+    "AnnotationPolicySpec",
     "BlockingSpec",
     "CacheSpec",
     "Coords",

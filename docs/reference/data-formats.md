@@ -10,18 +10,23 @@ automatically from the file extension.
 
 ## Supported formats
 
-| Extension | Format | Loader |
-|-----------|--------|--------|
-| `.nc`, `.netcdf` | NetCDF | `xarray` + `netcdf4` engine |
-| `.zarr` | Zarr store | `xarray` + `zarr` engine |
-| `.csv` | CSV (first column = date index) | `pandas.read_csv` |
-| `.parquet`, `.pq` | Parquet | `pandas.read_parquet` |
-| `.json` | JSON (key → scalar mapping) | `json.load` |
-| `.toml` | TOML (key → scalar mapping) | `tomllib.load` |
+| Extension | Format | Loader | Output? | `[subset]`? |
+|-----------|--------|--------|---------|-------------|
+| `.nc`, `.netcdf` | NetCDF | `xarray` + `netcdf4` engine | ✅ | ✅ (one file per part) |
+| `.zarr` | Zarr store | `xarray` + `zarr` engine | ✅ | ✅ (regions of a shared store) |
+| `.csv` | CSV (first column = date index) | `pandas.read_csv` | ✅ | ❌ |
+| `.parquet`, `.pq` | Parquet | `pandas.read_parquet` | ✅ | ❌ |
+| `.json` | JSON (key → scalar mapping) | `json.load` | ❌ input only | ❌ |
+| `.toml` | TOML (key → scalar mapping) | `tomllib.load` | ❌ input only | ❌ |
 
 NetCDF and Zarr are the primary formats for N-dimensional (gridded or multi-point) data.
 CSV/Parquet are for single-site time series. JSON/TOML are for time-invariant scalar
-parameters.
+parameters, and are input-only.
+
+This table *is* [`conduit.formats.FORMATS`](../api/conduit.formats.md) — every
+extension-based decision conduit makes (which reader, which writer, whether a
+`[subset]` run can write it, whether it needs a pre-created store) is a lookup into
+that one registry. Adding a format means adding one entry to it.
 
 ## Spatial handling
 

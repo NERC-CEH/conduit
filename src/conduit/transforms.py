@@ -32,22 +32,11 @@ def resample(
     coordinates (`conduit.io.sole_time_dim`), so an axis need not be called
     ``time``; pass ``dim`` explicitly to override.
 
-    Units note: reducing along the time axis is dimensionally homogeneous, so both
-    'mean' and 'sum' preserve units — hence we copy attrs (incl. CF 'units')
-    unchanged. This matches native pint-xarray, which does *not* multiply by the
-    timestep on a sum. The choice of aggfunc must therefore match the *kind* of
-    quantity:
-
-      - rate / intensive (e.g. 'g C m-2 day-1') -> use 'mean'; the result is the
-        mean rate over the window, same units.
-      - amount-per-period / extensive (e.g. 'g C m-2' fixed that day) -> use 'sum';
-        the result is the window total, same units.
-
-    The footgun is 'sum'-ming a rate to get a window total: the correct operation
-    is an integral (Σ rateᵢ·Δt), which would cancel the time dimension, but
-    xarray's .sum() omits the Δt factor. The result is dimensionally consistent
-    (so unit validation cannot catch it) yet physically meaningless. Pick the
-    aggfunc to match the quantity.
+    .. warning::
+       Units are preserved unchanged, so ``aggfunc`` must match the *kind* of
+       quantity: ``mean`` for a rate, ``sum`` for an amount-per-period. Summing a
+       rate is dimensionally consistent — so **no contract check can catch it** —
+       and physically meaningless. See the "Resampling & units" guide.
     """
     dim = dim or sole_time_dim(var_in, f"resample input {var_in.name!r}")
     out = getattr(var_in.resample({dim: freq}), aggfunc)()

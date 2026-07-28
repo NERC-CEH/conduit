@@ -8,11 +8,13 @@ no CRS), the frequency-suffix naming is opt-out, and the geospatial stack
 
 import subprocess
 import sys
+from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import xarray as xr
 
-from conduit.config import IOSpec, load_config
+from conduit.config import IOSpec, SubsetSpec, load_config
 from conduit.dag.driver import build_driver
 from conduit.io import effective_suffix, get_final_vars, get_outputs, load_inputs
 
@@ -77,7 +79,9 @@ class TestNonTemporalPipeline:
         )
         parsed = load_config(cfg)
         inputs = load_inputs(parsed.input_specs)
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         final_vars = get_final_vars(parsed.output_specs)
         assert final_vars == ["mean_reflectance_scene"]
         results = dr.execute(final_vars, inputs=inputs)  # type: ignore[reportArgumentType]
@@ -104,13 +108,96 @@ class TestBlockingArbitraryDim:
         )
         parsed = load_config(cfg)
         inputs = load_inputs(parsed.input_specs)
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         final = ["scaled_scene"]
 
         ref = dr.execute(final, inputs=inputs)  # type: ignore[reportArgumentType]
         spec = BlockingSpec(block_size=2, dim="location")
         blocked = execute_blocked(dr, inputs, final, spec)
         xr.testing.assert_identical(blocked["scaled_scene"], ref["scaled_scene"])
+
+
+class TestSubsetArbitraryDim:
+    """[subset] partitions any dim, mirroring [blocking] — it is not pixel-only.
+
+    The two mechanisms slice the same way and differ only in *who* runs the parts
+    (one process sequentially vs. many processes concurrently), so the asymmetry
+    where only [blocking] had a `dim` was accidental.
+    """
+
+    def _config(self, tmp_path, subset: str = "") -> Path:
+        _write_scene(tmp_path / "scene.nc")
+        cfg = tmp_path / f"config{'_subset' if subset else ''}.toml"
+        cfg.write_text(
+            "[[node]]\n"
+            'name = "scaled_scene"\n'
+            'inputs = ["reflectance_scene"]\n'
+            'expression = "reflectance_scene * 2.0"\n\n'
+            "[inputs.scene]\n"
+            f'path = "{tmp_path / "scene.nc"}"\n'
+            'vars = ["reflectance"]\n\n'
+            "[outputs.scene]\n"
+            f'path = "{tmp_path / "out.nc"}"\n'
+            'vars = ["scaled"]\n' + subset
+        )
+        return cfg
+
+    def test_subset_over_non_pixel_dim(self, tmp_path):
+        """Subset parts over `location` merge back to the full run, exactly."""
+        from conduit.gridded.io import merge_subset_outputs
+        from conduit.io import save_outputs
+
+        # Reference: the whole thing in one go.
+        parsed = load_config(self._config(tmp_path))
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
+        final = get_final_vars(parsed.output_specs)
+        reference = get_outputs(
+            dr.execute(final, inputs=load_inputs(parsed.input_specs)),  # type: ignore[reportArgumentType]
+            parsed.output_specs,
+        )["scene"]
+
+        # Two independent "processes", each over half the 4 locations.
+        for start, stop in ((0, 2), (2, 4)):
+            spec = SubsetSpec(start=start, stop=stop, dim="location")
+            inputs = load_inputs(parsed.input_specs, subset_spec=spec)
+            assert inputs["reflectance_scene"].sizes["location"] == 2
+            results = dr.execute(final, inputs=inputs)  # type: ignore[reportArgumentType]
+            save_outputs(
+                get_outputs(results, parsed.output_specs, stacked=True),
+                parsed.output_specs,
+                subset_spec=spec,
+            )
+
+        parts = sorted(p.name for p in tmp_path.glob("out_location*.nc"))
+        assert parts == ["out_location0-2.nc", "out_location2-4.nc"]
+
+        merge_subset_outputs(parsed.output_specs, dim="location")
+        merged = xr.open_dataset(tmp_path / "out.nc")
+        xr.testing.assert_allclose(
+            merged["scaled"].transpose(*reference["scaled"].dims),
+            reference["scaled"],
+        )
+
+    def test_create_store_rejects_non_pixel_subset_dim(self, tmp_path):
+        """A Zarr store *is* the pixel grid, so it cannot be partitioned otherwise."""
+        import pytest
+
+        from conduit.gridded.io import create_output_store
+
+        cfg = self._config(
+            tmp_path, subset='\n[subset]\nstart = 0\nstop = 2\ndim = "location"\n'
+        )
+        parsed = load_config(cfg)
+        # Point the output at a Zarr store, which is what needs a shared store.
+        zarr_specs = {"scene": IOSpec(path=str(tmp_path / "out.zarr"), vars=["scaled"])}
+        parsed = replace(parsed, output_specs=zarr_specs)
+
+        with pytest.raises(ValueError, match="can only be partitioned over 'pixel'"):
+            create_output_store(parsed)
 
 
 def test_no_geospatial_deps_imported_without_crs(tmp_path):
