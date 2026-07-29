@@ -14,7 +14,6 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
       - uses: extractions/setup-just@v4
       - run: uv sync --group docs --locked
-      - run: uv run just export-all
       - run: uv run just docs
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name == 'push'

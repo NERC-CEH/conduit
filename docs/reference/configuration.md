@@ -328,9 +328,9 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks are a real importable library (`conduit.checks`), so the
-[notebook-driven path](../guides/drive-from-python.md) calls them directly — the config
-list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
+The checks are a real importable library ([`conduit.checks`](../api/conduit.checks.md)),
+so the [notebook-driven path](../guides/drive-from-python.md) calls them directly — the
+config list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
 block conduit performs no cross-input validation (it does not guess which inputs are
 *meant* to align — only you know that). Under [`[subset]`](#subset) they are skipped, with
 a warning, since they describe the whole domain rather than a single shard.

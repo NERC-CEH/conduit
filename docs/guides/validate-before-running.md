@@ -69,7 +69,8 @@ align — different time axes across inputs are perfectly normal (a daily forcin
 monthly boundary condition), so an automatic all-pairs check would false-positive on most
 real pipelines. The `[validation]` block is where *you* state which relationships must
 hold. (The full check list and keyword arguments are in the
-[configuration reference](../reference/configuration.md#validation).)
+[configuration reference](../reference/configuration.md#validation); the predicates
+themselves are documented in [`conduit.checks`](../api/conduit.checks.md).)
 
 ## The wiring check
 
