@@ -22,6 +22,7 @@ dependencies = [
     "tomli-w>=1.2.0",
     "typer>=0.24.1",
     "xarray>=2026.2.0",
+    # NOTE: pin to >=0.4.1 after pypi publish.
     "xarray-annotated[cf] @ git+https://github.com/jmarshrossney/xarray-annotated.git",
     "zarr>=3.2.1",
 ]
