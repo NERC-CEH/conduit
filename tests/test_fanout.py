@@ -54,11 +54,13 @@ class TestForEachExpansion:
                 ]
             }
         ).parse()
-        assert {s.name for s in parsed.driver_config["node_specs"]} == {
+        assert {s.name for s in parsed.node_specs} == {
             "a_doubled",
             "b_doubled",
         }
-        dr = build_driver(parsed.modules, parsed.driver_config)
+        dr = build_driver(
+            parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+        )
         out = dr.execute(["a_doubled"], inputs={"a": xr.DataArray([1.0, 2.0])})
         assert list(out["a_doubled"].values) == [2.0, 4.0]
 
@@ -113,7 +115,7 @@ class TestSchemaOnNode:
                 }
             )
             .parse()
-            .driver_config["node_specs"][0]
+            .node_specs[0]
         )
         assert spec.dims == ["time", "x"]
         assert spec.dtype == "float64"

@@ -87,4 +87,5 @@ def pipeline_driver(pipeline_config):
     return build_driver(
         pipeline_config.modules,
         pipeline_config.driver_config,
+        node_specs=pipeline_config.node_specs,
     )

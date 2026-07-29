@@ -24,15 +24,34 @@ def aridity_index_daily(
     ...
 ```
 
-conduit understands four **facets** of a contract, all through the same machinery:
+conduit understands five **facets** of a contract, all through the same machinery:
 
 - **units** (via `pint` / `cf-xarray`) — `"mm/day"`, `"Pa"`, `"1"` (dimensionless),
 - **dims** — the dimension names,
 - **coords** — required coordinate variables,
-- **dtype** — the array's element type.
+- **dtype** — the array's element type,
+- **freq** — how often the time axis ticks, and on what phase: `Freq("7D")`,
+  `Freq("W-SUN")`, `Freq("1ME")`.
 
-The `[[node]]` config form declares the same facets with `units`/`dims`/`coords`/`dtype`
-keys (see [Configuration › nodes](../reference/configuration.md#nodes)).
+The `[[node]]` config form declares the same facets with
+`units`/`dims`/`coords`/`dtype`/`freq` keys (see
+[Configuration › nodes](../reference/configuration.md#nodes)).
+
+Frequency is spelled as a marker rather than a bare string — a bare string in the
+metadata is always a unit:
+
+```python
+from xarray_annotated.temporal import Freq
+
+def weekly_mean(
+    temperature_daily: Annotated[xr.DataArray, "degC", Freq("D")],
+) -> Annotated[xr.DataArray, "degC", Freq("W-SUN")]:
+    ...
+```
+
+An *unanchored* declaration compares spacing only (`Freq("7D")` accepts any weekly),
+while an *anchored* one also pins the phase (`Freq("W-SUN")` rejects a `W-WED` axis) —
+which is what catches a resample landing on the wrong weekday.
 
 ## The leap: per-function → whole-graph
 
@@ -42,8 +61,9 @@ runs. conduit's contribution is to check the **whole graph, before any node exec
 At build time it walks every internal edge. Where the producer declares an output
 contract *and* the consumer declares an input contract, it proves the two are
 consistent — for units, that they are convertible (and, under `exact`, identical); for
-dims/coords/dtype, that they match. If they don't, the build fails with a message naming
-both nodes and the offending facet. No data has moved yet.
+dims/coords/dtype, that they match; for freq, that the spacing and phase can describe
+the same axis. If they don't, the build fails with a message naming both nodes and the
+offending facet. No data has moved yet.
 
 This is only possible because **both the annotations and the graph are present at the
 same time**. The annotations supply the per-edge claims; the graph supplies the edges to
@@ -71,6 +91,13 @@ inherit whatever contract `temperature_daily` declared. Such nodes are tagged
 generically — so an edge fed through a resample is still covered end to end. The
 `[[resample]]` preset produces passthrough nodes; you can mark your own inline
 `[[node]]` passthrough too.
+
+Propagation is decided per facet, because a passthrough preserves some facets and
+transforms others. A resample preserves units, but frequency is the very thing it
+*changes*, so no upstream `freq` is propagated across it. Instead a `[[resample]]`
+declares its own output frequency (the offset it resamples to), which makes it an
+ordinary, checkable producer for that one facet: declare `Freq("W-SUN")` downstream and
+a fat-fingered `W-WED` offset is caught when the driver is built.
 
 ## Conversion, not just rejection
 

@@ -1,13 +1,16 @@
 """Tests for parallel/subset output writing: stacked layout, create-store, merge."""
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
 from conduit.config import IOSpec, SubsetSpec
 from conduit.gridded.io import (
+    _find_subset_parts,
     create_output_store,
     flatten_pixel_index,
     merge_subset_outputs,
@@ -26,6 +29,15 @@ VAR = "mean_temperature"
 
 def _output_specs(path) -> dict[str, IOSpec]:
     return {"weekly": IOSpec(path=str(path), vars=[VAR])}
+
+
+def _create_store(parsed, output_specs, **kwargs) -> list[str]:
+    """``create_output_store`` for a pipeline with its outputs swapped out.
+
+    The store builder takes the whole ``ParsedConfig`` because it probes the DAG to
+    learn each output's real layout; these tests vary only the output specs.
+    """
+    return create_output_store(replace(parsed, output_specs=output_specs), **kwargs)
 
 
 def _execute(driver, config, spec: SubsetSpec | None, output_specs):
@@ -57,7 +69,11 @@ def stacked_reference(pipeline_config, pipeline_driver):
 
 class TestStackingHelpers:
     def test_subset_suffix(self):
-        assert subset_suffix(SubsetSpec(0, 500)) == "_p0-500"
+        assert subset_suffix(SubsetSpec(0, 500)) == "_pixel0-500"
+
+    def test_subset_suffix_names_the_dim(self):
+        spec = SubsetSpec(0, 10, dim="location")
+        assert subset_suffix(spec) == "_location0-10"
 
     def test_flatten_then_unstack_roundtrips(self, pipeline_driver, pipeline_config):
         """A flattened stacked dataset (the on-disk form) unstacks to a grid."""
@@ -67,6 +83,71 @@ class TestStackingHelpers:
         gridded = unstack_pixel(flatten_pixel_index(stacked))
         assert "pixel" not in gridded.dims
         assert "pixel" not in gridded[VAR].dims
+
+
+# ---------------------------------------------------------------------------
+# Part discovery: numeric ordering + completeness
+# ---------------------------------------------------------------------------
+
+
+class TestSubsetPartDiscovery:
+    """`_find_subset_parts` orders parts numerically and proves they cover the grid.
+
+    Exercised directly rather than through `merge_subset_outputs` because the
+    interesting boundaries (where a lexicographic sort diverges from a numeric one)
+    need far more pixels than the 2x2 session grid has.
+    """
+
+    def _touch(self, tmp_path, *names):
+        for name in names:
+            (tmp_path / name).touch()
+        return tmp_path / "weekly.nc"
+
+    def test_merge_sorts_parts_numerically(self, tmp_path):
+        # Lexicographically, '_pixel1000-1500' sorts before '_pixel500-1000'.
+        path = self._touch(
+            tmp_path,
+            "weekly_pixel500-1000.nc",
+            "weekly_pixel1000-1500.nc",
+            "weekly_pixel0-500.nc",
+        )
+        assert [p.name for p in _find_subset_parts(path)] == [
+            "weekly_pixel0-500.nc",
+            "weekly_pixel500-1000.nc",
+            "weekly_pixel1000-1500.nc",
+        ]
+
+    def test_merge_missing_part_raises(self, tmp_path):
+        path = self._touch(tmp_path, "weekly_pixel0-500.nc", "weekly_pixel1000-1500.nc")
+        with pytest.raises(ValueError, match="gap at pixel 500"):
+            _find_subset_parts(path)
+
+    def test_overlapping_parts_raise(self, tmp_path):
+        path = self._touch(
+            tmp_path,
+            "weekly_pixel0-500.nc",
+            "weekly_pixel400-900.nc",
+            "weekly_pixel900-1000.nc",
+        )
+        with pytest.raises(ValueError, match="overlap at pixel 500"):
+            _find_subset_parts(path)
+
+    def test_parts_not_starting_at_zero_raise(self, tmp_path):
+        path = self._touch(tmp_path, "weekly_pixel500-1000.nc")
+        with pytest.raises(ValueError, match="gap at pixel 0"):
+            _find_subset_parts(path)
+
+    def test_merge_ignores_non_part_files(self, tmp_path):
+        # A stray '_partial' file matches the old glob but is not a subset part.
+        path = self._touch(
+            tmp_path, "weekly_pixel0-500.nc", "weekly_partial.nc", "weekly_pixelXX.nc"
+        )
+        assert [p.name for p in _find_subset_parts(path)] == ["weekly_pixel0-500.nc"]
+
+    def test_no_parts_raises(self, tmp_path):
+        path = self._touch(tmp_path, "weekly_partial.nc")
+        with pytest.raises(FileNotFoundError, match="No subset parts"):
+            _find_subset_parts(path)
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +169,8 @@ class TestNetcdfSubset:
                 subset_spec=spec,
             )
 
-        parts = sorted(tmp_path.glob("weekly_p*.nc"))
-        assert [p.name for p in parts] == ["weekly_p0-2.nc", "weekly_p2-4.nc"]
+        parts = sorted(tmp_path.glob("weekly_pixel*.nc"))
+        assert [p.name for p in parts] == ["weekly_pixel0-2.nc", "weekly_pixel2-4.nc"]
         assert not out.exists()  # un-suffixed path untouched until merge
 
         merge_subset_outputs(specs)
@@ -100,6 +181,24 @@ class TestNetcdfSubset:
             ref_grid[VAR].values,
             equal_nan=True,
         )
+
+    def test_merge_refuses_to_silently_drop_a_failed_subset(
+        self, pipeline_config, pipeline_driver, tmp_path
+    ):
+        """A subset run that never produced its part must not merge to NaN stripes."""
+        out = tmp_path / "weekly.nc"
+        specs = _output_specs(out)
+
+        # Write the outer two thirds; the middle subset "fails" (writes nothing).
+        for spec in (SubsetSpec(0, 1), SubsetSpec(3, 4)):
+            save_outputs(
+                _execute(pipeline_driver, pipeline_config, spec, specs),
+                specs,
+                subset_spec=spec,
+            )
+
+        with pytest.raises(ValueError, match="gap at pixel 1"):
+            merge_subset_outputs(specs)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +213,7 @@ class TestZarrSubset:
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
 
-        created = create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        created = _create_store(pipeline_config, specs, pixel_chunk=2)
         assert created == [str(store)]
 
         # Freshly created store is all-NaN with the full pixel extent.
@@ -141,11 +240,59 @@ class TestZarrSubset:
         gridded = xr.open_zarr(tmp_path / "weekly_gridded.zarr", consolidated=False)
         assert set(gridded[VAR].dims) == set(unstack_pixel(stacked_reference)[VAR].dims)
 
+    def test_store_time_axis_comes_from_the_pipeline_not_the_label(
+        self, pipeline_config, stacked_reference, tmp_path
+    ):
+        """The store's time axis is what the DAG produces, not what a label suggests.
+
+        The output section here is labelled ``monthly`` — matching an input section
+        that has a genuine (and different) monthly time axis — but it carries the
+        *weekly* node. The store must take the weekly axis the pipeline actually
+        produces. The old ``dates_{label}`` lookup would have taken the monthly one.
+        """
+        store = tmp_path / "mislabelled.zarr"
+        specs = {
+            "monthly": IOSpec(
+                path=str(store), vars={f"{VAR}_weekly": VAR}
+            )  # node -> file var
+        }
+        _create_store(pipeline_config, specs, pixel_chunk=2)
+
+        produced = stacked_reference.indexes["time"]
+        monthly_input = load_inputs(pipeline_config.input_specs)[
+            "dummy_variable_monthly"
+        ].indexes["time"]
+        got = xr.open_zarr(store, consolidated=False).indexes["time"]
+
+        assert got.equals(produced)
+        assert not got.equals(monthly_input)  # the label was a red herring
+
+    def test_region_write_rejects_a_mismatched_time_axis(
+        self, pipeline_config, pipeline_driver, tmp_path
+    ):
+        """A store whose time axis disagrees with the data is caught, not written.
+
+        Region writes don't write coordinates, so without this guard the store would
+        keep its own (wrong) timestamps and silently mislabel the data.
+        """
+        from conduit.gridded.io import save_zarr_region
+
+        store = tmp_path / "weekly.zarr"
+        specs = _output_specs(store)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
+
+        spec = SubsetSpec(0, 2)
+        ds = _execute(pipeline_driver, pipeline_config, spec, specs)["weekly"]
+        shifted = ds.assign_coords(time=ds.indexes["time"] + pd.Timedelta(days=1))
+
+        with pytest.raises(ValueError, match="does not match Zarr store"):
+            save_zarr_region(shifted, str(store), spec)
+
     def test_merge_out_override(self, pipeline_config, pipeline_driver, tmp_path):
         """--out writes the merged grid to an explicit path."""
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
-        create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
         for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
@@ -170,7 +317,7 @@ class TestZarrSubset:
             ),
         }
 
-        created = create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        created = _create_store(pipeline_config, specs, pixel_chunk=2)
         assert len(created) == 2
 
         for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
@@ -206,7 +353,7 @@ class TestZarrSubset:
         """Re-creating an existing store needs --overwrite, to protect written data."""
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
-        create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
 
         # Write something, then prove a second create-store won't silently wipe it.
         save_outputs(
@@ -215,14 +362,36 @@ class TestZarrSubset:
             subset_spec=SubsetSpec(0, 2),
         )
         with pytest.raises(FileExistsError, match="overwrite"):
-            create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+            _create_store(pipeline_config, specs, pixel_chunk=2)
 
         # overwrite=True recreates it as an empty (all-NaN) store.
-        create_output_store(
-            pipeline_config.input_specs, specs, pixel_chunk=2, overwrite=True
-        )
+        _create_store(pipeline_config, specs, pixel_chunk=2, overwrite=True)
         recreated = xr.open_zarr(store, consolidated=False).compute()
         assert bool(np.isnan(recreated[VAR].values).all())
+
+    def test_create_store_rejects_non_pixel_point_dim(self, pipeline_config, tmp_path):
+        """A Zarr store *is* the stacked pixel grid, so it is pixel-only.
+
+        Building one for a pipeline whose point axis is called something else would
+        silently mislabel the store, so it is refused up front.
+        """
+        specs = _output_specs(tmp_path / "weekly.zarr")
+        with pytest.raises(ValueError, match="point_dim is 'location'"):
+            _create_store(
+                replace(pipeline_config, point_dim="location"), specs, pixel_chunk=2
+            )
+
+    def test_create_store_rejects_non_pixel_subset_dim(self, pipeline_config, tmp_path):
+        specs = _output_specs(tmp_path / "weekly.zarr")
+        with pytest.raises(ValueError, match="can only be partitioned over 'pixel'"):
+            _create_store(
+                replace(
+                    pipeline_config,
+                    subset_spec=SubsetSpec(0, 2, dim="location"),
+                ),
+                specs,
+                pixel_chunk=2,
+            )
 
     def test_merge_out_rejected_for_multiple_outputs(self):
         specs = {
@@ -239,24 +408,24 @@ class TestZarrSubset:
 
 
 def _config_text(synthetic_data_dir, out_path, subset=None, block_size=2):
+    # The weekly time axis is *derived* — nothing on disk has it, and the output
+    # section's label matches no input section. The Zarr store learns it by probing
+    # the pipeline, which is exactly what create-store could not do before.
     blocks = f"""\
-[[node]]
-name = "mean_temperature_weekly"
-inputs = ["temperature_daily"]
-expression = "temperature_daily.resample(time='7D').mean()"
+[[resample]]
+vars = ["temperature"]
+from = "daily"
+to = "weekly"
+freq = "7D"
 
-[grid]
+[[node]]
+name = "{VAR}_weekly"
+inputs = ["temperature_weekly"]
+expression = "temperature_weekly"
 
 [inputs.daily]
 path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]
-
-# Loaded for its weekly time axis only (emits ``dates_weekly``, which the Zarr
-# store template needs to size the ``time`` dim); no data vars, so no unused-input
-# WiringWarning.
-[inputs.weekly]
-path = "{synthetic_data_dir / "weekly.nc"}"
-vars = []
 
 [outputs.weekly]
 path = "{out_path}"
@@ -266,7 +435,7 @@ vars = ["{VAR}"]
 block_size = {block_size}
 """
     if subset is not None:
-        blocks += f"\n[subset]\npixel_start = {subset[0]}\npixel_end = {subset[1]}\n"
+        blocks += f"\n[subset]\nstart = {subset[0]}\nstop = {subset[1]}\n"
     return blocks
 
 
@@ -423,7 +592,7 @@ class TestSubsetErrors:
     def test_misaligned_subset_raises(self, pipeline_config, pipeline_driver, tmp_path):
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
-        create_output_store(pipeline_config.input_specs, specs, pixel_chunk=2)
+        _create_store(pipeline_config, specs, pixel_chunk=2)
 
         spec = SubsetSpec(1, 3)  # not aligned to chunk size 2
         with pytest.raises(ValueError, match="aligned"):
@@ -436,7 +605,7 @@ class TestSubsetErrors:
     def test_csv_subset_raises(self, pipeline_config, pipeline_driver, tmp_path):
         specs = _output_specs(tmp_path / "weekly.csv")
         spec = SubsetSpec(0, 2)
-        with pytest.raises(ValueError, match="only supported for NetCDF"):
+        with pytest.raises(ValueError, match=r"\[subset\] is only supported for"):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,

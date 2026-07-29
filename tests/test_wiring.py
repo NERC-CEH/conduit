@@ -87,7 +87,7 @@ class TestUnused:
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             check_wiring(
-                dr, ["out"], {"x": _da(), "dates_daily": _da()}, exempt={"dates_daily"}
+                dr, ["out"], {"x": _da(), "latitude": _da()}, exempt={"latitude"}
             )
 
     def test_clean_wiring_is_silent(self, register):

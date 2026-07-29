@@ -97,24 +97,27 @@ one.
 
 ```toml
 [[resample]]
-from_freq = "daily"
-to_freq = "weekly"
 vars = ["temperature", "precipitation"]
+from = "daily"
+to = "weekly"
+freq = "7D"
 aggfunc = "mean"          # mean | sum | max | min | first | last (default: mean)
 ```
 
 This produces `temperature_weekly` and `precipitation_weekly` from their daily
 counterparts. Because resampling preserves units and dims, the contract check
-propagates each source's declared contract across the resample edge.
+propagates each source's declared contract across the resample edge — and because it
+does *not* preserve frequency, the node declares `freq` as its own output contract.
 
-For the common daily→weekly, daily→monthly and weekly→monthly directions the pandas
-offset is inferred; for anything else, give an explicit `freq` (a pandas offset alias):
+`from` and `to` are only the node-name suffixes to read from and write to; the pandas
+offset alias in `freq` is what sets the frequency. Nothing is inferred from the labels,
+so any pair works:
 
 ```toml
 [[resample]]
-from_freq = "hourly"
-to_freq = "daily"
 vars = ["temperature"]
+from = "hourly"
+to = "daily"
 freq = "1D"
 aggfunc = "max"
 ```

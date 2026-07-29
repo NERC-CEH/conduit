@@ -68,14 +68,13 @@ def create_store(
     Zarr store.
     """
     parsed = load_config(config_file)
+    parsed.annotations.apply()
 
     chunk = pixel_chunk
     if chunk is None and parsed.blocking_spec is not None:
         chunk = parsed.blocking_spec.block_size
 
-    created = create_output_store(
-        parsed.input_specs, parsed.output_specs, pixel_chunk=chunk, overwrite=overwrite
-    )
+    created = create_output_store(parsed, pixel_chunk=chunk, overwrite=overwrite)
 
     if not created:
         typer.echo("No Zarr outputs in config; nothing to create.")
@@ -100,14 +99,19 @@ def merge(
         ),
     ] = None,
 ) -> None:
-    """Merge per-subset outputs back into a single gridded file per frequency.
+    """Merge per-subset outputs back into a single file per output section.
 
-    NetCDF parts (``*_p<start>-<end>.nc``) are concatenated and written to the
+    NetCDF parts (``*_<dim><start>-<stop>.nc``) are concatenated and written to the
     config's declared path; a shared Zarr store is unstacked into a sibling
     ``*_gridded.zarr`` store.  Use ``--out`` to override the destination.
+
+    The partition dimension is read from the config's ``[subset]`` section (so the
+    part filenames match what the subset runs wrote), defaulting to ``pixel``.
     """
     parsed = load_config(config_file)
-    written = merge_subset_outputs(parsed.output_specs, out=out)
+    parsed.annotations.apply()
+    dim = parsed.subset_spec.dim if parsed.subset_spec is not None else "pixel"
+    written = merge_subset_outputs(parsed.output_specs, out=out, dim=dim)
 
     if not written:
         typer.echo("No mergeable outputs in config.")

@@ -7,7 +7,18 @@ import xarray as xr
 from xarray_annotated.units import policy, units_from_signature
 
 from conduit.config import NodeSpec
-from conduit.dag.node import _build_fn_code, make_node_module
+from conduit.dag.node import (
+    RESERVED_NODE_NAMES,
+    _build_fn_code,
+    _node_namespace,
+    make_node_module,
+)
+
+
+def test_reserved_names_match_generated_namespace():
+    # The parser rejects node names in RESERVED_NODE_NAMES; that set is only
+    # correct if it is exactly what the generated module's namespace binds.
+    assert set(_node_namespace()) == RESERVED_NODE_NAMES
 
 
 def _expr_spec(name, inputs, expression, units=None):
@@ -80,6 +91,26 @@ class TestMakeNodeModule:
     def test_module_registered_in_sys_modules(self):
         mod = make_node_module([_expr_spec("sentinel_fn", [], "'ok'")])
         assert mod.__name__ in sys.modules
+
+    def test_repeated_builds_do_not_accumulate_modules(self):
+        # A random per-build name leaked one sys.modules entry per build, which is
+        # unbounded in a long-lived process (a calibration loop, a test session).
+        specs = [_expr_spec("acc_probe", ["a"], "a * 2")]
+        before = {n for n in sys.modules if n.startswith("conduit_node_generated")}
+        for _ in range(5):
+            make_node_module(specs)
+        after = {n for n in sys.modules if n.startswith("conduit_node_generated")}
+        assert len(after - before) <= 1
+
+    def test_different_specs_get_different_modules(self):
+        a = make_node_module([_expr_spec("x", ["a"], "a")])
+        b = make_node_module([_expr_spec("x", ["a"], "a * 2")])
+        assert a.__name__ != b.__name__
+
+    def test_same_specs_get_the_same_module_name(self):
+        a = make_node_module([_expr_spec("y", ["a"], "a")])
+        b = make_node_module([_expr_spec("y", ["a"], "a")])
+        assert a.__name__ == b.__name__
 
     def test_expression_function_is_callable(self):
         mod = make_node_module([_expr_spec("add", ["a", "b"], "a + b")])

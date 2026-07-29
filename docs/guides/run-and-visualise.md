@@ -25,10 +25,16 @@ conduit graph config.toml --pdf
 
 This writes `pipeline.pdf` showing every node and its dependencies. Each node displays
 its declared **unit** (read from the `Annotated[DataArray, "<unit>"]` type) in place of
-the generic `DataArray` type, and requested output nodes are highlighted. When your
-input sections represent temporal frequencies, edges are coloured by frequency and
-nodes are grouped into clusters. Pass `--png` for PNG instead, and `-o/--output` to
-change the base filename (default `pipeline`).
+the generic `DataArray` type, and requested output nodes are highlighted.
+
+Nodes are coloured and clustered by their declared **frequency** — the `freq` contract on
+a `[[node]]` or `[[resample]]` (`"7D"`, `"1ME"`). This is read from the DAG, not guessed
+from node names: a pipeline whose resample targets are called `raw` and `smoothed` groups
+exactly as well as one using `daily` and `weekly`. Nodes with no declared frequency
+inherit one when all their neighbours agree, and are otherwise left ungrouped.
+
+Pass `--png` for PNG instead, and `-o/--output` to change the base filename (default
+`pipeline`). The `.dot` source is always written.
 
 /// admonition | Requires Graphviz
     type: note

@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from conduit.config import Config, IOSpec, NodeSpec, ParsedConfig, load_config
+from conduit.config import (
+    AnnotationPolicySpec,
+    Config,
+    IOSpec,
+    NodeSpec,
+    ParsedConfig,
+    load_config,
+)
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -97,6 +104,16 @@ class TestInputSpecs:
         with pytest.raises(ValueError, match="node_name = file_var"):
             config.parse()
 
+    def test_omitted_vars_means_load_everything(self):
+        spec = Config({"inputs": {"met": {"path": "m.nc"}}}).parse().input_specs["met"]
+        assert spec.vars is None
+
+    def test_input_empty_vars_list_raises(self):
+        # Previously parsed fine, then silently bound nothing.
+        config = Config({"inputs": {"met": {"path": "m.nc", "vars": []}}})
+        with pytest.raises(ValueError, match="empty 'vars'"):
+            config.parse()
+
 
 class TestOutputSpecs:
     """Tests for output_specs — empty in test config (no [outputs.*] sections)."""
@@ -115,12 +132,15 @@ class TestOutputSpecs:
 
 
 class TestDriverConfig:
-    """Tests for driver_config: module params and node/resample specs only."""
+    """Tests for driver_config: user module params only."""
 
-    def test_node_specs_stashed_in_driver_config(self, parsed_config):
-        dc = parsed_config.driver_config
-        assert "node_specs" in dc
-        assert [spec.name for spec in dc["node_specs"]] == ["mean_temperature_weekly"]
+    def test_node_specs_are_a_parsed_field(self, parsed_config):
+        assert [s.name for s in parsed_config.node_specs] == ["mean_temperature_weekly"]
+
+    def test_node_specs_not_in_driver_config(self, parsed_config):
+        # node_specs are a real ParsedConfig field, not smuggled through Hamilton's
+        # driver config (where every user module would see them as a config key).
+        assert "node_specs" not in parsed_config.driver_config
 
     def test_module_params_merged_into_driver_config(self):
         config = Config(
@@ -161,6 +181,39 @@ class TestPathResolution:
         )
         assert config._data["inputs"]["daily"]["path"] == "relative/path.nc"
 
+    def test_dumps_preserves_relative_paths(self, tmp_path):
+        """Resolution happens in parse(), so dumps() is round-trip faithful."""
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            '[inputs.daily]\npath = "data/daily.nc"\nvars = ["t"]\n\n'
+            '[cache]\npath = ".conduit_cache"\n'
+        )
+        config = Config.load(cfg)
+
+        # The raw data still holds exactly what the user wrote ...
+        dumped = config.dumps()
+        assert 'path = "data/daily.nc"' in dumped
+        assert str(tmp_path) not in dumped
+
+        # ... while the parsed specs carry absolute paths.
+        parsed = config.parse()
+        assert Path(parsed.input_specs["daily"].path) == tmp_path / "data" / "daily.nc"
+        assert parsed.cache_spec is not None
+        assert Path(parsed.cache_spec.path) == tmp_path / ".conduit_cache"
+
+    def test_loads_leaves_paths_untouched(self):
+        """Config.loads has no base directory, so relative paths stay CWD-relative."""
+        config = Config.loads('[inputs.daily]\npath = "data/daily.nc"\nvars = ["t"]\n')
+        parsed = config.parse()
+        assert parsed.input_specs["daily"].path == "data/daily.nc"
+
+    def test_absolute_paths_are_left_alone(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        absolute = tmp_path / "elsewhere" / "daily.nc"
+        cfg.write_text(f'[inputs.daily]\npath = "{absolute}"\nvars = ["t"]\n')
+        parsed = Config.load(cfg).parse()
+        assert Path(parsed.input_specs["daily"].path) == absolute
+
 
 class TestValidation:
     """Tests for config validation behaviour."""
@@ -172,7 +225,9 @@ class TestValidation:
             from conduit.dag.driver import build_driver
 
             parsed = config.parse()
-            build_driver(parsed.modules, parsed.driver_config)
+            build_driver(
+                parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
+            )
 
         with pytest.raises(ValueError, match="Cannot load module"):
             _build()
@@ -186,6 +241,20 @@ class TestValidation:
         )
         with pytest.raises(ValueError, match="shared_param"):
             config.parse()
+
+    def test_param_conflict_names_both_sections(self):
+        config = Config(
+            {
+                "modela": {"_import_path": "pkg.a", "threshold": 1},
+                "modelb": {"_import_path": "pkg.b", "threshold": 2},
+            }
+        )
+        with pytest.raises(ValueError, match="threshold") as exc:
+            config.parse()
+        # A user cannot fix the collision without knowing who they collide with.
+        message = str(exc.value)
+        assert "[modela]" in message
+        assert "[modelb]" in message
 
     def test_external_module_missing_import_path_raises(self):
         config = Config({"my_section": {"param": "value"}})
@@ -228,18 +297,22 @@ class TestValidation:
             config.parse()
 
 
-class TestGrid:
-    """Tests for [grid] section parsing — now a no-op."""
+class TestRetiredSections:
+    """[grid] and [graphviz] used to be swallowed silently; both now raise.
 
-    def test_grid_section_does_not_add_grid_module(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
-        assert "grid" not in parsed.modules
+    Silently accepting a section invites typos: a config with a mistyped section
+    name would parse cleanly and then do nothing. They fall through to the
+    external-module path and fail for want of an _import_path, like any other
+    unknown section.
+    """
 
-    def test_no_grid_section_also_fine(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
-        assert "grid" not in parsed.modules
+    def test_grid_section_rejected(self):
+        with pytest.raises(ValueError, match="_import_path"):
+            Config({"grid": {}}).parse()
+
+    def test_graphviz_section_rejected(self):
+        with pytest.raises(ValueError, match="_import_path"):
+            Config({"graphviz": {"show_legend": True}}).parse()
 
 
 class TestResample:
@@ -249,7 +322,7 @@ class TestResample:
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"}
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": "1ME"}
                 ],
             }
         )
@@ -258,63 +331,79 @@ class TestResample:
         assert "resample_specs" not in parsed.driver_config
 
     def test_no_resample_omits_node_module(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
+        parsed = Config({}).parse()
         assert "node" not in parsed.modules
 
     def test_resample_desugars_to_passthrough_node_specs(self):
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp", "npp"], "from_freq": "daily", "to_freq": "weekly"}
+                    {
+                        "vars": ["gpp", "npp"],
+                        "from": "daily",
+                        "to": "weekly",
+                        "freq": "7D",
+                    }
                 ],
             }
         )
-        specs = config.parse().driver_config["node_specs"]
+        specs = config.parse().node_specs
         by_name = {s.name: s for s in specs}
         assert set(by_name) == {"gpp_weekly", "npp_weekly"}
         assert by_name["gpp_weekly"].inputs == ["gpp_daily"]
         assert by_name["gpp_weekly"].passthrough is True
-        assert "freq='7D'" in by_name["gpp_weekly"].expression
+        assert "freq='7D'" in (by_name["gpp_weekly"].expression or "")
 
-    def test_explicit_freq_in_expression(self):
+    def test_from_and_to_are_bare_suffixes_not_frequencies(self):
+        # ``from``/``to`` name the input and output nodes and mean nothing else;
+        # the frequency is ``freq`` alone.
         config = Config(
             {
                 "resample": [
                     {
                         "vars": ["gpp"],
-                        "from_freq": "daily",
-                        "to_freq": "tenday",
+                        "from": "raw",
+                        "to": "smoothed",
                         "freq": "10D",
                     }
                 ],
             }
         )
-        spec = config.parse().driver_config["node_specs"][0]
-        assert spec.name == "gpp_tenday"
-        assert "freq='10D'" in spec.expression
+        spec = config.parse().node_specs[0]
+        assert spec.name == "gpp_smoothed"
+        assert spec.inputs == ["gpp_raw"]
+        assert spec.freq == "10D"
+        assert "freq='10D'" in (spec.expression or "")
 
     def test_duplicate_resample_output_raises(self):
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "daily", "to_freq": "monthly"},
-                    {"vars": ["gpp"], "from_freq": "weekly", "to_freq": "monthly"},
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": "1ME"},
+                    {"vars": ["gpp"], "from": "weekly", "to": "monthly", "freq": "1ME"},
                 ],
             }
         )
         with pytest.raises(ValueError, match="Duplicate node name"):
             config.parse()
 
-    def test_unsupported_freq_pair_raises(self):
+    @pytest.mark.parametrize("missing", ["vars", "from", "to", "freq"])
+    def test_missing_required_key_raises(self, missing):
+        entry = {"vars": ["gpp"], "from": "daily", "to": "weekly", "freq": "7D"}
+        del entry[missing]
+        config = Config({"resample": [entry]})
+        with pytest.raises(ValueError, match=f"missing required key.*{missing}"):
+            config.parse()
+
+    def test_invalid_freq_raises_at_parse_time(self):
         config = Config(
             {
                 "resample": [
-                    {"vars": ["gpp"], "from_freq": "monthly", "to_freq": "daily"}
+                    {"vars": ["gpp"], "from": "daily", "to": "weekly", "freq": "nope"}
                 ],
             }
         )
-        with pytest.raises(ValueError, match="No default offset"):
+        with pytest.raises(ValueError, match="invalid frequency 'nope'"):
             config.parse()
 
 
@@ -337,11 +426,10 @@ class TestNode:
         assert "node" in parsed.modules
 
     def test_no_node_omits_node_module(self):
-        config = Config({"grid": {}})
-        parsed = config.parse()
+        parsed = Config({}).parse()
         assert "node" not in parsed.modules
 
-    def test_node_specs_in_driver_config(self):
+    def test_node_specs_parsed(self):
         config = Config(
             {
                 "node": [
@@ -354,7 +442,7 @@ class TestNode:
             }
         )
         parsed = config.parse()
-        specs = parsed.driver_config["node_specs"]
+        specs = parsed.node_specs
         assert len(specs) == 1
         assert isinstance(specs[0], NodeSpec)
         assert specs[0].name == "aridity_index_daily"
@@ -377,7 +465,7 @@ class TestNode:
             }
         )
         parsed = config.parse()
-        spec = parsed.driver_config["node_specs"][0]
+        spec = parsed.node_specs[0]
         assert isinstance(spec, NodeSpec)
         assert spec.expression is None
         assert spec.import_path == "mypackage.met_utils"
@@ -396,12 +484,12 @@ class TestNode:
                 ]
             }
         )
-        spec = config.parse().driver_config["node_specs"][0]
+        spec = config.parse().node_specs[0]
         assert spec.units == "1"
 
     def test_node_units_default_none(self):
         config = Config({"node": [{"name": "f", "inputs": ["a"], "expression": "a"}]})
-        assert config.parse().driver_config["node_specs"][0].units is None
+        assert config.parse().node_specs[0].units is None
 
     def test_invalid_node_units_raises(self):
         config = Config(
@@ -462,6 +550,59 @@ class TestNode:
         with pytest.raises(ValueError, match="must specify either"):
             config.parse()
 
+    @pytest.mark.parametrize("bad", ["mean temperature", "2fast", "a-b", "lambda"])
+    def test_node_name_must_be_identifier(self, bad):
+        config = Config({"node": [{"name": bad, "inputs": ["a"], "expression": "a"}]})
+        with pytest.raises(ValueError, match=repr(bad)):
+            config.parse()
+
+    def test_node_input_must_be_identifier(self):
+        config = Config(
+            {"node": [{"name": "foo", "inputs": ["a b"], "expression": "a"}]}
+        )
+        with pytest.raises(ValueError, match="'a b'"):
+            config.parse()
+
+    @pytest.mark.parametrize("reserved", ["xr", "Any", "import_module", "__transforms"])
+    def test_reserved_node_names_rejected(self, reserved):
+        # A node named `xr` would shadow the helper bound in the generated module's
+        # namespace for every later node's expression.
+        config = Config(
+            {"node": [{"name": reserved, "inputs": ["a"], "expression": "a"}]}
+        )
+        with pytest.raises(ValueError, match="reserved"):
+            config.parse()
+
+    def test_import_path_without_function_raises(self):
+        config = Config(
+            {
+                "node": [
+                    {
+                        "name": "foo",
+                        "inputs": ["a"],
+                        "_import_path": "some.module",
+                    }
+                ]
+            }
+        )
+        with pytest.raises(ValueError, match="missing 'function'"):
+            config.parse()
+
+    def test_function_without_import_path_raises(self):
+        config = Config(
+            {
+                "node": [
+                    {
+                        "name": "foo",
+                        "inputs": ["a"],
+                        "function": "some_fn",
+                    }
+                ]
+            }
+        )
+        with pytest.raises(ValueError, match="missing '_import_path'"):
+            config.parse()
+
 
 class TestMultipleFrequencies:
     """Tests for multiple input/output frequencies."""
@@ -497,34 +638,156 @@ class TestMultipleFrequencies:
 
 
 class TestAnnotationsSection:
-    """Tests for the [annotations] section and its legacy [units] alias."""
+    """Tests for the [annotations] section."""
 
-    def test_units_alias_mode_and_exact(self):
-        parsed = Config({"units": {"mode": "strict", "exact": True}}).parse()
-        assert parsed.units_on_missing == "error"
-        assert parsed.units_on_inexact == "error"
-        assert parsed.schema_on_mismatch is None
+    def test_mode_and_exact(self):
+        parsed = Config({"annotations": {"mode": "strict", "exact": True}}).parse()
+        assert parsed.annotations.on_missing == "error"
+        assert parsed.annotations.on_inexact == "error"
+        assert parsed.annotations.on_mismatch is None
+
+    def test_units_section_no_longer_recognised(self):
+        # The legacy alias is gone, so [units] falls through to the external-module
+        # path and fails for want of an _import_path.
+        with pytest.raises(ValueError, match="_import_path"):
+            Config({"units": {"mode": "strict"}}).parse()
 
     def test_mode_off_disables(self):
         parsed = Config({"annotations": {"mode": "off"}}).parse()
-        assert parsed.units_enabled is False
+        assert parsed.annotations.enabled is False
 
-    def test_on_mismatch_drives_schema(self):
+    def test_on_mismatch_drives_schema_and_temporal(self):
         parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
-        assert parsed.schema_on_mismatch == "warn"
+        assert parsed.annotations.on_mismatch == "warn"
+
+    def test_on_uninferable(self):
+        parsed = Config({"annotations": {"on_uninferable": "ignore"}}).parse()
+        assert parsed.annotations.on_uninferable == "ignore"
 
     def test_invalid_on_mismatch_raises(self):
         with pytest.raises(ValueError, match="on_mismatch"):
             Config({"annotations": {"on_mismatch": "explode"}}).parse()
 
-    def test_both_sections_raise(self):
-        with pytest.raises(ValueError, match="not both"):
-            Config({"annotations": {}, "units": {}}).parse()
+    def test_invalid_on_uninferable_raises(self):
+        with pytest.raises(ValueError, match="on_uninferable"):
+            Config({"annotations": {"on_uninferable": "explode"}}).parse()
 
     def test_absent_section_is_all_none(self):
         parsed = Config({}).parse()
-        assert parsed.units_enabled is None
-        assert parsed.schema_on_mismatch is None
+        assert parsed.annotations.enabled is None
+        assert parsed.annotations.on_mismatch is None
+        assert parsed.annotations.on_uninferable is None
+
+
+class TestPointDim:
+    """The top-level ``point_dim`` key and its role as the partition-dim default."""
+
+    def test_defaults_to_pixel(self):
+        assert Config({}).parse().point_dim == "pixel"
+
+    def test_explicit_value(self):
+        assert Config({"point_dim": "location"}).parse().point_dim == "location"
+
+    def test_supplies_blocking_dim_default(self):
+        parsed = Config(
+            {"point_dim": "location", "blocking": {"block_size": 10}}
+        ).parse()
+        assert parsed.blocking_spec is not None
+        assert parsed.blocking_spec.dim == "location"
+
+    def test_supplies_subset_dim_default(self):
+        parsed = Config(
+            {"point_dim": "location", "subset": {"start": 0, "stop": 10}}
+        ).parse()
+        assert parsed.subset_spec is not None
+        assert parsed.subset_spec.dim == "location"
+
+    def test_explicit_section_dim_still_wins(self):
+        parsed = Config(
+            {
+                "point_dim": "location",
+                "blocking": {"block_size": 10, "dim": "site"},
+                "subset": {"start": 0, "stop": 10, "dim": "site"},
+            }
+        ).parse()
+        assert parsed.blocking_spec is not None
+        assert parsed.subset_spec is not None
+        assert parsed.blocking_spec.dim == "site"
+        assert parsed.subset_spec.dim == "site"
+
+    @pytest.mark.parametrize("bad", [42, "", True, ["location"]])
+    def test_invalid_value_raises(self, bad):
+        # Must name the key: without the explicit pop this falls through to the
+        # external-module loop and dies in dict() with an opaque message.
+        with pytest.raises(ValueError, match="point_dim"):
+            Config({"point_dim": bad}).parse()
+
+
+class TestAnnotationPolicyApply:
+    """apply() pushes every axis into xarray-annotated's global policy."""
+
+    def test_annotation_policy_apply_sets_all_axes(self):
+        from xarray_annotated.schema import get_policy as schema_get_policy
+        from xarray_annotated.schema import policy as schema_policy
+        from xarray_annotated.temporal import get_policy as temporal_get_policy
+        from xarray_annotated.temporal import policy as temporal_policy
+        from xarray_annotated.units import get_policy as units_get_policy
+        from xarray_annotated.units import policy as units_policy
+
+        spec = AnnotationPolicySpec(
+            enabled=True,
+            on_missing="error",
+            on_inexact="error",
+            on_mismatch="warn",
+            on_uninferable="ignore",
+        )
+        # The three context managers restore the process-global policy on exit.
+        with units_policy(), schema_policy(), temporal_policy():
+            spec.apply()
+            units = units_get_policy()
+            assert units.enabled is True
+            assert units.on_missing == "error"
+            assert units.on_inexact == "error"
+            # `enabled` reaches every facet, not just units.
+            assert schema_get_policy().enabled is True
+            assert temporal_get_policy().enabled is True
+            # on_mismatch drives *both* validate-only domains.
+            assert schema_get_policy().on_mismatch == "warn"
+            assert temporal_get_policy().on_mismatch == "warn"
+            assert temporal_get_policy().on_uninferable == "ignore"
+
+    def test_mode_off_disables_every_facet(self):
+        """`mode = "off"` is a kill-switch for all contract checking, not just units.
+
+        Schema and temporal both default to ``enabled=True, on_mismatch='error'``, so
+        a units-only ``enabled=False`` would leave dims/coords/dtype and freq still
+        raising — the opposite of what the config key promises.
+        """
+        from xarray_annotated.schema import get_policy as schema_get_policy
+        from xarray_annotated.schema import policy as schema_policy
+        from xarray_annotated.temporal import get_policy as temporal_get_policy
+        from xarray_annotated.temporal import policy as temporal_policy
+        from xarray_annotated.units import get_policy as units_get_policy
+        from xarray_annotated.units import policy as units_policy
+
+        parsed = Config({"annotations": {"mode": "off"}}).parse()
+        with (
+            units_policy(enabled=True),
+            schema_policy(enabled=True),
+            temporal_policy(enabled=True),
+        ):
+            parsed.annotations.apply()
+            assert units_get_policy().enabled is False
+            assert schema_get_policy().enabled is False
+            assert temporal_get_policy().enabled is False
+
+    def test_empty_policy_applies_nothing(self):
+        from xarray_annotated.units import get_policy, policy
+
+        with policy(enabled=True, on_missing="warn"):
+            AnnotationPolicySpec().apply()
+            assert get_policy().enabled is True
+            assert get_policy().on_missing == "warn"
 
 
 class TestExternalModules:
@@ -590,3 +853,84 @@ class TestDump:
         config = Config.load(TEST_CONFIG_PATH)
         config.dump(out_path, overwrite_ok=True)
         assert out_path.stat().st_size > 0
+
+
+class TestCheckSpecs:
+    """Tests for the `[validation].checks` block parsing (_parse_checks)."""
+
+    def _cfg(self, checks):
+        return Config(
+            {
+                "inputs": {
+                    "climate": {"path": "c.nc", "vars": ["temperature"]},
+                    "land": {"path": "l.nc", "vars": ["elevation"]},
+                },
+                "validation": {"checks": checks},
+            }
+        )
+
+    def test_no_validation_section_defaults_empty(self):
+        assert Config({"inputs": {"a": {"path": "a.nc"}}}).parse().checks == []
+
+    def test_empty_validation_section_defaults_empty(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {}})
+        assert cfg.parse().checks == []
+
+    def test_unknown_validation_key_rejected(self):
+        cfg = Config({"inputs": {"a": {"path": "a.nc"}}, "validation": {"chekcs": []}})
+        with pytest.raises(ValueError, match="unknown key"):
+            cfg.parse()
+
+    def test_basic_check_parsed(self):
+        parsed = self._cfg(
+            [{"check": "time_equal", "inputs": ["climate", "land"]}]
+        ).parse()
+        assert len(parsed.checks) == 1
+        spec = parsed.checks[0]
+        assert spec.check == "time_equal"
+        assert spec.inputs == ["climate", "land"]
+        assert spec.kwargs == {}
+
+    def test_wildcard_expands_to_all_inputs(self):
+        parsed = self._cfg([{"check": "time_equal", "inputs": ["*"]}]).parse()
+        assert parsed.checks[0].inputs == ["climate", "land"]
+
+    def test_wildcard_mixed_with_names_rejected(self):
+        with pytest.raises(ValueError, match="sole element"):
+            self._cfg([{"check": "time_equal", "inputs": ["*", "climate"]}]).parse()
+
+    def test_unknown_check_name_rejected(self):
+        with pytest.raises(ValueError, match="unknown check"):
+            self._cfg([{"check": "nope", "inputs": ["climate"]}]).parse()
+
+    def test_unknown_input_section_rejected(self):
+        with pytest.raises(ValueError, match="unknown input section"):
+            self._cfg([{"check": "time_equal", "inputs": ["climate", "sea"]}]).parse()
+
+    def test_kwargs_forwarded(self):
+        parsed = self._cfg(
+            [{"check": "coords_equal", "inputs": ["*"], "coords": ["latitude"]}]
+        ).parse()
+        assert parsed.checks[0].kwargs == {"coords": ["latitude"]}
+
+    def test_fixed_arity_violation_rejected(self):
+        # time_subset requires exactly 2 inputs; ["*"] expands to 2 here — OK —
+        # but 3 explicit inputs is a parse-time arity error.
+        cfg = Config(
+            {
+                "inputs": {
+                    "a": {"path": "a.nc"},
+                    "b": {"path": "b.nc"},
+                    "c": {"path": "c.nc"},
+                },
+                "validation": {
+                    "checks": [{"check": "time_subset", "inputs": ["a", "b", "c"]}]
+                },
+            }
+        )
+        with pytest.raises(ValueError, match="exactly 2 input"):
+            cfg.parse()
+
+    def test_missing_inputs_key_rejected(self):
+        with pytest.raises(ValueError, match="missing a non-empty 'inputs'"):
+            self._cfg([{"check": "time_equal"}]).parse()

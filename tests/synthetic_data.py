@@ -129,10 +129,8 @@ def write_synthetic_inputs(
     n_lat, n_lon = grid
     pixel = _pixel_index(n_lat, n_lon)
 
-    # Derive the coarse time axes by resampling the daily index with the same
-    # offsets conduit uses (RESAMPLE_FREQ_MAP: daily->weekly "7D", daily->monthly
-    # "1ME"), so the loader's temporal-alignment check accepts them as valid
-    # resample-period labels.
+    # Derive the coarse time axes by resampling the daily index, so a weekly or
+    # monthly file lines up with what a [[resample]] of the daily file produces.
     daily_time = pd.date_range(START_DATE, periods=n_days, freq="D")
     _daily_marker = pd.Series(0, index=daily_time)
     weekly_time = _daily_marker.resample("7D").mean().index

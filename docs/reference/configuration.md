@@ -10,10 +10,11 @@ activates a pipeline component; absent sections are simply not included, so you 
 pipeline from only the parts you need.
 
 Recognised top-level sections are listed below. **Any section not listed here is treated
-as your own module** and must carry an `_import_path` key (see
-[Modules](#modules)). Two sections are accepted but otherwise inert: `[grid]` (an
-explicit marker for gridded inputs) and `[graphviz]` (styling belongs in a
-`conduit graph --style` file, not the science config).
+as your own module** and must carry an `_import_path` key (see [Modules](#modules)) — so
+a mistyped section name is an error rather than a silently ignored one. In particular
+there is no `[grid]` section (gridding is detected from the inputs' CRS) and no
+`[graphviz]` section (styling belongs in a `conduit graph --style` file, not the science
+config).
 
 /// admonition | Paths are resolved relative to the config file
     type: note
@@ -41,10 +42,10 @@ vars = ["elevation"]
 | Key | Description |
 |-----|-------------|
 | `path` | **Required.** File to load. Format is inferred from the extension — see [Data formats](data-formats.md). |
-| `vars` | Which variables to expose, and under what node names (see below). |
+| `vars` | Which variables to expose, and under what node names (see below). Omit to load them all. |
 | `suffix` | Overrides the node-name suffix for the list form of `vars`. |
 
-**`vars` has two forms:**
+**`vars` has three forms:**
 
 - A **list** — `vars = ["temperature"]` — names each node `{var}{suffix}`. The suffix
   defaults to `_<label>` (so `temperature` under `[inputs.daily]` → node
@@ -53,6 +54,16 @@ vars = ["elevation"]
 - A **mapping** — `vars = {temperature_daily = "t2m"}` — an explicit, suffix-free alias
   reading file variable `t2m` as node `temperature_daily`. Use this to decouple file
   naming from DAG naming.
+- **Omitted** — every variable in the file is bound, through the suffix:
+
+  ```toml
+  [inputs.daily]
+  path = "data/daily.nc"   # no `vars`: loads every variable as `{var}_daily`
+  ```
+
+  An *empty* list (`vars = []`) is a parse error rather than a way to spell this — it
+  would bind nothing, which is never what a section is for. (Output sections always
+  require `vars`; there is nothing to enumerate a destination file's variables from.)
 
 ## Outputs
 
@@ -90,9 +101,23 @@ conventions.
 /// admonition | Parameter namespacing
     type: note
 
-All module parameters are merged into a single flat dictionary, so names must be unique
-across active sections. A clash raises at parse time — prefix to disambiguate
-(e.g. `aridity_floor`).
+Module parameters from **every** section are merged into a single flat dictionary — the
+Hamilton driver config. This is deliberate: Hamilton resolves a node function's
+keyword-only arguments by *name* against that one dict, so a parameter's config key and
+the function's argument name are the same string. Auto-prefixing by section would mean
+every module had to name its argument `aridity_floor` rather than `floor`, which is a
+worse trade for the common single-module case.
+
+The consequence is that parameter names must be unique across active sections. Two
+sections defining `threshold` is a parse-time error naming both:
+
+```
+Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
+share one flat namespace, so give the two parameters distinct names ...
+```
+
+To fix it, rename the parameter in the config *and* the keyword argument in the module
+that reads it (e.g. `aridity_floor`). Sections that are not both active never collide.
 ///
 
 ## Nodes
@@ -119,12 +144,16 @@ units = "1"
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). |
 | `coords` | Output coordinate contract (list of names). |
+| `freq` | Output temporal-frequency contract: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `passthrough` | Declare no fixed output contract; propagate the input's contract across the node. |
 | `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
 
-Declaring any of `units`/`dims`/`dtype`/`coords` makes the node a typed producer the
-[contract check](../concepts/contracts.md) can verify. See
+Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer
+the [contract check](../concepts/contracts.md) can verify. See
 [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) for worked examples.
+
+An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an
+unanchored one (`"7D"`, `"W"`) constrains the spacing only.
 
 ## Resample
 
@@ -134,22 +163,45 @@ preserving units and dims.
 
 ```toml
 [[resample]]
-from_freq = "daily"
-to_freq = "weekly"
 vars = ["temperature", "precipitation"]
+from = "daily"
+to = "weekly"
+freq = "7D"
 aggfunc = "mean"
 ```
 
 | Key | Description |
 |-----|-------------|
-| `vars` | **Required.** Variables to resample; each `{v}_{from_freq}` → `{v}_{to_freq}`. |
-| `from_freq` | **Required.** Source frequency label. |
-| `to_freq` | **Required.** Target frequency label. |
+| `vars` | **Required.** Variables to resample; each `{v}_{from}` → `{v}_{to}`. |
+| `from` | **Required.** Node-name suffix to read from. |
+| `to` | **Required.** Node-name suffix to write to. |
+| `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
-| `freq` | Explicit pandas offset alias (e.g. `"1D"`). Required unless the direction is a built-in default. |
 
-Built-in default directions (no `freq` needed): `daily`→`weekly`, `daily`→`monthly`,
-`weekly`→`monthly`. Any other direction needs an explicit `freq`.
+/// admonition | `from` and `to` are names, not frequencies
+    type: note
+
+They are **node-name suffixes** and nothing more: `from = "daily"` reads
+`{var}_daily`, `to = "weekly"` writes `{var}_weekly`. They are free-form —
+`from = "raw"`, `to = "smoothed"` is equally valid — and no frequency is inferred from
+them. `freq` alone says what actually happens to the time axis. There is no table of
+"supported directions": any pair of labels works, given a `freq`.
+///
+
+`freq` also becomes the generated node's **declared output frequency**, so every
+resample carries a checkable frequency contract: a downstream consumer declaring
+`Freq("W-SUN")` against a `freq = "W-WED"` resample fails at build time.
+
+The time axis is detected from the data, so it need not be called `time`.
+
+/// admonition | Choosing `aggfunc` is not something the checks can help with
+    type: warning
+
+Resampling preserves units, so `mean` and `sum` are equally *dimensionally* valid — a
+wrong choice produces a meaningless number that no contract check will flag. Use `mean`
+for a rate and `sum` for an amount-per-period; see
+[Resampling & units](../guides/resampling-and-units.md).
+///
 
 ## Cache
 
@@ -169,6 +221,26 @@ recompute = ["my_calibrated_node"]
 | `recompute` | `true` or a list of node names — force recompute even on a hit. |
 | `disable` | `true` or a list of node names — bypass the cache for those nodes. |
 
+## Point dimension
+
+`point_dim` is a top-level key naming the dimension your pipeline partitions over. It
+does two things:
+
+- it supplies the default `dim` for [`[blocking]`](#blocking) and [`[subset]`](#subset);
+- it names the synthetic size-1 axis added to single-point CSV/Parquet/JSON/TOML inputs
+  (see [Data formats › spatial handling](data-formats.md#spatial-handling)).
+
+```toml
+point_dim = "location"   # optional; defaults to "pixel"
+```
+
+The two must agree. If a table input were given a `pixel` axis while `[subset]`
+partitioned over `location`, the subset would skip that input entirely and leave a
+phantom `pixel` axis in the outputs — so one key drives both.
+
+Gridded pipelines should leave this at its default: the geospatial layer stacks `(y, x)`
+into `pixel` by name.
+
 ## Blocking
 
 `[blocking]` processes a partition dimension in fixed-size sequential chunks to bound
@@ -183,42 +255,105 @@ dim = "pixel"
 | Key | Description |
 |-----|-------------|
 | `block_size` | **Required.** Positive integer — rows of `dim` per block. |
-| `dim` | Partition dimension (default `pixel`). |
+| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
 
 ## Subset
 
-`[subset]` restricts the run to a contiguous slice of the stacked `pixel` dimension, for
-parallel per-shard runs. See [Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs-over-zarr).
+`[subset]` restricts the run to a contiguous slice of one dimension, so independent
+processes can each handle a different shard of the same inputs. See
+[Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs).
 
 ```toml
 [subset]
-pixel_start = 0      # inclusive
-pixel_end   = 500    # exclusive
+start = 0            # inclusive
+stop  = 500          # exclusive
+dim   = "pixel"      # optional; the default
 ```
 
 | Key | Description |
 |-----|-------------|
-| `pixel_start` | **Required.** First pixel index (inclusive, zero-based). |
-| `pixel_end` | **Required.** One past the last index (exclusive); must exceed `pixel_start`. |
+| `start` | **Required.** First index along `dim` (inclusive, zero-based). |
+| `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
+| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
+
+`dim` mirrors [`[blocking]`](#blocking): the two mechanisms partition the same way and
+differ only in *who* runs the parts — one process sequentially (`[blocking]`) versus many
+processes concurrently (`[subset]`). A non-gridded pipeline can subset over `location` or
+`site` just as it can block over it, and each part is written to its own suffixed file
+(`out_location0-500.nc`).
+
+/// admonition | Zarr stores are pixel-only
+    type: warning
+
+The one place `pixel` is still special is the shared Zarr store built by
+`conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
+`merge` unstacks back to `(y, x)`. Configuring `dim` — or `point_dim` — as anything else
+alongside a Zarr output is an error. Use a NetCDF output instead — its subset parts are
+separate files and need no pre-created store.
+///
+
+## Validation
+
+`[validation]` groups **declarations about properties you expect and want to check** — as
+opposed to the DAG's structure, which conduit derives on its own. Its `checks` array runs
+a suite of input-Dataset compatibility checks before compute (and as a stage of
+[`--dry-run`](../guides/validate-before-running.md)).
+
+```toml
+[validation]
+checks = [
+  { check = "spatial_grid_equal", inputs = ["*"] },
+  { check = "time_equal",         inputs = ["climate", "land"] },
+  { check = "coords_equal",       inputs = ["*"], coords = ["level"] },
+]
+```
+
+Each entry names a `check` and the `inputs` to pass it. `check` and `inputs` are reserved;
+**every other key is forwarded verbatim as a keyword argument** to the check (e.g.
+`coords`, `atol`).
+
+| Key | Description |
+|-----|-------------|
+| `check` | **Required.** The check to run (see below). |
+| `inputs` | **Required.** `[inputs.*]` labels to compare, in order. `["*"]` means *all* input sections (declaration order) and must be the sole element. |
+| *others* | Forwarded as keyword arguments to the named check. |
+
+Available checks:
+
+| `check` | Inputs | Asserts |
+|---------|--------|---------|
+| `time_equal` | any | all inputs share an identical time index |
+| `time_subset` | exactly 2 | the second input's timestamps are a subset of the first's |
+| `spatial_grid_equal` | any | all inputs share a CRS, x/y dims, and coordinate values (`atol`) |
+| `crs_equal` | any | all inputs share a CRS |
+| `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
+
+The checks are a real importable library ([`conduit.checks`](../api/conduit.checks.md)),
+so the [notebook-driven path](../guides/drive-from-python.md) calls them directly — the
+config list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
+block conduit performs no cross-input validation (it does not guess which inputs are
+*meant* to align — only you know that). Under [`[subset]`](#subset) they are skipped, with
+a warning, since they describe the whole domain rather than a single shard.
 
 ## Annotations
 
-`[annotations]` controls how contract declarations (units + schema: dims/coords/dtype)
-are validated. The legacy name `[units]` is a working alias for the same section. Omit
-it to keep the defaults.
+`[annotations]` controls how contract declarations (units, schema: dims/coords/dtype,
+and temporal: freq) are validated. Omit it to keep the defaults.
 
 ```toml
 [annotations]
-mode = "strict"      # "strict" | "warn" (default) | "off"
-exact = false        # reject value-changing unit conversions
-on_mismatch = "error"  # "error" | "warn" | "ignore" — for dims/coords/dtype
+mode = "strict"           # "strict" | "warn" (default) | "off"
+exact = false             # reject value-changing unit conversions
+on_mismatch = "error"     # "error" | "warn" | "ignore" — dims/coords/dtype/freq
+on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 ```
 
 | Key | Description |
 |-----|-------------|
 | `mode` | Units strictness. `strict` raises on a unit problem; `warn` reports and continues; `off` disables **all** contract checking (every facet). Default `warn`. |
 | `exact` | When `true`, a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared) is rejected rather than converted. Default `false`. |
-| `on_mismatch` | Schema (dims/coords/dtype) policy: `error`, `warn`, or `ignore`. |
+| `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
+| `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
 
 Validation happens at two points:
 
@@ -244,6 +379,8 @@ conversion), or set `exact = true` to forbid implicit temperature conversions.
 
 ## See also
 
+- [Validate before running](../guides/validate-before-running.md) — the `--dry-run`
+  pre-flight, the wiring check, and the `[validation]` input checks.
 - [Data formats](data-formats.md) — supported file types and spatial/temporal handling.
 - [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) — the `[[node]]` and
   `[[resample]]` guide.

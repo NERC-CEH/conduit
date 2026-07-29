@@ -9,46 +9,46 @@ a run; `check_input_contracts` validates the metadata of the actually-loaded inp
 ``DataArray``\\ s against the contracts declared by their consumers, without
 executing any node (the basis of ``conduit run --dry-run``).
 
-**Facets.** The checks are generic over every `xarray-annotated` facet, not just
-units:
+This module is the canonical home for the two design stories below; other modules
+refer here rather than restating them.
 
-- **units** — pint/CF physical units (`xarray_annotated.units`);
-- **dims**, **coords**, **dtype** — structural properties
-  (`xarray_annotated.schema`).
+**Facets.** The checks are generic over every `xarray-annotated` facet — **units**
+(pint/CF), **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and
+phase of the time axis). Each is a `_Facet` entry pairing a policy, a
+marker-vs-marker edge predicate, and a marker-vs-array runtime check, all taken from
+`xarray-annotated`'s public API; conduit only assembles them. Adding a facet is one
+`_Facet`.
 
-Each facet is a `_Facet` descriptor pairing a way to pull that facet off a
-`Declared` with a policy, a marker-vs-marker edge predicate (for the build-time
-check), and a marker-vs-array runtime check (for the input check). All of these
-come from `xarray-annotated`'s public API: the unified declaration reader
-(`declarations_from_signature`), the runtime checks (`check_units`,
-`check_schema`), and the marker-vs-marker predicates (units
-`units_compatible`/`units_equal`, schema `dims_compatible`/`dtype_compatible`).
-conduit only assembles them per facet.
+Two distinctions fall out of that table:
 
-**Edge vs input.** ``coords`` declarations are lower bounds ("at least these coords
-are present"), so two coord declarations on an edge can never be *proven*
-inconsistent — coords therefore participates in the input check but not the
-build-time edge check (``edge=None``). Units/dims/dtype are exact enough to compare
-at the edge.
+- **Edge vs input.** ``coords`` declarations are lower bounds ("at least these"), so
+  two of them can never be *proven* inconsistent — coords participates in the input
+  check but not the edge check (``edge=None``). ``freq`` is inferred from coordinate
+  *values* rather than metadata, but reading a 1-D datetime coordinate executes no
+  node, so it stays a legitimate ``--dry-run`` pre-flight.
+- **Provable-only.** An edge is flagged only when the two declarations are *provably*
+  inconsistent (incompatible units, disjoint dim sets, different dtype kinds).
+  Compatible-but-inexact ones are flagged only when the facet's policy demands it
+  (units ``on_inexact="error"``). Partially-annotated pipelines therefore never see
+  false positives — the contract stays opt-in.
 
-**Provable-only.** A build-time edge is flagged only when the two declarations are
-*provably* inconsistent (e.g. dimensionally incompatible units, disjoint dim sets,
-different dtype kinds). Compatible-but-inexact declarations are flagged only when
-the facet's policy demands it (units ``on_inexact="error"``). This preserves the
-opt-in contract: partially-annotated pipelines never trigger false positives.
+**Passthrough propagation.** A node with no declared producer contract breaks the
+edge chain. But a node tagged *passthrough* (`conduit.dag.node.PASSTHROUGH_TAG`)
+preserves its input's contract, so a declaration is propagated across it — forward
+for the DAG check, backward for the input check. Any passthrough-tagged node
+qualifies; no module is special-cased. A non-passthrough ``[[node]]`` may transform
+its input arbitrarily, so nothing is propagated and it falls back to the runtime
+check.
 
-**Passthrough propagation.** A node with no statically declared producer contract
-(fed by an external file, or a ``[[node]]`` that transforms its input) breaks the
-edge chain. But a node tagged *passthrough* (`conduit.dag.node.PASSTHROUGH_TAG`,
-e.g. a ``[[resample]]`` node) preserves its input's contract, so a declared unit is
-propagated across it — forward for the DAG check, backward for the input check.
-This is generic: any passthrough-tagged node participates, with no module
-special-cased. Non-passthrough ``[[node]]`` modules can transform units arbitrarily
-and so are not propagated; they fall back to the runtime check.
+Propagation is *per facet* (`_Facet.passthrough_preserving`): a resample preserves
+its input's units but is precisely the thing that *changes* its frequency, so
+``freq`` is never propagated across a passthrough — a ``[[resample]]`` node declares
+its own output frequency instead, making it an ordinary producer for that one facet.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
+from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
 import xarray as xr
@@ -56,6 +56,8 @@ from hamilton import graph_types
 from xarray_annotated import declarations_from_signature
 from xarray_annotated.schema import check_schema, dims_compatible, dtype_compatible
 from xarray_annotated.schema import get_policy as schema_get_policy
+from xarray_annotated.temporal import check_freq, freq_compatible
+from xarray_annotated.temporal import get_policy as temporal_get_policy
 from xarray_annotated.units import check_units, units_compatible, units_equal
 from xarray_annotated.units import get_policy as units_get_policy
 
@@ -65,7 +67,7 @@ if TYPE_CHECKING:
 
 # Facet map keys, in a stable order (units first so its messages/behaviour match
 # the original units-only checker).
-_FACET_NAMES = ("units", "dims", "coords", "dtype")
+_FACET_NAMES = ("units", "dims", "coords", "dtype", "freq")
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +93,10 @@ def _dtype_edge(a: Any, b: Any, _pol: Any) -> str | None:
     return None if dtype_compatible(a, b) else "dtypes incompatible"
 
 
+def _freq_edge(a: Any, b: Any, _pol: Any) -> str | None:
+    return None if freq_compatible(a, b) else "frequencies incompatible"
+
+
 # ---------------------------------------------------------------------------
 # Runtime (input) checks — marker(s) vs a loaded DataArray
 # ---------------------------------------------------------------------------
@@ -103,6 +109,10 @@ def _units_input_check(da: xr.DataArray, decls: list, name: str) -> None:
 
 def _schema_input_check(da: xr.DataArray, decls: list, name: str) -> None:
     check_schema(da, list(decls), name)
+
+
+def _freq_input_check(da: xr.DataArray, decls: list, name: str) -> None:
+    check_freq(da, list(decls), name)
 
 
 @dataclass(frozen=True)
@@ -157,8 +167,17 @@ _FACETS: tuple[_Facet, ...] = (
         _schema_input_check,
         False,
     ),
+    _Facet(
+        "freq",
+        temporal_get_policy,
+        lambda d: d.freq,
+        _freq_edge,
+        _freq_input_check,
+        # A passthrough (e.g. [[resample]]) is exactly what *changes* a frequency,
+        # so a source's declared freq is never propagated across one.
+        False,
+    ),
 )
-_UNITS_ONLY: tuple[_Facet, ...] = (_FACETS[0],)
 
 # Per-facet map: node name -> (declaration, producer/consumer label).
 _Produced = dict[str, tuple[Any, str]]
@@ -280,19 +299,13 @@ def _propagate_backward(
 # ---------------------------------------------------------------------------
 
 
-def _check_dag(
-    dr: "driver.Driver",
-    facets: tuple[_Facet, ...],
-    on_inexact: str | None,
-) -> None:
+def _check_dag(dr: "driver.Driver", facets: tuple[_Facet, ...]) -> None:
     maps, passthrough_edges = _collect_contract_maps(dr)
     findings: list[str] = []
     for facet in facets:
         pol = facet.get_policy()
         if not pol.enabled or facet.edge is None:
             continue
-        if facet.name == "units" and on_inexact is not None:
-            pol = replace(pol, on_inexact=on_inexact)
         produced, consumed = maps[facet.name]
         if facet.passthrough_preserving:
             _propagate_forward(produced, passthrough_edges)
@@ -304,13 +317,20 @@ def _check_dag(
             candidates.extend((decl, f"input of {who}") for decl, who in consumers)
             if len(candidates) < 2:
                 continue
-            base_decl, base_src = candidates[0]
-            for decl, src in candidates[1:]:
-                why = facet.edge(base_decl, decl, pol)
+            # All pairs, not star-wise against candidates[0]: three of the four edge
+            # predicates are *non-transitive*, because a loose declaration is
+            # compatible with everything. Dims("x","y") is compatible with both
+            # Dims("x","y", ordered=True) and Dims("y","x", ordered=True), which
+            # provably conflict with each other — a star check anchored on the loose
+            # one would pass. (dtype `exact` and freq anchors have the same shape;
+            # units alone is transitive, being an equivalence relation.) Candidates
+            # are producer-first, so combinations() still leads with "output of ...".
+            for (a_decl, a_src), (b_decl, b_src) in combinations(candidates, 2):
+                why = facet.edge(a_decl, b_decl, pol)
                 if why is not None:
                     findings.append(
-                        f"  {name!r}: {base_src} declares {base_decl!r} but {src} "
-                        f"declares {decl!r} ({why})"
+                        f"  {name!r}: {a_src} declares {a_decl!r} but {b_src} "
+                        f"declares {b_decl!r} ({why})"
                     )
     if findings:
         raise ValueError(
@@ -344,37 +364,24 @@ def _check_inputs(
 def check_dag_contracts(dr: "driver.Driver") -> None:
     """Verify declared contracts are consistent across every built-DAG edge.
 
-    Runs the build-time edge check for all facets (units, dims, dtype; coords is
-    skipped — its declarations are lower bounds). A provable mismatch always raises
+    Runs the build-time edge check for all facets (units, dims, dtype, freq; coords
+    is skipped — its declarations are lower bounds). A provable mismatch always raises
     `ValueError` (it is a genuine pipeline-definition error). Each facet is skipped
     when its policy is disabled (the conftest default), so this is a no-op for
     pipelines that opt out of contract handling.
     """
-    _check_dag(dr, _FACETS, on_inexact=None)
-
-
-def check_dag_units(dr: "driver.Driver", *, on_inexact: str | None = None) -> None:
-    """Units-only build-time edge check (with optional ``on_inexact`` override).
-
-    A thin wrapper over `check_dag_contracts` restricted to the units facet;
-    ``on_inexact`` defaults from the active units policy when ``None``.
-    """
-    _check_dag(dr, _UNITS_ONLY, on_inexact=on_inexact)
+    _check_dag(dr, _FACETS)
 
 
 def check_input_contracts(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
     """Validate loaded inputs' metadata against the contracts declared for them.
 
     The runtime leg that cannot be done statically, run for every facet: an input's
-    ``units`` attribute (units), and its dims / coords / dtype (schema), are checked
-    against the contract declared by its consumer(s). Dims/coords/dtype live in the
-    file header, so — like units — this executes no node and is suitable as a
-    ``run --dry-run`` pre-flight. Contracts are propagated backward through
-    unit-preserving passthrough edges to a fixpoint.
+    ``units`` attribute (units), its dims / coords / dtype (schema), and the inferred
+    frequency of its time axis (temporal), are checked against the contract declared
+    by its consumer(s). Dims/coords/dtype live in the file header and a frequency
+    needs only the 1-D datetime coordinate, so — like units — this executes no node
+    and is suitable as a ``run --dry-run`` pre-flight. Contracts are propagated
+    backward through unit-preserving passthrough edges to a fixpoint.
     """
     _check_inputs(dr, inputs, _FACETS)
-
-
-def check_input_units(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
-    """Units-only input check (see `check_input_contracts`)."""
-    _check_inputs(dr, inputs, _UNITS_ONLY)

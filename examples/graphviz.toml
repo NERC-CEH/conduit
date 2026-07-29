@@ -8,18 +8,22 @@
 # Draw the colour legend (default: true).
 show_legend = true
 
-# Box nodes into daily/weekly/monthly subgraph clusters, in addition to
+# Box nodes into one subgraph cluster per declared frequency, in addition to
 # colouring them (default: true). Set false for a flat, un-clustered layout.
 cluster_by_frequency = true
 
-# Override category colours. `static`/`daily`/`weekly`/`monthly` set node fills
-# (and the matching edge colours); `output` is the border drawn around the
-# pipeline's requested output nodes. Any category you omit keeps its default.
+# Colours.
+#
+# Nodes are grouped by their *declared* frequency contract — the `freq` on a
+# `[[node]]` or `[[resample]]` ("7D", "1ME", "W-SUN") — not by their name. Since
+# frequencies are arbitrary pandas offset aliases rather than a fixed vocabulary,
+# colours are assigned automatically from a qualitative cycle in first-seen order.
+#
+# Name a frequency here to pin its colour, so it stays the same across renders and
+# across pipelines. `output` is the border drawn around the requested output nodes.
 [palette]
-static = "#66c2a5"
-daily = "#fc8d62"
-weekly = "#8da0cb"
-monthly = "#a6d854"
+"7D" = "#8da0cb"
+"1ME" = "#a6d854"
 output = "#e7298a"
 
 # Graphviz graph/node/edge attributes, passed straight through to graphviz.
@@ -31,6 +35,6 @@ rankdir = "LR"   # "TB" for a top-to-bottom layout
 fontname = "Helvetica"
 
 # Full control: point at your own Hamilton `custom_style_function` as
-# "module:function". When set it replaces the built-in category styling; unit
+# "module:function". When set it replaces the built-in frequency styling; unit
 # labels and frequency-coloured edges are still applied on top.
 # style_function = "my_package.styling:my_style"

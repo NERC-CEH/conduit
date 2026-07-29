@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "conduit"
-version = "0.1.0"
+version = "0.2.0"
 description = "A unit-safe, scalable foundation for building configurable xarray data pipelines and forward models."
 authors = [
     { name = "jmarshrossney", email = "17361029+jmarshrossney@users.noreply.github.com" }
@@ -22,6 +22,7 @@ dependencies = [
     "tomli-w>=1.2.0",
     "typer>=0.24.1",
     "xarray>=2026.2.0",
+    # NOTE: pin to >=0.4.1 after pypi publish.
     "xarray-annotated[cf] @ git+https://github.com/jmarshrossney/xarray-annotated.git",
     "zarr>=3.2.1",
 ]

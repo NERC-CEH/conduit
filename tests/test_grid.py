@@ -63,6 +63,78 @@ class TestLoadInputsGrid:
         assert not np.any(np.isnan(pipeline_inputs["longitude"].values))
 
 
+class TestRenamedSpatialDims:
+    """Grids whose spatial dims are not literally named ``x``/``y``.
+
+    `compute_lat_lon` used to build its intermediate grid with hardcoded ``x``/``y``
+    dims, so for an easting/northing input the lat/lon MultiIndex levels were named
+    ``y``/``x`` while every data variable's were named ``northing``/``easting`` —
+    alignment on ``pixel`` then quietly produced NaNs.
+    """
+
+    @pytest.fixture
+    def easting_northing_nc(self, tmp_path):
+        """A CRS-bearing NetCDF whose spatial dims are ``easting``/``northing``."""
+        import rioxarray as _rioxarray  # noqa: F401  (registers .rio)
+        import xarray as xr
+
+        # British National Grid, a few km around Lancaster.
+        easting = np.array([330000.0, 331000.0])
+        northing = np.array([460000.0, 461000.0])
+        ds = xr.Dataset(
+            {
+                "temperature": (
+                    ["northing", "easting"],
+                    np.arange(4.0).reshape(2, 2),
+                )
+            },
+            coords={"easting": easting, "northing": northing},
+        )
+        # CF axis metadata is what lets rioxarray re-infer the spatial dims when the
+        # file is read back (`set_spatial_dims` is in-memory only, not persisted) —
+        # this is how a real projected dataset declares them.
+        ds.easting.attrs.update(
+            {"axis": "X", "standard_name": "projection_x_coordinate", "units": "m"}
+        )
+        ds.northing.attrs.update(
+            {"axis": "Y", "standard_name": "projection_y_coordinate", "units": "m"}
+        )
+        ds = ds.rio.set_spatial_dims(x_dim="easting", y_dim="northing")
+        ds = ds.rio.write_crs("EPSG:27700")
+        path = tmp_path / "bng.nc"
+        ds.to_netcdf(path, engine="netcdf4")
+        return path
+
+    def test_lat_lon_aligns_with_renamed_spatial_dims(self, easting_northing_nc):
+        import xarray as xr
+
+        inputs = load_inputs(
+            {"grid": IOSpec(path=str(easting_northing_nc), vars=["temperature"])}
+        )
+        lat = inputs["latitude"]
+        data = inputs["temperature_grid"]
+
+        # Same pixel MultiIndex: level names *and* values.
+        assert lat.indexes["pixel"].names == data.indexes["pixel"].names
+        assert lat.indexes["pixel"].equals(data.indexes["pixel"])
+
+        # ... so aligning them drops nothing.
+        aligned_lat, aligned_data = xr.align(lat, data)
+        assert aligned_lat.sizes["pixel"] == lat.sizes["pixel"] == 4
+        assert aligned_data.sizes["pixel"] == 4
+        assert not np.any(np.isnan(aligned_lat.values))
+
+    def test_lat_lon_values_are_plausible(self, easting_northing_nc):
+        inputs = load_inputs(
+            {"grid": IOSpec(path=str(easting_northing_nc), vars=["temperature"])}
+        )
+        # BNG 330000/460000 is in northern England.
+        assert np.all(inputs["latitude"].values > 53.0)
+        assert np.all(inputs["latitude"].values < 55.0)
+        assert np.all(inputs["longitude"].values > -4.0)
+        assert np.all(inputs["longitude"].values < -2.0)
+
+
 class TestLoadInputsNoGrid:
     """Test that load_inputs() omits lat/lon when there is no CRS data."""
 

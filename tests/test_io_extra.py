@@ -1,8 +1,8 @@
 """Tests for io.py paths not covered by existing tests.
 
 Covers:
-- load_dataset / _save_netcdf with Zarr files
-- _validate_dates error paths
+- read_in_group / write_in_group with Zarr files
+- time-dimension detection (``time_dims``) and the single-time-dim invariant
 - get_outputs and save_outputs public API
 - Multiple-CRS-dataset lat/lon computation
 """
@@ -15,16 +15,14 @@ import pytest
 import xarray as xr
 
 from conduit.config import IOSpec
+from conduit.formats import read_in_group, write_in_group
 from conduit.io import (
-    _save_netcdf,
-    _time_dims,
-    _validate_dates,
-    _validate_temporal_alignment,
     get_final_vars,
     get_outputs,
-    load_dataset,
     load_inputs,
     save_outputs,
+    sole_time_dim,
+    time_dims,
 )
 
 # ---------------------------------------------------------------------------
@@ -38,18 +36,6 @@ DAILY_TIMES = pd.date_range("2020-01-01", periods=N_TIMES, freq="D")
 WEEKLY_TIMES = pd.date_range("2020-01-01", periods=N_TIMES, freq="7D")
 MONTHLY_TIMES = pd.date_range("2020-01-01", periods=N_TIMES, freq="ME")
 RNG = np.random.default_rng(0)
-
-# Constants for cross-frequency alignment tests
-DAILY_YEAR = pd.date_range("2020-01-01", periods=365, freq="D")
-WEEKLY_ALIGNED = pd.date_range("2020-01-01", periods=52, freq="7D")
-WEEKLY_PARTIAL = pd.date_range(
-    "2020-01-08", periods=4, freq="7D"
-)  # subset of WEEKLY_ALIGNED
-WEEKLY_WRONG_DAY = pd.date_range(
-    "2020-01-03", periods=5, freq="7D"
-)  # Friday start, not on 7D grid from Jan 1
-MONTHLY_ALIGNED = pd.date_range("2020-01-31", periods=12, freq="ME")  # month-end labels
-MONTHLY_WRONG = pd.date_range("2020-01-01", periods=12, freq="MS")  # month-start labels
 
 
 def _simple_ds(times=DAILY_TIMES, n_pixels=N_PIXELS):
@@ -69,105 +55,87 @@ _HAS_ZARR = importlib.util.find_spec("zarr") is not None
 
 @pytest.mark.skipif(not _HAS_ZARR, reason="zarr not installed")
 class TestZarrDataset:
-    """load_dataset and _save_netcdf support Zarr files."""
+    """The dataset-group readers/writers support Zarr files."""
 
     def test_save_and_load_zarr(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        _save_netcdf(ds, zarr_path)
-        loaded = load_dataset(zarr_path)
+        write_in_group(ds, zarr_path, "dataset")
+        loaded = read_in_group(zarr_path, "dataset")
         assert set(loaded.data_vars) == {"var_a"}
 
     def test_zarr_round_trip_values(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        _save_netcdf(ds, zarr_path)
-        loaded = load_dataset(zarr_path)
+        write_in_group(ds, zarr_path, "dataset")
+        loaded = read_in_group(zarr_path, "dataset")
         np.testing.assert_allclose(loaded["var_a"].values, ds["var_a"].values)
 
     def test_zarr_time_dimension_preserved(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        _save_netcdf(ds, zarr_path)
-        loaded = load_dataset(zarr_path)
+        write_in_group(ds, zarr_path, "dataset")
+        loaded = read_in_group(zarr_path, "dataset")
         assert "time" in loaded.dims
         assert loaded.sizes["time"] == N_TIMES
 
 
 class TestSaveNetcdfErrors:
-    """_save_netcdf raises for unsupported extensions."""
+    """The dataset-group dispatch raises for unsupported extensions."""
 
     def test_unsupported_extension_raises(self, tmp_path):
         ds = _simple_ds()
         with pytest.raises(ValueError, match="Unsupported file extension"):
-            _save_netcdf(ds, tmp_path / "data.csv")
+            write_in_group(ds, tmp_path / "data.csv", "dataset")
 
     def test_load_unsupported_extension_raises(self, tmp_path):
         p = tmp_path / "data.txt"
         p.touch()
         with pytest.raises(ValueError, match="Unsupported file extension"):
-            load_dataset(p)
+            read_in_group(p, "dataset")
 
 
 # ---------------------------------------------------------------------------
-# _validate_dates error paths
+# Section labels are inert
 # ---------------------------------------------------------------------------
 
 
-class TestValidateDatesErrors:
-    """_validate_dates raises for non-DatetimeIndex and wrong frequency."""
+class TestSectionLabelsAreInert:
+    """A section's label names its nodes and does nothing else.
 
-    def test_frequency_mismatch_raises(self):
-        hourly = pd.date_range("2020-01-01", periods=24, freq="h")
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(24))},
-            coords={"time": hourly},
-        )
-        with pytest.raises(ValueError, match="Expected 'daily'"):
-            _validate_dates(ds, "daily")
+    ``load_inputs`` emits data variables only — no ``dates_{label}`` index, no
+    frequency inference. Frequency validation is opt-in via a consumer's ``Freq``
+    declaration (see tests/test_freq.py), so a section labelled ``daily`` carrying
+    weekly or irregular timestamps is loaded without complaint.
+    """
 
-    def test_wrong_freq_for_monthly(self):
-        daily = pd.date_range("2020-01-01", periods=30, freq="D")
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(30))},
-            coords={"time": daily},
-        )
-        with pytest.raises(ValueError, match="Expected 'monthly'"):
-            _validate_dates(ds, "monthly")
+    def _spec(self, tmp_path, times, label):
+        path = tmp_path / f"{label}.nc"
+        _simple_ds(times).to_netcdf(path)
+        return {label: IOSpec(path=str(path), vars=["var_a"])}
 
-    def test_irregular_times_raises(self):
-        # Irregular timestamps — pd.infer_freq returns None
+    @pytest.mark.parametrize(
+        ("label", "times"),
+        [
+            ("daily", DAILY_TIMES),
+            ("weekly", WEEKLY_TIMES),
+            ("monthly", MONTHLY_TIMES),
+            ("arbitrary", DAILY_TIMES),
+        ],
+    )
+    def test_only_data_vars_are_emitted(self, tmp_path, label, times):
+        inputs = load_inputs(self._spec(tmp_path, times, label))
+        assert set(inputs) == {f"var_a_{label}"}
+
+    def test_label_frequency_not_enforced(self, tmp_path):
+        # A section called "daily" holding weekly timestamps: not an error.
+        inputs = load_inputs(self._spec(tmp_path, WEEKLY_TIMES, "daily"))
+        assert inputs["var_a_daily"].sizes["time"] == N_TIMES
+
+    def test_irregular_times_accepted(self, tmp_path):
         times = pd.to_datetime(["2020-01-01", "2020-01-03", "2020-01-10"])
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(3))},
-            coords={"time": times},
-        )
-        with pytest.raises(ValueError, match="Could not determine frequency"):
-            _validate_dates(ds, "daily")
-
-    def test_daily_passes(self):
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(N_TIMES))},
-            coords={"time": DAILY_TIMES},
-        )
-        idx = _validate_dates(ds, "daily")
-        assert isinstance(idx, pd.DatetimeIndex)
-
-    def test_weekly_passes(self):
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(N_TIMES))},
-            coords={"time": WEEKLY_TIMES},
-        )
-        idx = _validate_dates(ds, "weekly")
-        assert isinstance(idx, pd.DatetimeIndex)
-
-    def test_monthly_passes(self):
-        ds = xr.Dataset(
-            {"x": (["time"], np.ones(N_TIMES))},
-            coords={"time": MONTHLY_TIMES},
-        )
-        idx = _validate_dates(ds, "monthly")
-        assert isinstance(idx, pd.DatetimeIndex)
+        inputs = load_inputs(self._spec(tmp_path, times, "daily"))
+        assert inputs["var_a_daily"].sizes["time"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +297,35 @@ class TestSaveOutputs:
 
 
 # ---------------------------------------------------------------------------
-# _validate_temporal_alignment
+# vars: omitted means "load everything"
+# ---------------------------------------------------------------------------
+
+
+class TestOmittedVars:
+    """An input section with no ``vars`` binds every variable in the file."""
+
+    def test_input_section_without_vars_loads_all(self, synthetic_data_dir):
+        from synthetic_data import DAILY_VARS
+
+        inputs = load_inputs(
+            {"daily": IOSpec(path=str(synthetic_data_dir / "daily.nc"))}
+        )
+        # Every file variable is bound, through the section's suffix.
+        for var in DAILY_VARS:
+            assert f"{var}_daily" in inputs
+
+    def test_omitted_vars_honours_an_explicit_suffix(self, synthetic_data_dir):
+        from synthetic_data import STATIC_VARS
+
+        inputs = load_inputs(
+            {"static": IOSpec(path=str(synthetic_data_dir / "static.nc"), suffix="")}
+        )
+        for var in STATIC_VARS:
+            assert var in inputs
+
+
+# ---------------------------------------------------------------------------
+# Single time-dimension invariant
 # ---------------------------------------------------------------------------
 
 
@@ -338,13 +334,51 @@ class TestSingleTimeDim:
 
     def test_time_dims_detects_datetime_dimension(self):
         ds = _simple_ds()  # dims (time, pixel), only `time` is datetime
-        assert _time_dims(ds) == ["time"]
+        assert time_dims(ds) == ["time"]
 
     def test_time_dims_ignores_non_datetime_dims(self):
         ds = xr.Dataset(
             {"x": (("band",), np.arange(3))}, coords={"band": ["r", "g", "b"]}
         )
-        assert _time_dims(ds) == []
+        assert time_dims(ds) == []
+
+    def test_time_dims_accepts_a_dataarray(self):
+        assert time_dims(_simple_ds()["var_a"]) == ["time"]
+
+    def test_time_dims_detects_a_cftime_axis(self):
+        # A non-standard calendar gives a CFTimeIndex, not datetime64 — the second
+        # limb of the detector, and the one no other test exercises.
+        times = xr.date_range(
+            "2020-01-01", periods=5, freq="D", calendar="noleap", use_cftime=True
+        )
+        ds = xr.Dataset(
+            {"var_a": (("time",), np.zeros(5))},
+            coords={"time": times},
+        )
+        assert not np.issubdtype(ds.time.dtype, np.datetime64)  # not the first limb
+        assert time_dims(ds) == ["time"]
+        assert sole_time_dim(ds, "ds") == "time"
+
+    def test_sole_time_dim_returns_the_one_axis(self):
+        assert sole_time_dim(_simple_ds(), "ds") == "time"
+
+    def test_sole_time_dim_raises_without_a_time_axis(self):
+        ds = xr.Dataset(
+            {"x": (("band",), np.arange(3))}, coords={"band": ["r", "g", "b"]}
+        )
+        with pytest.raises(ValueError, match="has no time dimension"):
+            sole_time_dim(ds, "ds")
+
+    def test_sole_time_dim_raises_on_ambiguity(self):
+        ds = xr.Dataset(
+            {"f": (("time", "lead_time"), np.zeros((4, 3)))},
+            coords={
+                "time": pd.date_range("2020-01-01", periods=4, freq="D"),
+                "lead_time": pd.date_range("2020-06-01", periods=3, freq="D"),
+            },
+        )
+        with pytest.raises(ValueError, match="multiple time dimensions"):
+            sole_time_dim(ds, "ds")
 
     def test_two_time_dims_raises(self, tmp_path):
         # A cube with two datetime axes (e.g. observation time + forecast lead time).
@@ -359,56 +393,3 @@ class TestSingleTimeDim:
         specs = {"fc": IOSpec(path=str(path), vars=["forecast"])}
         with pytest.raises(ValueError, match="multiple time dimensions"):
             load_inputs(specs)
-
-
-class TestValidateTemporalAlignment:
-    """_validate_temporal_alignment checks coarser dates ⊆ expected resample labels."""
-
-    def test_aligned_daily_weekly_passes(self):
-        _validate_temporal_alignment({"daily": DAILY_YEAR, "weekly": WEEKLY_ALIGNED})
-
-    def test_aligned_daily_monthly_passes(self):
-        _validate_temporal_alignment({"daily": DAILY_YEAR, "monthly": MONTHLY_ALIGNED})
-
-    def test_aligned_weekly_monthly_passes(self):
-        weekly = pd.date_range("2020-01-01", periods=52, freq="7D")
-        monthly = pd.date_range("2020-01-31", periods=12, freq="ME")
-        _validate_temporal_alignment({"weekly": weekly, "monthly": monthly})
-
-    def test_only_daily_no_check(self):
-        _validate_temporal_alignment({"daily": DAILY_YEAR})
-
-    def test_only_monthly_no_check(self):
-        _validate_temporal_alignment({"monthly": MONTHLY_ALIGNED})
-
-    def test_empty_no_check(self):
-        _validate_temporal_alignment({})
-
-    def test_partial_subset_passes(self):
-        # Coarse data covering only part of the fine date range is valid
-        _validate_temporal_alignment({"daily": DAILY_YEAR, "weekly": WEEKLY_PARTIAL})
-
-    def test_wrong_weekday_raises(self):
-        with pytest.raises(ValueError, match="Temporal alignment check failed"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "weekly": WEEKLY_WRONG_DAY}
-            )
-
-    def test_wrong_month_convention_raises(self):
-        with pytest.raises(ValueError, match="Temporal alignment check failed"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "monthly": MONTHLY_WRONG}
-            )
-
-    def test_coarse_outside_fine_range_raises(self):
-        weekly_outside = pd.date_range("2022-01-01", periods=5, freq="7D")
-        with pytest.raises(ValueError, match="Temporal alignment check failed"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "weekly": weekly_outside}
-            )
-
-    def test_error_message_names_frequencies(self):
-        with pytest.raises(ValueError, match="'daily' → 'weekly'"):
-            _validate_temporal_alignment(
-                {"daily": DAILY_YEAR, "weekly": WEEKLY_WRONG_DAY}
-            )

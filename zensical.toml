@@ -3,7 +3,7 @@
 use_directory_urls = false
 
 site_name = "conduit"
-site_description = "An opinionated Hamilton + xarray + pint foundation for geoscientific data pipelines."
+site_description = "An opinionated Hamilton + xarray + xarray-annotated foundation for building configurable data pipelines."
 site_author = "Joe Marsh Rossney"
 site_url = "https://NERC-CEH.github.io/conduit"
 
@@ -30,6 +30,7 @@ nav = [
       "guides/inline-nodes-and-fan-out.md",
       "guides/drive-from-python.md",
       "guides/run-and-visualise.md",
+      "guides/resampling-and-units.md",
       "guides/validate-before-running.md",
       "guides/scale-up.md",
   ]},
@@ -44,7 +45,10 @@ nav = [
           "api/conduit.cli/run.md",
           "api/conduit.cli/version.md",
           "api/conduit.config.md",
+          "api/conduit.specs.md",
           "api/conduit.io.md",
+          "api/conduit.formats.md",
+          "api/conduit.checks.md",
           "api/conduit.transforms.md",
           "api/conduit.dag.driver.md",
           "api/conduit.dag/node.md",
