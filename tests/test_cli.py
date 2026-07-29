@@ -165,6 +165,102 @@ vars = ["temperature"]
         assert result.exit_code == 0, result.output
         assert "nothing to execute" in result.output
 
+    def _run_config(self, tmp_path, synthetic_data_dir, out, extra=""):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            f"""\
+[[node]]
+name = "warmth_daily"
+inputs = ["temperature_daily"]
+expression = "temperature_daily * 2"
+
+[inputs.daily]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+
+[outputs.daily]
+path = "{out}"
+vars = ["warmth"]
+{extra}
+"""
+        )
+        return cfg
+
+    def test_failing_input_check_aborts_before_writing(
+        self, tmp_path, synthetic_data_dir
+    ):
+        """A configured check runs on the real path, not only under --dry-run."""
+        out = tmp_path / "out.nc"
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            f"""\
+[inputs.daily]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+
+[inputs.weekly]
+path = "{synthetic_data_dir / "weekly.nc"}"
+vars = ["pressure"]
+
+[outputs.daily]
+path = "{out}"
+vars = ["temperature"]
+
+[validation]
+checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
+"""
+        )
+        result = runner.invoke(app, ["run", str(cfg)])
+        assert result.exit_code != 0
+        assert "input check(s) failed" in str(result.exception)
+        assert not out.exists()
+
+    def test_passing_input_check_still_runs(self, tmp_path, synthetic_data_dir):
+        out = tmp_path / "out.nc"
+        cfg = self._run_config(
+            tmp_path,
+            synthetic_data_dir,
+            out,
+            extra=(
+                "\n[validation]\n"
+                'checks = [{ check = "time_equal", inputs = ["daily"] }]\n'
+            ),
+        )
+        result = runner.invoke(app, ["run", str(cfg)])
+        assert result.exit_code == 0, result.output
+        assert out.exists()
+
+    def test_missing_output_dir_fails_before_compute(
+        self, tmp_path, synthetic_data_dir
+    ):
+        """Output paths are pre-flighted on the real run, not just in --dry-run.
+
+        Otherwise the whole DAG executes and the bad destination only surfaces
+        inside save_outputs, after all the work.
+        """
+        out = tmp_path / "missing" / "out.nc"
+        cfg = self._run_config(tmp_path, synthetic_data_dir, out)
+        result = runner.invoke(app, ["run", str(cfg)])
+        assert result.exit_code != 0
+        assert isinstance(result.exception, FileNotFoundError)
+        assert "does not exist" in str(result.exception)
+        assert not out.parent.exists()
+
+    def test_subset_zarr_without_store_fails_before_compute(
+        self, tmp_path, synthetic_data_dir
+    ):
+        out = tmp_path / "out.zarr"
+        cfg = self._run_config(
+            tmp_path,
+            synthetic_data_dir,
+            out,
+            extra="\n[subset]\nstart = 0\nstop = 2\n",
+        )
+        result = runner.invoke(app, ["run", str(cfg)])
+        assert result.exit_code != 0
+        assert "create-store" in str(result.exception)
+        assert not out.exists()
+
 
 # ---------------------------------------------------------------------------
 # graph

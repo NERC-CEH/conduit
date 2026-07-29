@@ -1,21 +1,17 @@
 """I/O functions for loading inputs and saving outputs outside the Hamilton DAG."""
 
 import os
-from os import PathLike
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from .formats import (
+    DEFAULT_POINT_DIM,
     FORMATS,
     Format,
-    dataset_to_frame,
     format_for,
-    read_in_group,
-    write_frame,
     write_in_group,
 )
 from .specs import IOSpec, SubsetSpec
@@ -58,32 +54,11 @@ def var_mapping(
 # ---------------------------------------------------------------------------
 
 
-def load_dataset(path: str | PathLike) -> xr.Dataset:
-    """Open a NetCDF or Zarr dataset with coordinates decoded."""
-    return read_in_group(path, "dataset")
-
-
-def load_timeseries(path: str | PathLike) -> xr.Dataset:
-    """Load a single-point time series from CSV or Parquet.
-
-    Returns a Dataset with dims (time, pixel) where pixel has coordinate value 0.
-    """
-    return read_in_group(path, "table")
-
-
-def load_static(path: str | PathLike) -> xr.Dataset:
-    """Load single-point static inputs from JSON or TOML.
-
-    Returns a Dataset with dim (pixel,) where pixel has coordinate value 0.
-    """
-    return read_in_group(path, "scalar")
-
-
-def _load_raw(path: str) -> xr.Dataset:
+def _load_raw(path: str, point_dim: str = DEFAULT_POINT_DIM) -> xr.Dataset:
     """Open any supported input file (`conduit.formats` picks the reader)."""
     fmt = format_for(path)
     assert fmt.read is not None  # every registered format is readable
-    return fmt.read(path)
+    return fmt.read(path, point_dim=point_dim)
 
 
 # ---------------------------------------------------------------------------
@@ -139,26 +114,11 @@ def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def dataset_to_dataframe(ds: xr.Dataset) -> pd.DataFrame:
-    """Convert output Dataset to DataFrame, squeezing size-1 pixel dim if present."""
-    return dataset_to_frame(ds)
-
-
-def save_timeseries(df: pd.DataFrame, path: str | PathLike) -> None:
-    """Save a DataFrame to CSV or Parquet, auto-detected by extension."""
-    write_frame(df, path)
-
-
-def _save_netcdf(ds: xr.Dataset, path: str | PathLike) -> None:
-    """Save a dataset to NetCDF or Zarr based on extension."""
-    write_in_group(ds, path, "dataset")
-
-
-def _save(ds: xr.Dataset, path: str) -> None:
+def _save(ds: xr.Dataset, path: str, point_dim: str = DEFAULT_POINT_DIM) -> None:
     """Write ``ds`` to any writable format (`conduit.formats` picks the writer)."""
     fmt = format_for(path, writable=True)
     assert fmt.write is not None
-    fmt.write(ds, path)
+    fmt.write(ds, path, point_dim=point_dim)
 
 
 # ---------------------------------------------------------------------------
@@ -166,20 +126,28 @@ def _save(ds: xr.Dataset, path: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
+def load_raw_datasets(
+    input_specs: dict[str, IOSpec], point_dim: str = DEFAULT_POINT_DIM
+) -> dict[str, xr.Dataset]:
     """Open every configured input as a raw ``Dataset`` (pre-stack, pre-subset).
 
     The single source of truth for "load the raw input files": `load_inputs`
     calls it internally, and the input-checks pre-flight calls it too. Opens are
     lazy (metadata only), so calling it twice per run is cheap.
+
+    ``point_dim`` names the synthetic axis given to single-point ``table``/``scalar``
+    inputs; see `conduit.formats`.
     """
-    return {label: _load_raw(spec.path) for label, spec in input_specs.items()}
+    return {
+        label: _load_raw(spec.path, point_dim) for label, spec in input_specs.items()
+    }
 
 
 def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
     geospatial: bool | None = None,
+    point_dim: str = DEFAULT_POINT_DIM,
 ) -> dict[str, xr.DataArray]:
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
@@ -206,6 +174,11 @@ def load_inputs(
     geospatial:
         Force the geospatial path on (``True``) or off (``False``). When ``None``
         (default) it is auto-detected from the presence of CRS metadata.
+    point_dim:
+        Name of the synthetic size-1 axis given to single-point CSV/Parquet/JSON/TOML
+        inputs so they broadcast against the partitioned ones. Must match the
+        dimension the pipeline blocks or subsets over, which is why both default to
+        the config's top-level ``point_dim``. Typically ``parsed_config.point_dim``.
     """
     from .gridded.io import (  # lazy: optional geo extra (see conduit.gridded)
         compute_lat_lon,
@@ -214,7 +187,7 @@ def load_inputs(
     )
 
     inputs: dict[str, xr.DataArray] = {}
-    raw_datasets = load_raw_datasets(input_specs)
+    raw_datasets = load_raw_datasets(input_specs, point_dim)
 
     # Invariant: at most one time dimension per input dataset. A second datetime
     # axis makes "the time dimension" ambiguous (for validation, resampling, and
@@ -316,6 +289,7 @@ def save_outputs(
     output_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
     provenance: dict[str, str] | None = None,
+    point_dim: str = DEFAULT_POINT_DIM,
 ) -> None:
     """Write each output section's Dataset to disk.
 
@@ -336,13 +310,16 @@ def save_outputs(
         text and its hash), so a store is self-describing. Ignored for the
         subset/Zarr-region path, whose store attrs are written once by
         ``create-store``.
+    point_dim:
+        Name of the size-1 point axis to squeeze out when writing a CSV/Parquet
+        output. Typically ``parsed_config.point_dim``.
     """
     for label, ds in output_datasets.items():
         path = output_specs[label].path
         if provenance:
             ds = ds.assign_attrs(provenance)
         if subset_spec is None:
-            _save(ds, path)
+            _save(ds, path, point_dim)
             continue
 
         from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
@@ -351,7 +328,7 @@ def save_outputs(
         if fmt.needs_store:
             save_zarr_region(ds, path, subset_spec)
         else:
-            _save_netcdf(ds, subset_path(path, subset_spec))
+            write_in_group(ds, subset_path(path, subset_spec), "dataset")
 
 
 def _subset_format(path: str, label: str) -> "Format":

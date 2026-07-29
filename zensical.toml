@@ -3,7 +3,7 @@
 use_directory_urls = false
 
 site_name = "conduit"
-site_description = "An opinionated Hamilton + xarray + pint foundation for geoscientific data pipelines."
+site_description = "An opinionated Hamilton + xarray + xarray-annotated foundation for building configurable data pipelines."
 site_author = "Joe Marsh Rossney"
 site_url = "https://NERC-CEH.github.io/conduit"
 

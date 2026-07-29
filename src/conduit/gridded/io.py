@@ -337,9 +337,10 @@ def create_output_store(
 
     Unlike the rest of the ``[subset]`` path, this is ``pixel``-only: the store *is*
     the stacked pixel grid (that is what `_pixel_template` builds and what `merge`
-    unstacks back to ``(y, x)``). A ``[subset]`` over any other ``dim`` alongside a
-    Zarr output is rejected rather than silently building a mislabelled store — such
-    a pipeline should use a NetCDF output, whose parts need no shared store.
+    unstacks back to ``(y, x)``). A non-default ``point_dim``, or a ``[subset]`` over
+    any other ``dim``, is rejected alongside a Zarr output rather than silently
+    building a mislabelled store — such a pipeline should use a NetCDF output, whose
+    parts need no shared store.
     """
     import dask.array as da
 
@@ -354,6 +355,13 @@ def create_output_store(
     if not zarr_specs:
         return []
 
+    if parsed.point_dim != "pixel":
+        raise ValueError(
+            f"point_dim is {parsed.point_dim!r}, but a Zarr output store is the "
+            f"stacked 'pixel' grid and can only be built over 'pixel'. Either leave "
+            f"point_dim at its default, or use a NetCDF output (whose subset parts "
+            f"are separate files and need no pre-created store)."
+        )
     if parsed.subset_spec is not None and parsed.subset_spec.dim != "pixel":
         raise ValueError(
             f"[subset] dim is {parsed.subset_spec.dim!r}, but a Zarr output store is "
@@ -372,7 +380,7 @@ def create_output_store(
                 f"(CLI: --overwrite) to recreate them from scratch."
             )
 
-    inputs = load_inputs(parsed.input_specs)
+    inputs = load_inputs(parsed.input_specs, point_dim=parsed.point_dim)
     skeleton = _pixel_template(inputs)
     n_pixel = skeleton.sizes["pixel"]
     chunk = pixel_chunk or n_pixel

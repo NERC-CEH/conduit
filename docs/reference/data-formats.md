@@ -37,8 +37,11 @@ conduit handles three spatial layouts automatically:
   This path uses the optional `geo` extra and activates only when CRS metadata is
   present. See [`conduit.gridded`](../api/conduit.gridded/io.md).
 - **Pre-stacked.** Data that already has a `pixel` dimension is used as-is.
-- **Single-point (CSV/Parquet/JSON/TOML).** Flat files are treated as one site; a
-  `pixel` dimension with a single coordinate (`0`) is added automatically.
+- **Single-point (CSV/Parquet/JSON/TOML).** Flat files are treated as one site; a size-1
+  dimension with a single coordinate (`0`) is added automatically — named by the
+  top-level [`point_dim`](configuration.md#point-dimension) key, `pixel` by default.
+  Tables become `(time, point_dim)` and scalar files `(point_dim,)`. Set `point_dim` to
+  match whatever a non-gridded pipeline blocks or subsets over.
 
 Grid coordinate nodes (`latitude`, `longitude`) are computed from the CRS when a gridded
 input is loaded.
@@ -65,7 +68,7 @@ mechanisms cover it:
 - a consumer declaring `Freq("7D")` on its input (or a `[[node]]` with `freq = "7D"` on
   its output) — validated per node by the
   [contract check](../concepts/contracts.md), at build time and in `--dry-run`;
-- the [`time_aligned` / `time_equal` / `time_subset` checks](configuration.md#validation)
+- the [`time_equal` / `time_subset` checks](configuration.md#validation)
   — validated across whole input datasets.
 
 ## Units metadata

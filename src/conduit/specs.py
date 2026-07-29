@@ -220,20 +220,32 @@ class CacheSpec:
         )
 
 
+def assert_dim_name(value: Any, where: str) -> str:
+    """Validate a dimension-name key (``point_dim``, ``[blocking].dim``, ...).
+
+    One validator so the top-level ``point_dim`` and the per-section ``dim``
+    overrides that default to it fail the same way, with the same message.
+    """
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{where} must be a non-empty string, got {value!r}.")
+    return value
+
+
 @dataclass
 class BlockingSpec:
     """Specification for the [blocking] section.
 
-    Controls how a partition dimension (``dim``, default ``pixel``) is split into
-    fixed-size sequential blocks to bound peak memory usage. Set ``dim`` to block
-    over any other dimension (e.g. ``location``) for non-gridded pipelines.
+    Controls how a partition dimension (``dim``) is split into fixed-size
+    sequential blocks to bound peak memory usage. ``dim`` defaults to the config's
+    top-level ``point_dim`` (itself ``pixel`` by default); set it to block over any
+    other dimension (e.g. ``location``) for non-gridded pipelines.
     """
 
     block_size: int
     dim: str = "pixel"
 
     @classmethod
-    def from_config(cls, entry: dict) -> "BlockingSpec":
+    def from_config(cls, entry: dict, default_dim: str = "pixel") -> "BlockingSpec":
         """Construct and validate from a raw [blocking] TOML entry."""
         block_size = entry.get("block_size")
         if not isinstance(block_size, int) or block_size < 1:
@@ -241,11 +253,7 @@ class BlockingSpec:
                 "[blocking] 'block_size' must be a positive integer, "
                 f"got {block_size!r}."
             )
-        dim = entry.get("dim", "pixel")
-        if not isinstance(dim, str) or not dim:
-            raise ValueError(
-                f"[blocking] 'dim' must be a non-empty string, got {dim!r}."
-            )
+        dim = assert_dim_name(entry.get("dim", default_dim), "[blocking] 'dim'")
         return cls(block_size=block_size, dim=dim)
 
 
@@ -253,10 +261,10 @@ class BlockingSpec:
 class SubsetSpec:
     """Specification for the [subset] section.
 
-    Selects a contiguous slice ``[start, stop)`` of one dimension (``dim``, default
-    ``pixel``) so that independent ``conduit run`` processes can each handle a
-    different chunk of the same input files. ``stop`` is exclusive (Python slice
-    convention).
+    Selects a contiguous slice ``[start, stop)`` of one dimension (``dim``,
+    defaulting to the config's top-level ``point_dim``) so that independent
+    ``conduit run`` processes can each handle a different chunk of the same input
+    files. ``stop`` is exclusive (Python slice convention).
 
     ``dim`` mirrors `BlockingSpec.dim`: the two mechanisms partition the same way
     and differ only in *who* runs the parts (one process sequentially vs. many
@@ -271,7 +279,7 @@ class SubsetSpec:
     dim: str = "pixel"
 
     @classmethod
-    def from_config(cls, entry: dict) -> "SubsetSpec":
+    def from_config(cls, entry: dict, default_dim: str = "pixel") -> "SubsetSpec":
         """Construct and validate from a raw [subset] TOML entry."""
 
         def _index(key: str) -> int:
@@ -288,9 +296,7 @@ class SubsetSpec:
             raise ValueError(
                 f"[subset] 'stop' ({stop}) must be greater than 'start' ({start})."
             )
-        dim = entry.get("dim", "pixel")
-        if not isinstance(dim, str) or not dim:
-            raise ValueError(f"[subset] 'dim' must be a non-empty string, got {dim!r}.")
+        dim = assert_dim_name(entry.get("dim", default_dim), "[subset] 'dim'")
         return cls(start=start, stop=stop, dim=dim)
 
 
@@ -366,6 +372,12 @@ class AnnotationPolicySpec:
     process-global policy. Every axis is ``None`` when unset, meaning "defer to the
     process-wide default".
 
+    The mapping is not one key per policy object. Two axes fan out across facets:
+    ``enabled`` (so ``mode = "off"`` is a real kill-switch — units *and*
+    dims/coords/dtype *and* freq) and ``on_mismatch`` (which means the same thing
+    in both validate-only domains). The rest are facet-specific: ``on_missing`` and
+    ``on_inexact`` are units-only, ``on_uninferable`` temporal-only.
+
     `apply` must be called by *every* entry point that builds a DAG — the build-time
     contract check consults the global policy, so a command that skipped it would
     accept a config that ``conduit run`` rejects.
@@ -379,10 +391,16 @@ class AnnotationPolicySpec:
 
     def apply(self) -> None:
         """Push this policy into xarray-annotated's process-global policy."""
+        # `enabled` is a kill-switch for *all* contract checking, so it reaches
+        # every facet — not just units.
         if self.enabled is not None:
+            from xarray_annotated.schema import set_policy as set_schema_policy
+            from xarray_annotated.temporal import set_policy as set_temporal_policy
             from xarray_annotated.units import set_policy
 
             set_policy(enabled=self.enabled)
+            set_schema_policy(enabled=self.enabled)
+            set_temporal_policy(enabled=self.enabled)
 
         if self.on_missing is not None:
             from xarray_annotated.units import OnMissing, set_policy
@@ -441,8 +459,8 @@ class ParsedConfig:
     annotations: "AnnotationPolicySpec" = field(
         default_factory=lambda: AnnotationPolicySpec()
     )
-
-
-# ---------------------------------------------------------------------------
-# Fan-out / desugaring helpers ([[node]] for_each + [[resample]] preset)
-# ---------------------------------------------------------------------------
+    #: The partition/point dimension name (top-level ``point_dim``, default
+    #: ``pixel``). Names the synthetic axis single-point ``table``/``scalar``
+    #: inputs are given (see `conduit.formats`) and supplies the default ``dim``
+    #: for `BlockingSpec` and `SubsetSpec`.
+    point_dim: str = "pixel"

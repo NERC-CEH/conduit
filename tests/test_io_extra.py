@@ -1,7 +1,7 @@
 """Tests for io.py paths not covered by existing tests.
 
 Covers:
-- load_dataset / _save_netcdf with Zarr files
+- read_in_group / write_in_group with Zarr files
 - time-dimension detection (``time_dims``) and the single-time-dim invariant
 - get_outputs and save_outputs public API
 - Multiple-CRS-dataset lat/lon computation
@@ -15,11 +15,10 @@ import pytest
 import xarray as xr
 
 from conduit.config import IOSpec
+from conduit.formats import read_in_group, write_in_group
 from conduit.io import (
-    _save_netcdf,
     get_final_vars,
     get_outputs,
-    load_dataset,
     load_inputs,
     save_outputs,
     sole_time_dim,
@@ -56,44 +55,44 @@ _HAS_ZARR = importlib.util.find_spec("zarr") is not None
 
 @pytest.mark.skipif(not _HAS_ZARR, reason="zarr not installed")
 class TestZarrDataset:
-    """load_dataset and _save_netcdf support Zarr files."""
+    """The dataset-group readers/writers support Zarr files."""
 
     def test_save_and_load_zarr(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        _save_netcdf(ds, zarr_path)
-        loaded = load_dataset(zarr_path)
+        write_in_group(ds, zarr_path, "dataset")
+        loaded = read_in_group(zarr_path, "dataset")
         assert set(loaded.data_vars) == {"var_a"}
 
     def test_zarr_round_trip_values(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        _save_netcdf(ds, zarr_path)
-        loaded = load_dataset(zarr_path)
+        write_in_group(ds, zarr_path, "dataset")
+        loaded = read_in_group(zarr_path, "dataset")
         np.testing.assert_allclose(loaded["var_a"].values, ds["var_a"].values)
 
     def test_zarr_time_dimension_preserved(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        _save_netcdf(ds, zarr_path)
-        loaded = load_dataset(zarr_path)
+        write_in_group(ds, zarr_path, "dataset")
+        loaded = read_in_group(zarr_path, "dataset")
         assert "time" in loaded.dims
         assert loaded.sizes["time"] == N_TIMES
 
 
 class TestSaveNetcdfErrors:
-    """_save_netcdf raises for unsupported extensions."""
+    """The dataset-group dispatch raises for unsupported extensions."""
 
     def test_unsupported_extension_raises(self, tmp_path):
         ds = _simple_ds()
         with pytest.raises(ValueError, match="Unsupported file extension"):
-            _save_netcdf(ds, tmp_path / "data.csv")
+            write_in_group(ds, tmp_path / "data.csv", "dataset")
 
     def test_load_unsupported_extension_raises(self, tmp_path):
         p = tmp_path / "data.txt"
         p.touch()
         with pytest.raises(ValueError, match="Unsupported file extension"):
-            load_dataset(p)
+            read_in_group(p, "dataset")
 
 
 # ---------------------------------------------------------------------------

@@ -73,7 +73,11 @@ def run(
 
     cache_spec = _resolve_cache(parsed.cache_spec, cache, cache_dir)
 
-    inputs = load_inputs(parsed.input_specs, subset_spec=parsed.subset_spec)
+    inputs = load_inputs(
+        parsed.input_specs,
+        subset_spec=parsed.subset_spec,
+        point_dim=parsed.point_dim,
+    )
 
     _run_input_checks(parsed)
 
@@ -87,6 +91,9 @@ def run(
 
     if parsed.output_specs:
         target_vars = get_final_vars(parsed.output_specs)
+        # Before compute, not after: an unwritable destination discovered inside
+        # save_outputs would cost the whole run. Same check `--dry-run` performs.
+        assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
         check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
         if parsed.blocking_spec is not None:
             results = execute_blocked(dr, inputs, target_vars, parsed.blocking_spec)
@@ -99,6 +106,7 @@ def run(
             parsed.output_specs,
             subset_spec=parsed.subset_spec,
             provenance=_config_provenance(config_file),
+            point_dim=parsed.point_dim,
         )
     else:
         # A config with no outputs is a legitimate checks-only invocation (it still
@@ -130,7 +138,9 @@ def _run_input_checks(parsed: "ParsedConfig") -> int:
     from ..checks import run_input_checks
     from ..io import load_raw_datasets
 
-    run_input_checks(load_raw_datasets(parsed.input_specs), parsed.checks)
+    run_input_checks(
+        load_raw_datasets(parsed.input_specs, parsed.point_dim), parsed.checks
+    )
     return len(parsed.checks)
 
 
@@ -165,7 +175,11 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
     typer.echo(f"Dry run for {config_file}")
     typer.echo("  ✓ config parsed")
 
-    inputs = load_inputs(parsed.input_specs, subset_spec=parsed.subset_spec)
+    inputs = load_inputs(
+        parsed.input_specs,
+        subset_spec=parsed.subset_spec,
+        point_dim=parsed.point_dim,
+    )
     typer.echo(
         f"  ✓ inputs loaded: {len(inputs)} variable(s) "
         f"from {len(parsed.input_specs)} source(s)"

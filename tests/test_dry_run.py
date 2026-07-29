@@ -295,3 +295,85 @@ class TestDryRunCLI:
         result = runner.invoke(app, ["run", cfg, "--dry-run"])
         assert result.exit_code != 0
         assert not out.exists()
+
+
+# ---------------------------------------------------------------------------
+# CLI: [validation] input checks (conduit.checks) through the dry run
+# ---------------------------------------------------------------------------
+
+
+def _checks_config(
+    tmp_path,
+    synthetic_data_dir,
+    second: str,
+    checks: str,
+    second_var: str = "temperature",
+) -> str:
+    """Config with two input sections and a [validation].checks block."""
+    content = f"""\
+[[node]]
+name = "mean_temperature_weekly"
+inputs = ["temperature_daily"]
+expression = "temperature_daily.resample(time='7D').mean()"
+
+[inputs.daily]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+
+[inputs.other]
+path = "{synthetic_data_dir / second}"
+vars = ["{second_var}"]
+
+[validation]
+checks = [{checks}]
+"""
+    p = tmp_path / "config.toml"
+    p.write_text(content)
+    return str(p)
+
+
+class TestDryRunInputChecks:
+    """`[validation].checks` really run through the CLI, not just in unit tests."""
+
+    def test_passing_check_reported(self, tmp_path, synthetic_data_dir):
+        # daily.nc against itself: identical time index, so time_equal passes.
+        cfg = _checks_config(
+            tmp_path,
+            synthetic_data_dir,
+            "daily.nc",
+            '{ check = "time_equal", inputs = ["daily", "other"] }',
+        )
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "input checks passed (1)" in result.output
+
+    def test_failing_check_aborts(self, tmp_path, synthetic_data_dir):
+        # daily.nc vs weekly.nc: genuinely different time indices.
+        cfg = _checks_config(
+            tmp_path,
+            synthetic_data_dir,
+            "weekly.nc",
+            '{ check = "time_equal", inputs = ["daily", "other"] }',
+            second_var="pressure",
+        )
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code != 0
+        assert "time_equal" in str(result.exception)
+        assert "input check(s) failed" in str(result.exception)
+
+    def test_no_checks_configured_reported(self, tmp_path, synthetic_data_dir):
+        cfg = _config(tmp_path, synthetic_data_dir)
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "input checks: none configured" in result.output
+
+    def test_wildcard_inputs_expand(self, tmp_path, synthetic_data_dir):
+        cfg = _checks_config(
+            tmp_path,
+            synthetic_data_dir,
+            "daily.nc",
+            '{ check = "time_equal", inputs = ["*"] }',
+        )
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "input checks passed (1)" in result.output

@@ -369,6 +369,30 @@ class TestZarrSubset:
         recreated = xr.open_zarr(store, consolidated=False).compute()
         assert bool(np.isnan(recreated[VAR].values).all())
 
+    def test_create_store_rejects_non_pixel_point_dim(self, pipeline_config, tmp_path):
+        """A Zarr store *is* the stacked pixel grid, so it is pixel-only.
+
+        Building one for a pipeline whose point axis is called something else would
+        silently mislabel the store, so it is refused up front.
+        """
+        specs = _output_specs(tmp_path / "weekly.zarr")
+        with pytest.raises(ValueError, match="point_dim is 'location'"):
+            _create_store(
+                replace(pipeline_config, point_dim="location"), specs, pixel_chunk=2
+            )
+
+    def test_create_store_rejects_non_pixel_subset_dim(self, pipeline_config, tmp_path):
+        specs = _output_specs(tmp_path / "weekly.zarr")
+        with pytest.raises(ValueError, match="can only be partitioned over 'pixel'"):
+            _create_store(
+                replace(
+                    pipeline_config,
+                    subset_spec=SubsetSpec(0, 2, dim="location"),
+                ),
+                specs,
+                pixel_chunk=2,
+            )
+
     def test_merge_out_rejected_for_multiple_outputs(self):
         specs = {
             "daily": IOSpec(path="a.zarr", vars=[VAR]),

@@ -14,6 +14,7 @@ from typing import Any, Self
 import tomli_w
 
 from .checks import CHECKS
+from .formats import DEFAULT_POINT_DIM
 from .specs import (
     AnnotationPolicySpec,
     BlockingSpec,
@@ -26,6 +27,7 @@ from .specs import (
     SubsetSpec,
     _severity,
     _validate_vars,
+    assert_dim_name,
 )
 
 
@@ -228,7 +230,17 @@ class Config:
         spec = CacheSpec.from_config(entry)
         return replace(spec, path=self._resolve(spec.path))
 
-    def _parse_blocking(self, data: dict) -> "BlockingSpec | None":
+    def _parse_point_dim(self, data: dict) -> str:
+        """Handle the top-level ``point_dim`` key.
+
+        Popped explicitly, and before `_parse_external_modules`: that loop treats
+        every remaining top-level name as a module section and calls ``dict()`` on
+        its value, which for a bare string fails with an opaque error rather than
+        one naming the key.
+        """
+        return assert_dim_name(data.pop("point_dim", DEFAULT_POINT_DIM), "'point_dim'")
+
+    def _parse_blocking(self, data: dict, point_dim: str) -> "BlockingSpec | None":
         """Handle the [blocking] section.
 
         Returns None if there is no [blocking] section.
@@ -236,9 +248,9 @@ class Config:
         entry = data.pop("blocking", None)
         if entry is None:
             return None
-        return BlockingSpec.from_config(entry)
+        return BlockingSpec.from_config(entry, default_dim=point_dim)
 
-    def _parse_subset(self, data: dict) -> "SubsetSpec | None":
+    def _parse_subset(self, data: dict, point_dim: str) -> "SubsetSpec | None":
         """Handle the [subset] section.
 
         Returns None if there is no [subset] section.
@@ -246,7 +258,7 @@ class Config:
         entry = data.pop("subset", None)
         if entry is None:
             return None
-        return SubsetSpec.from_config(entry)
+        return SubsetSpec.from_config(entry, default_dim=point_dim)
 
     def _parse_checks(
         self, data: dict, input_specs: dict[str, "IOSpec"]
@@ -392,7 +404,11 @@ class Config:
     def parse(self) -> ParsedConfig:
         """Parse config into a ParsedConfig.
 
-        Recognised top-level sections (processed directly):
+        Recognised top-level keys and sections (processed directly):
+        - point_dim       — name of the synthetic point/partition axis (default
+                            "pixel"); supplies the default `dim` for [blocking]
+                            and [subset], and names the axis given to single-point
+                            table/scalar inputs (see conduit.formats)
         - [inputs.*]      — I/O specs; freq derived from subsection key
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks (see conduit.checks)
@@ -400,7 +416,7 @@ class Config:
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
         - [[resample]]    — preset desugaring to fan-out passthrough nodes
         - [cache]         — Hamilton result caching (path, recompute, disable)
-        - [blocking]      — pixel-blocked execution (block_size)
+        - [blocking]      — blocked execution over one dimension (block_size, dim)
         - [subset]        — a slice of one dimension (dim, start, stop)
         - [annotations]   — contract validation policy (units + schema + temporal)
 
@@ -410,6 +426,7 @@ class Config:
         driver_config.
         """
         data = dict(self._data)
+        point_dim = self._parse_point_dim(data)
         driver_config: dict[str, Any] = {}
         input_specs: dict[str, IOSpec] = {}
         output_specs: dict[str, IOSpec] = {}
@@ -421,8 +438,8 @@ class Config:
         if node_specs:
             modules.append("node")
         cache_spec = self._parse_cache(data)
-        blocking_spec = self._parse_blocking(data)
-        subset_spec = self._parse_subset(data)
+        blocking_spec = self._parse_blocking(data, point_dim)
+        subset_spec = self._parse_subset(data, point_dim)
         annotations = self._parse_annotations(data)
         modules += self._parse_external_modules(data, driver_config)
         return ParsedConfig(
@@ -436,6 +453,7 @@ class Config:
             subset_spec=subset_spec,
             checks=checks,
             annotations=annotations,
+            point_dim=point_dim,
         )
 
 

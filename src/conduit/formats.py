@@ -10,11 +10,21 @@ Formats fall into three **groups**, which is what the public loaders in
 `conduit.io` mean by their names:
 
 - ``dataset`` — NetCDF/Zarr: an n-dimensional Dataset, read as-is;
-- ``table`` — CSV/Parquet: a single-point time series, reshaped to ``(time, pixel)``;
-- ``scalar`` — JSON/TOML: single-point static values, reshaped to ``(pixel,)``.
+- ``table`` — CSV/Parquet: a single-point time series, reshaped to
+  ``(time, point_dim)``;
+- ``scalar`` — JSON/TOML: single-point static values, reshaped to ``(point_dim,)``.
 
 ``scalar`` formats are input-only (``write=None``), which is why `save_outputs`
 rejects a ``.json`` destination.
+
+**``point_dim``** is the size-1 axis the ``table`` and ``scalar`` groups invent so
+single-point inputs broadcast against the partitioned ones. Its name must match the
+dimension the pipeline blocks/subsets over, or a subset run would skip these inputs
+(`conduit.io.subset_inputs` passes over anything lacking the dim) and leave a
+phantom axis in the outputs — so it is threaded from the config's top-level
+``point_dim`` rather than hardcoded. Every reader and writer takes it, including the
+``dataset`` ones, which ignore it: a uniform signature keeps `FORMATS` a flat table
+and the dispatch in `read_in_group` / `write_in_group` free of special cases.
 """
 
 import json
@@ -28,9 +38,13 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-Reader = Callable[[str | PathLike], xr.Dataset]
-Writer = Callable[[xr.Dataset, str | PathLike], None]
+#: Readers and writers all take a keyword-only ``point_dim``; the ``dataset``
+#: group ignores it (see the module docstring).
+Reader = Callable[..., xr.Dataset]
+Writer = Callable[..., None]
 FrameWriter = Callable[[pd.DataFrame, str | PathLike], None]
+
+DEFAULT_POINT_DIM = "pixel"
 
 
 # ---------------------------------------------------------------------------
@@ -38,45 +52,53 @@ FrameWriter = Callable[[pd.DataFrame, str | PathLike], None]
 # ---------------------------------------------------------------------------
 
 
-def _read_netcdf(path: str | PathLike) -> xr.Dataset:
+def _read_netcdf(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
     return xr.open_dataset(path, engine="netcdf4", decode_coords="all")
 
 
-def _read_zarr(path: str | PathLike) -> xr.Dataset:
+def _read_zarr(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
     return xr.open_dataset(path, engine="zarr", decode_coords="all", consolidated=False)
 
 
-def _write_netcdf(ds: xr.Dataset, path: str | PathLike) -> None:
+def _write_netcdf(
+    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
+) -> None:
     ds.to_netcdf(path, engine="netcdf4")
 
 
-def _write_zarr(ds: xr.Dataset, path: str | PathLike) -> None:
+def _write_zarr(
+    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
+) -> None:
     ds.to_zarr(path, consolidated=False)
 
 
-def _timeseries_from_frame(df: pd.DataFrame) -> xr.Dataset:
-    """Shape a single-point table into a ``(time, pixel)`` Dataset."""
+def _timeseries_from_frame(df: pd.DataFrame, point_dim: str) -> xr.Dataset:
+    """Shape a single-point table into a ``(time, point_dim)`` Dataset."""
     if "time" in df.columns:
         df = df.set_index("time")
     if df.index.name != "time":
         df.index.name = "time"
     df.index = pd.to_datetime(df.index)
-    ds = df.to_xarray().expand_dims({"pixel": [0]})
-    return ds.transpose("time", "pixel")
+    ds = df.to_xarray().expand_dims({point_dim: [0]})
+    return ds.transpose("time", point_dim)
 
 
-def _read_csv(path: str | PathLike) -> xr.Dataset:
-    return _timeseries_from_frame(pd.read_csv(path, index_col=0, parse_dates=True))
+def _read_csv(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
+    return _timeseries_from_frame(
+        pd.read_csv(path, index_col=0, parse_dates=True), point_dim
+    )
 
 
-def _read_parquet(path: str | PathLike) -> xr.Dataset:
-    return _timeseries_from_frame(pd.read_parquet(path))
+def _read_parquet(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
+    return _timeseries_from_frame(pd.read_parquet(path), point_dim)
 
 
-def dataset_to_frame(ds: xr.Dataset) -> pd.DataFrame:
-    """Convert an output Dataset to a DataFrame, dropping a size-1 pixel dim."""
-    if "pixel" in ds.dims:
-        ds = ds.squeeze("pixel", drop=True)
+def dataset_to_frame(
+    ds: xr.Dataset, point_dim: str = DEFAULT_POINT_DIM
+) -> pd.DataFrame:
+    """Convert an output Dataset to a DataFrame, dropping a size-1 point dim."""
+    if point_dim in ds.dims:
+        ds = ds.squeeze(point_dim, drop=True)
     return ds.to_dataframe()
 
 
@@ -88,33 +110,37 @@ def _write_frame_parquet(df: pd.DataFrame, path: str | PathLike) -> None:
     df.to_parquet(path)
 
 
-def _write_csv(ds: xr.Dataset, path: str | PathLike) -> None:
-    _write_frame_csv(dataset_to_frame(ds), path)
+def _write_csv(
+    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
+) -> None:
+    _write_frame_csv(dataset_to_frame(ds, point_dim), path)
 
 
-def _write_parquet(ds: xr.Dataset, path: str | PathLike) -> None:
-    _write_frame_parquet(dataset_to_frame(ds), path)
+def _write_parquet(
+    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
+) -> None:
+    _write_frame_parquet(dataset_to_frame(ds, point_dim), path)
 
 
-def _static_from_mapping(data: dict) -> xr.Dataset:
-    """Shape a flat ``{name: value}`` mapping into a ``(pixel,)`` Dataset."""
+def _static_from_mapping(data: dict, point_dim: str) -> xr.Dataset:
+    """Shape a flat ``{name: value}`` mapping into a ``(point_dim,)`` Dataset."""
     return xr.Dataset(
         {
-            k: xr.DataArray(np.asarray([v], dtype=float), dims=["pixel"])
+            k: xr.DataArray(np.asarray([v], dtype=float), dims=[point_dim])
             for k, v in data.items()
         },
-        coords={"pixel": [0]},
+        coords={point_dim: [0]},
     )
 
 
-def _read_json(path: str | PathLike) -> xr.Dataset:
+def _read_json(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
     with open(path) as f:
-        return _static_from_mapping(json.load(f))
+        return _static_from_mapping(json.load(f), point_dim)
 
 
-def _read_toml(path: str | PathLike) -> xr.Dataset:
+def _read_toml(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
     with open(path, "rb") as f:
-        return _static_from_mapping(tomllib.load(f))
+        return _static_from_mapping(tomllib.load(f), point_dim)
 
 
 # ---------------------------------------------------------------------------
@@ -226,18 +252,26 @@ def _in_group(path: str | PathLike, group: str, *, writable: bool = False) -> Fo
     return fmt
 
 
-def read_in_group(path: str | PathLike, group: str) -> xr.Dataset:
+def read_in_group(
+    path: str | PathLike, group: str, *, point_dim: str = DEFAULT_POINT_DIM
+) -> xr.Dataset:
     """Read ``path``, requiring it to be in ``group`` (see the module docstring)."""
     fmt = _in_group(path, group)
     assert fmt.read is not None  # every registered format is readable
-    return fmt.read(path)
+    return fmt.read(path, point_dim=point_dim)
 
 
-def write_in_group(ds: xr.Dataset, path: str | PathLike, group: str) -> None:
+def write_in_group(
+    ds: xr.Dataset,
+    path: str | PathLike,
+    group: str,
+    *,
+    point_dim: str = DEFAULT_POINT_DIM,
+) -> None:
     """Write ``ds`` to ``path``, requiring it to be in ``group``."""
     fmt = _in_group(path, group, writable=True)
     assert fmt.write is not None
-    fmt.write(ds, path)
+    fmt.write(ds, path, point_dim=point_dim)
 
 
 def write_frame(df: pd.DataFrame, path: str | PathLike) -> None:

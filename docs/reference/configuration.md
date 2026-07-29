@@ -221,6 +221,26 @@ recompute = ["my_calibrated_node"]
 | `recompute` | `true` or a list of node names — force recompute even on a hit. |
 | `disable` | `true` or a list of node names — bypass the cache for those nodes. |
 
+## Point dimension
+
+`point_dim` is a top-level key naming the dimension your pipeline partitions over. It
+does two things:
+
+- it supplies the default `dim` for [`[blocking]`](#blocking) and [`[subset]`](#subset);
+- it names the synthetic size-1 axis added to single-point CSV/Parquet/JSON/TOML inputs
+  (see [Data formats › spatial handling](data-formats.md#spatial-handling)).
+
+```toml
+point_dim = "location"   # optional; defaults to "pixel"
+```
+
+The two must agree. If a table input were given a `pixel` axis while `[subset]`
+partitioned over `location`, the subset would skip that input entirely and leave a
+phantom `pixel` axis in the outputs — so one key drives both.
+
+Gridded pipelines should leave this at its default: the geospatial layer stacks `(y, x)`
+into `pixel` by name.
+
 ## Blocking
 
 `[blocking]` processes a partition dimension in fixed-size sequential chunks to bound
@@ -235,7 +255,7 @@ dim = "pixel"
 | Key | Description |
 |-----|-------------|
 | `block_size` | **Required.** Positive integer — rows of `dim` per block. |
-| `dim` | Partition dimension (default `pixel`). |
+| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
 
 ## Subset
 
@@ -254,7 +274,7 @@ dim   = "pixel"      # optional; the default
 |-----|-------------|
 | `start` | **Required.** First index along `dim` (inclusive, zero-based). |
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
-| `dim` | Partition dimension (default `pixel`). |
+| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
 
 `dim` mirrors [`[blocking]`](#blocking): the two mechanisms partition the same way and
 differ only in *who* runs the parts — one process sequentially (`[blocking]`) versus many
@@ -267,9 +287,9 @@ processes concurrently (`[subset]`). A non-gridded pipeline can subset over `loc
 
 The one place `pixel` is still special is the shared Zarr store built by
 `conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
-`merge` unstacks back to `(y, x)`. Configuring `dim` as anything else alongside a Zarr
-output is an error. Use a NetCDF output instead — its subset parts are separate files
-and need no pre-created store.
+`merge` unstacks back to `(y, x)`. Configuring `dim` — or `point_dim` — as anything else
+alongside a Zarr output is an error. Use a NetCDF output instead — its subset parts are
+separate files and need no pre-created store.
 ///
 
 ## Validation

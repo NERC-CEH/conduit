@@ -679,6 +679,50 @@ class TestAnnotationsSection:
         assert parsed.annotations.on_uninferable is None
 
 
+class TestPointDim:
+    """The top-level ``point_dim`` key and its role as the partition-dim default."""
+
+    def test_defaults_to_pixel(self):
+        assert Config({}).parse().point_dim == "pixel"
+
+    def test_explicit_value(self):
+        assert Config({"point_dim": "location"}).parse().point_dim == "location"
+
+    def test_supplies_blocking_dim_default(self):
+        parsed = Config(
+            {"point_dim": "location", "blocking": {"block_size": 10}}
+        ).parse()
+        assert parsed.blocking_spec is not None
+        assert parsed.blocking_spec.dim == "location"
+
+    def test_supplies_subset_dim_default(self):
+        parsed = Config(
+            {"point_dim": "location", "subset": {"start": 0, "stop": 10}}
+        ).parse()
+        assert parsed.subset_spec is not None
+        assert parsed.subset_spec.dim == "location"
+
+    def test_explicit_section_dim_still_wins(self):
+        parsed = Config(
+            {
+                "point_dim": "location",
+                "blocking": {"block_size": 10, "dim": "site"},
+                "subset": {"start": 0, "stop": 10, "dim": "site"},
+            }
+        ).parse()
+        assert parsed.blocking_spec is not None
+        assert parsed.subset_spec is not None
+        assert parsed.blocking_spec.dim == "site"
+        assert parsed.subset_spec.dim == "site"
+
+    @pytest.mark.parametrize("bad", [42, "", True, ["location"]])
+    def test_invalid_value_raises(self, bad):
+        # Must name the key: without the explicit pop this falls through to the
+        # external-module loop and dies in dict() with an opaque message.
+        with pytest.raises(ValueError, match="point_dim"):
+            Config({"point_dim": bad}).parse()
+
+
 class TestAnnotationPolicyApply:
     """apply() pushes every axis into xarray-annotated's global policy."""
 
@@ -704,10 +748,38 @@ class TestAnnotationPolicyApply:
             assert units.enabled is True
             assert units.on_missing == "error"
             assert units.on_inexact == "error"
+            # `enabled` reaches every facet, not just units.
+            assert schema_get_policy().enabled is True
+            assert temporal_get_policy().enabled is True
             # on_mismatch drives *both* validate-only domains.
             assert schema_get_policy().on_mismatch == "warn"
             assert temporal_get_policy().on_mismatch == "warn"
             assert temporal_get_policy().on_uninferable == "ignore"
+
+    def test_mode_off_disables_every_facet(self):
+        """`mode = "off"` is a kill-switch for all contract checking, not just units.
+
+        Schema and temporal both default to ``enabled=True, on_mismatch='error'``, so
+        a units-only ``enabled=False`` would leave dims/coords/dtype and freq still
+        raising — the opposite of what the config key promises.
+        """
+        from xarray_annotated.schema import get_policy as schema_get_policy
+        from xarray_annotated.schema import policy as schema_policy
+        from xarray_annotated.temporal import get_policy as temporal_get_policy
+        from xarray_annotated.temporal import policy as temporal_policy
+        from xarray_annotated.units import get_policy as units_get_policy
+        from xarray_annotated.units import policy as units_policy
+
+        parsed = Config({"annotations": {"mode": "off"}}).parse()
+        with (
+            units_policy(enabled=True),
+            schema_policy(enabled=True),
+            temporal_policy(enabled=True),
+        ):
+            parsed.annotations.apply()
+            assert units_get_policy().enabled is False
+            assert schema_get_policy().enabled is False
+            assert temporal_get_policy().enabled is False
 
     def test_empty_policy_applies_nothing(self):
         from xarray_annotated.units import get_policy, policy
