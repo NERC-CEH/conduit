@@ -63,6 +63,8 @@ nav = [
   ]},
   { "Recipes" = [
       "recipes/index.md",
+      "recipes/flux-pipeline.md",
+      "recipes/flux-pipeline-demo.md",
   ]},
 ]
 
@@ -138,6 +140,9 @@ pygments_lang_class = true
 [project.markdown_extensions.pymdownx.magiclink]
 [project.markdown_extensions.pymdownx.mark]
 [project.markdown_extensions.pymdownx.smartsymbols]
+[project.markdown_extensions.pymdownx.snippets]
+base_path = ["."]
+check_paths = true
 [project.markdown_extensions.pymdownx.superfences]
 custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
@@ -154,7 +159,7 @@ custom_checkbox = true
 
 [project.plugins.mkdocstrings.handlers.python]
 inventories = ["https://docs.python.org/3/objects.inv"]
-paths = ["src"]
+paths = ["src", "examples"]
 
 [project.plugins.mkdocstrings.handlers.python.options]
 annotations_path = "brief"
@@ -174,4 +179,3 @@ show_root_members_full_path = false
 show_source = false
 show_symbol_type_heading = true
 show_symbol_type_toc = true
-

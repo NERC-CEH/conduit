@@ -1,0 +1,18 @@
+# The complete pipeline is assembled from the imported Hamilton module below.
+
+[inputs.flux]
+path = "data/flux.nc"
+suffix = ""
+vars = ["nee_raw", "tair", "ppfd", "qc"]
+
+[inputs.satellite]
+path = "data/satellite.nc"
+suffix = ""
+vars = ["sat_gpp"]
+
+[flux_nodes]
+_import_path = "examples.flux_pipeline.nodes"
+
+[outputs.products]
+path = "results/flux_products.nc"
+vars = {annual_nee = "annual_nee", annual_gpp = "annual_gpp", annual_reco = "annual_reco", gpp_weekly = "gpp_weekly", bias = "bias", rmse = "rmse"}

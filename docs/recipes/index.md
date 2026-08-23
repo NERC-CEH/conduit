@@ -5,12 +5,7 @@ icon: lucide/book-open
 
 # Recipes
 
-/// admonition | Coming soon
-    type: note
-
-Recipes are in progress. This page describes what they will be; the individual recipes
-land here as they are written.
-///
+The first recipe is available now; more will follow as they are written.
 
 **Recipes** are self-contained, worked examples of conduit applied to realistic — though
 not full-complexity — problems. Where the [tutorials](../get-started/first-pipeline.md)
@@ -22,7 +17,12 @@ Each recipe is designed to be read on its own and to cross-link into the
 [guides](../guides/bring-your-own-module.md) and
 [reference](../reference/configuration.md) rather than re-explain them.
 
-## Planned recipes
+## Recipes
+
+- **[Flux processing with conduit](flux-pipeline.md)** — an end-to-end annotated
+  eddy-covariance pipeline driven by a Python module and TOML config.
+
+Other planned recipes:
 
 - **Land-cover classification** — a simple gridded classification pipeline over
   multi-band inputs.
