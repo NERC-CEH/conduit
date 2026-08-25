@@ -113,13 +113,15 @@ _import_path = "{inexact_units_module}"
 # ---------------------------------------------------------------------------
 
 
-class TestVersionCommand:
-    def test_exits_zero(self):
-        result = runner.invoke(app, ["version"])
+class TestVersionFlag:
+    @pytest.mark.parametrize("flag", ["--version", "-v"])
+    def test_exits_zero(self, flag):
+        result = runner.invoke(app, [flag])
         assert result.exit_code == 0
 
-    def test_shows_version_string(self):
-        result = runner.invoke(app, ["version"])
+    @pytest.mark.parametrize("flag", ["--version", "-v"])
+    def test_shows_version_string(self, flag):
+        result = runner.invoke(app, [flag])
         assert __version__ in result.output
 
 

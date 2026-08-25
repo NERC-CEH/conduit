@@ -78,7 +78,7 @@ brew install graphviz
 ## Verify installation
 
 ```sh
-conduit version
+conduit --version
 ```
 
 ## Next steps

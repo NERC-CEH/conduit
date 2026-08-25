@@ -40,11 +40,6 @@ nav = [
       "reference/troubleshooting.md",
       "cli.md",
       { "API" = [
-          "api/conduit.cli/index.md",
-          "api/conduit.cli/cli.md",
-          "api/conduit.cli/graph.md",
-          "api/conduit.cli/run.md",
-          "api/conduit.cli/version.md",
           "api/conduit.config.md",
           "api/conduit.specs.md",
           "api/conduit.io.md",

@@ -13,7 +13,7 @@ write a config.toml  →  conduit graph  →  conduit run
 ```
 
 For a full reference of every command and flag, see the
-[CLI reference](../api/conduit.cli/index.md).
+[CLI reference](../cli.md).
 
 ## Visualise the pipeline
 
