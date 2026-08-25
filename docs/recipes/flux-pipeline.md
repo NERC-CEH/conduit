@@ -91,6 +91,30 @@ after several minutes of work.
 conduit run --dry-run examples/flux_pipeline/config.toml
 ```
 
+### The conversion in `on_inexact=convert`
+
+That policy line is doing real work here. `data/flux.nc` stores air temperature in
+kelvin:
+
+```bash exec="true" source="material-block"
+python -c "
+import xarray as xr
+with xr.open_dataset('examples/flux_pipeline/data/flux.nc') as ds:
+    print(ds.tair.attrs['units'], float(ds.tair.min()).__round__(1), 'to', float(ds.tair.max()).__round__(1))
+"
+```
+
+but `partition_fluxes` declares `tair: Annotated[xr.DataArray, Unit("degC")]`, and its
+respiration term is `2.60 * 2.0 ** ((tair - 10.0) / 10.0)`, a $Q_{10}$ relation written
+for degrees Celsius. Handed kelvin it would return respiration around $10^8$ rather than
+$4$, and nothing downstream would look obviously wrong.
+
+`declare_units` is the outermost decorator on the node precisely so that it can convert
+rather than merely validate. The units are compatible but not equal, so
+`on_inexact=convert` applies the offset and the node receives Celsius. The declaration
+is what makes the conversion happen; a bare `tair` parameter would have silently used
+kelvin.
+
 Then execute it for real.
 
 ```bash exec="true" source="material-block"
@@ -112,6 +136,39 @@ EOF
 
 Because the documentation build executes these commands, a change that breaks the CLI
 or the contracts breaks `just docs`.
+
+## Watching the contract check fail
+
+The check above passed, which is the least interesting thing it can do. `broken.toml`
+is the same pipeline with one mistake in it:
+
+```toml
+--8<-- "examples/flux_pipeline/broken.toml"
+```
+
+A stand-in for the satellite retrieval is built from the modelled weekly GPP, but
+declared in `umol m-2 s-1`, the units of the molar flux several nodes upstream, rather
+than the `g m-2 d-1` that `compare_with_satellite` consumes. Read either declaration on
+its own and nothing is wrong. The two are only inconsistent with each other.
+
+```bash exec="true" source="material-block" returncode="1"
+conduit run --dry-run examples/flux_pipeline/broken.toml
+```
+
+Two things are worth noticing. The check names both ends of the edge and why they cannot
+be reconciled, since knowing that `sat_gpp` is wrong is not much use without knowing what
+disagreed with it. And it fails during DAG construction, before the inputs are read and
+long before an array is computed, so the mistake costs a second rather than however long
+the pipeline takes.
+
+Had the units been merely *inexact* rather than incompatible, `umol m-2 s-1` against
+`nmol m-2 s-1` say, this would have converted silently, as `tair` does above. The check
+flags an edge only when the two declarations are provably irreconcilable, which is what
+lets a partly-annotated pipeline adopt it without a wave of false positives.
+
+The `returncode="1"` on that block is not decoration. The documentation build asserts
+that this configuration still fails, so a regression that quietly stopped rejecting it
+would break `just docs`.
 
 ## What the notebook adds
 

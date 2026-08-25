@@ -1,0 +1,26 @@
+# A deliberately broken variant of config.toml, used by the recipe to show the
+# whole-DAG contract check rejecting a pipeline before it computes anything.
+#
+# It stands a scaled copy of the modelled GPP in for the satellite retrieval, but
+# declares it in the units of the *upstream* molar flux rather than the mass flux
+# `compare_with_satellite` consumes. Nothing here is wrong on its own; the mistake
+# only exists in the relationship between two declarations.
+
+[inputs.flux]
+path = "data/flux.nc"
+suffix = ""
+vars = ["nee_raw", "tair", "ppfd", "qc"]
+
+[flux_nodes]
+_import_path = "examples.flux_pipeline.nodes"
+
+[[node]]
+name = "sat_gpp"
+inputs = ["gpp_weekly"]
+expression = "1.05 * gpp_weekly"
+units = "umol m-2 s-1"
+freq = "W-SUN"
+
+[outputs.products]
+path = "results/broken.nc"
+vars = { bias = "bias", rmse = "rmse" }
