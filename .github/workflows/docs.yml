@@ -15,9 +15,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v8.1.0
       - uses: extractions/setup-just@v4
-      # `conduit graph --png` runs during the docs build, so the system binary
-      # is required, not just the Python package.
-      - run: sudo apt-get update && sudo apt-get install -y graphviz
+      - uses: ts-graphviz/setup-graphviz@v2
       - run: uv sync --group docs --locked
       - run: uv run just docs
       - uses: actions/upload-pages-artifact@v4
