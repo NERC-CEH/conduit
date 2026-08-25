@@ -91,23 +91,38 @@ def gpp_weekly(
 
 def annual_nee(
     nee_daily: Annotated[xr.DataArray, Freq("D")],
-) -> Annotated[xr.DataArray, Unit("g m-2 d-1")]:
-    """Calculate the annual NEE total from daily mean fluxes."""
-    return nee_daily.sum()
+) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
+    """Calculate the annual NEE total from daily mean fluxes.
+
+    Each daily mean is weighted by one day, so summing a year of them gives a
+    total per year. ``keep_attrs`` would otherwise carry the daily unit through
+    the sum, leaving the written file disagreeing with the declaration above.
+    """
+    return nee_daily.sum().assign_attrs(units="g m-2 yr-1")
 
 
 def annual_gpp(
     gpp_daily: Annotated[xr.DataArray, Freq("D")],
-) -> Annotated[xr.DataArray, Unit("g m-2 d-1")]:
-    """Calculate the annual GPP total from daily mean fluxes."""
-    return gpp_daily.sum()
+) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
+    """Calculate the annual GPP total from daily mean fluxes.
+
+    Each daily mean is weighted by one day, so summing a year of them gives a
+    total per year. ``keep_attrs`` would otherwise carry the daily unit through
+    the sum, leaving the written file disagreeing with the declaration above.
+    """
+    return gpp_daily.sum().assign_attrs(units="g m-2 yr-1")
 
 
 def annual_reco(
     reco_daily: Annotated[xr.DataArray, Freq("D")],
-) -> Annotated[xr.DataArray, Unit("g m-2 d-1")]:
-    """Calculate the annual respiration total from daily mean fluxes."""
-    return reco_daily.sum()
+) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
+    """Calculate the annual respiration total from daily mean fluxes.
+
+    Each daily mean is weighted by one day, so summing a year of them gives a
+    total per year. ``keep_attrs`` would otherwise carry the daily unit through
+    the sum, leaving the written file disagreeing with the declaration above.
+    """
+    return reco_daily.sum().assign_attrs(units="g m-2 yr-1")
 
 
 class Comparison(TypedDict):
