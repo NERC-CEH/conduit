@@ -78,16 +78,15 @@ def _(config_path, mo):
 
 @app.cell
 def _(config_path, example_dir, mo, project_dir):
-    import os as graph_os
     import subprocess as graph_subprocess
 
     graph_base = example_dir / "pipeline"
-    graph_environment = {**graph_os.environ, "PYTHONPATH": str(project_dir)}
+    # cwd is the repository root, which conduit appends to sys.path, so
+    # `_import_path = "examples.flux_pipeline.nodes"` resolves.
     graph_subprocess.run(
         ["conduit", "graph", str(config_path), "--output", str(graph_base), "--png"],
         check=True,
         cwd=project_dir,
-        env=graph_environment,
     )
     graph_path = graph_base.with_suffix(".png")
     mo.md("## The generated DAG")
@@ -99,21 +98,17 @@ def _(config_path, example_dir, mo, project_dir):
 
 @app.cell
 def _(config_path, mo, project_dir):
-    import os as run_os
     import subprocess as run_subprocess
 
-    run_environment = {**run_os.environ, "PYTHONPATH": str(project_dir)}
     run_subprocess.run(
         ["conduit", "run", str(config_path), "--dry-run"],
         check=True,
         cwd=project_dir,
-        env=run_environment,
     )
     run_subprocess.run(
         ["conduit", "run", str(config_path)],
         check=True,
         cwd=project_dir,
-        env=run_environment,
     )
     mo.md(
         "## Run the pipeline\n\nThe dry run passed, then conduit executed the DAG and wrote the products."

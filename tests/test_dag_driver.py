@@ -59,7 +59,7 @@ class TestBuildDriverReturnType:
 
 class TestBuildDriverErrors:
     def test_non_importable_custom_module_raises(self):
-        with pytest.raises(ValueError, match="Cannot load module"):
+        with pytest.raises(ValueError, match="Could not import"):
             build_driver(["does_not_exist_pkg.module"], {})
 
     def test_node_module_without_specs_raises(self):

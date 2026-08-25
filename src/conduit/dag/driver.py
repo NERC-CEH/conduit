@@ -1,6 +1,8 @@
 """Build Hamilton drivers from configured module lists."""
 
+import sys
 from importlib import import_module
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from hamilton import driver
@@ -70,9 +72,21 @@ def build_driver(
             try:
                 modules_.append(import_module(mod))
             except ModuleNotFoundError as exc:
+                if sys.flags.safe_path:
+                    where = (
+                        "conduit looks for an installed package of that name. The "
+                        f"working directory ({Path.cwd()}) is not searched, because "
+                        "PYTHONSAFEPATH is set."
+                    )
+                else:
+                    where = (
+                        "conduit looks for an installed package of that name first, "
+                        f"then for it under the working directory ({Path.cwd()})."
+                    )
                 raise ValueError(
-                    f"Cannot load module '{mod}': not a known conduit module "
-                    f"and not importable as a Python module."
+                    f"Could not import {mod!r}, named by an '_import_path' in the "
+                    f"config. {where} Built-in module names are: "
+                    f"{', '.join(sorted(MODULES))}."
                 ) from exc
 
     dr = driver.Builder().with_modules(*modules_).with_config(config)

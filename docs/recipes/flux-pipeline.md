@@ -60,10 +60,11 @@ can be read together:
 Every command below runs when the documentation is built, from the repository root.
 The output on this page is what conduit printed.
 
-The `PYTHONPATH=.` prefix is what makes `examples.flux_pipeline.nodes` importable, since
-`conduit` is a console script and so does not put the working directory on the import
-path. A module installed into the environment, which is the normal case, needs no
-prefix.
+`config.toml` names its node module as `_import_path = "examples.flux_pipeline.nodes"`,
+which conduit resolves as an ordinary Python import. That module is not installed, so it
+resolves against the working directory, which conduit appends to `sys.path`. An
+installed package of the same name would win, and `PYTHONSAFEPATH=1` turns the working
+directory off entirely.
 
 First generate the synthetic inputs. `make_data.py` writes a year of half-hourly
 eddy-covariance data and weekly satellite GPP, from a fixed seed, so the products
@@ -77,7 +78,7 @@ python examples/flux_pipeline/make_data.py
 coloured by temporal frequency, both taken from the annotations in `nodes.py`.
 
 ```bash exec="true" source="material-block"
-PYTHONPATH=. conduit graph examples/flux_pipeline/config.toml --png \
+conduit graph examples/flux_pipeline/config.toml --png \
   --output examples/flux_pipeline/pipeline
 ```
 
@@ -87,13 +88,13 @@ computed. A unit or frequency mismatch anywhere in the graph fails here rather t
 after several minutes of work.
 
 ```bash exec="true" source="material-block"
-PYTHONPATH=. conduit run --dry-run examples/flux_pipeline/config.toml
+conduit run --dry-run examples/flux_pipeline/config.toml
 ```
 
 Then execute it for real.
 
 ```bash exec="true" source="material-block"
-PYTHONPATH=. conduit run examples/flux_pipeline/config.toml
+conduit run examples/flux_pipeline/config.toml
 ls -1 examples/flux_pipeline/results/
 ```
 

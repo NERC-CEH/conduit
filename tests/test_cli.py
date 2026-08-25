@@ -1,6 +1,7 @@
 """Tests for the conduit CLI commands."""
 
 import shutil
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -9,7 +10,7 @@ import xarray as xr
 from typer.testing import CliRunner
 
 from conduit._version import __version__
-from conduit.cli import app
+from conduit.cli import _prepare_import_path, app
 from conduit.cli.graph import (
     _import_style_function,
     assign_freq_colors,
@@ -647,3 +648,36 @@ class TestStrayGraphvizSection:
         )
         with pytest.raises(ValueError, match="_import_path"):
             load_config(cfg)
+
+
+class TestWorkingDirectoryImports:
+    """The CLI appends the working directory so `_import_path` can resolve locally."""
+
+    def test_cwd_is_appended_not_prepended(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "path", ["/first", "/second"])
+        _prepare_import_path()
+        assert sys.path[-1] == str(tmp_path)
+
+    def test_already_present_cwd_is_not_duplicated(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "path", [str(tmp_path), "/other"])
+        _prepare_import_path()
+        assert sys.path.count(str(tmp_path)) == 1
+
+    def test_safe_path_disables_it(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "path", ["/only"])
+        monkeypatch.setattr(sys, "flags", SimpleNamespace(safe_path=True))
+        _prepare_import_path()
+        assert sys.path == ["/only"]
+
+    def test_local_module_resolves_through_the_cli(self, tmp_path, monkeypatch):
+        """A module beside the config resolves when it is the working directory."""
+        (tmp_path / "local_nodes.py").write_text(
+            "def doubled(scalar: float) -> float:\n    return 2 * scalar\n"
+        )
+        (tmp_path / "config.toml").write_text('[local]\n_import_path = "local_nodes"\n')
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["graph", "config.toml", "--output", "graph"])
+        assert result.exit_code == 0, result.output

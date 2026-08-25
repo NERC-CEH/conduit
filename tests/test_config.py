@@ -229,7 +229,7 @@ class TestValidation:
                 parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
             )
 
-        with pytest.raises(ValueError, match="Cannot load module"):
+        with pytest.raises(ValueError, match="Could not import"):
             _build()
 
     def test_duplicate_module_params_raise(self, tmp_path):
