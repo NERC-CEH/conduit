@@ -97,6 +97,7 @@ features = [
     "navigation.instant",
     "navigation.instant.prefetch",
     "navigation.path",
+    "navigation.sections",
     "navigation.tabs",
     "navigation.top",
     "navigation.tracking",
