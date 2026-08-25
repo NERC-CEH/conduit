@@ -93,7 +93,8 @@ conduit run --dry-run examples/flux_pipeline/config.toml
 
 ### The conversion the dry run reported
 
-That last line is not decoration. `data/flux.nc` stores air temperature in kelvin:
+The `!` line under the contract check is not decoration.
+`data/flux.nc` stores air temperature in kelvin:
 
 ```bash exec="true" source="material-block"
 python -c "
@@ -114,7 +115,9 @@ applied and the node receives Celsius. The declaration is what makes the convers
 happen; a bare `tair` parameter would have silently used kelvin.
 
 `config.toml` sets `on_inexact = "warn"`, which is why the conversion is named in the
-output above rather than performed in silence. The default, `"convert"`, would have done
+output above rather than performed in silence.
+The `units` row of the policy block reports the setting in force, so the report says
+which rules it applied rather than leaving you to infer them from the config. The default, `"convert"`, would have done
 the same arithmetic without saying so. That matters because pint's notion of
 compatibility is dimensional: `g m-2 d-1` and `g m-2 yr-1` are both mass per area per
 time, so a daily rate declared as an annual one converts happily, off by a factor of

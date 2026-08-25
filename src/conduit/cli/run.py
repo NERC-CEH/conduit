@@ -155,6 +155,52 @@ def _config_provenance(config_file: Path) -> dict[str, str]:
     }
 
 
+def _ok(message: str) -> None:
+    """Report a dry-run stage that passed.
+
+    ``typer.echo`` strips the escape codes when stdout is not a terminal, so
+    piped and captured output (the documentation build among them) stays plain.
+    """
+    typer.echo(f"  {typer.style('✓', fg=typer.colors.GREEN)} {message}")
+
+
+def _skip(message: str) -> None:
+    """Report a dry-run stage that did not apply.  See `_ok` on colour."""
+    typer.echo(f"  {typer.style('-', dim=True)} {message}")
+
+
+def _finding(message: str) -> None:
+    """Report a soft finding under a stage.  See `_ok` on colour."""
+    typer.echo(f"      {typer.style('!', fg=typer.colors.YELLOW)} {message}")
+
+
+def _echo_policy() -> None:
+    """Print the active contract policy, one row per policy object.
+
+    The three axes come from three separate ``get_policy()`` calls, so they are
+    grouped that way rather than run together into one parenthetical.  The
+    combined form ran past 110 characters, wrapped at whatever width the reader
+    had, and buried ``on_inexact`` in the middle of it.
+    """
+    from xarray_annotated.schema import get_policy as schema_get_policy
+    from xarray_annotated.temporal import get_policy as temporal_get_policy
+    from xarray_annotated.units import get_policy as units_get_policy
+
+    units = units_get_policy()
+    rows = [
+        (
+            "units",
+            f"enabled={units.enabled}  on_missing={units.on_missing}  "
+            f"on_inexact={units.on_inexact}",
+        ),
+        ("schema", f"on_mismatch={schema_get_policy().on_mismatch}"),
+        ("temporal", f"on_uninferable={temporal_get_policy().on_uninferable}"),
+    ]
+    width = max(len(label) for label, _ in rows)
+    for label, settings in rows:
+        typer.echo(f"      {label:<{width}}  {settings}")
+
+
 def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -> None:
     """Validate everything a real run depends on, without executing it.
 
@@ -166,33 +212,29 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
     summary. Hard failures raise (non-zero exit); soft issues follow the active
     policy (warnings stay warnings). No model runs and nothing is written.
     """
-    from xarray_annotated.schema import get_policy as schema_get_policy
-    from xarray_annotated.temporal import get_policy as temporal_get_policy
-    from xarray_annotated.units import get_policy
-
     from ..dag.contract_check import check_input_contracts
 
     typer.echo(f"Dry run for {config_file}")
-    typer.echo("  ✓ config parsed")
+    _ok("config parsed")
 
     inputs = load_inputs(
         parsed.input_specs,
         subset_spec=parsed.subset_spec,
         point_dim=parsed.point_dim,
     )
-    typer.echo(
-        f"  ✓ inputs loaded: {len(inputs)} variable(s) "
+    _ok(
+        f"inputs loaded: {len(inputs)} variable(s) "
         f"from {len(parsed.input_specs)} source(s)"
     )
 
     if parsed.checks:
         n_checks = _run_input_checks(parsed)
         if n_checks:
-            typer.echo(f"  ✓ input checks passed ({n_checks})")
+            _ok(f"input checks passed ({n_checks})")
         else:
-            typer.echo("  - input checks: skipped (running under [subset])")
+            _skip("input checks: skipped (running under [subset])")
     else:
-        typer.echo("  - input checks: none configured")
+        _skip("input checks: none configured")
 
     # Caching is an execution-time adapter; disable it so the dry run creates no
     # cache directory. The graph structure and unit checks are unaffected.
@@ -203,7 +245,7 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
         allow_module_overrides=allow_overrides,
         cache=None,
     )
-    typer.echo("  ✓ DAG built (static contract check passed)")
+    _ok("DAG built (static contract check passed)")
 
     if parsed.output_specs:
         target_vars = get_final_vars(parsed.output_specs)
@@ -213,39 +255,30 @@ def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -
             warnings.simplefilter("always")
             check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
         dr.validate_execution(target_vars, inputs=inputs)  # type: ignore[reportArgumentType]
-        typer.echo(
-            f"  ✓ execution plan valid: {len(target_vars)} output node(s) reachable"
-        )
+        _ok(f"execution plan valid: {len(target_vars)} output node(s) reachable")
         for w in wiring_warnings:
-            typer.echo(f"      ! {w.message}")
+            _finding(str(w.message))
     else:
-        typer.echo("  - execution plan: skipped (no [outputs.*] configured)")
+        _skip("execution plan: skipped (no [outputs.*] configured)")
 
     # Capture warn-mode contract findings so they surface in the report rather
     # than scattering across stderr; strict-mode findings raise straight out.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         check_input_contracts(dr, inputs)
-    pol = get_policy()
-    axes = (
-        f"enabled={pol.enabled}, on_missing={pol.on_missing}, "
-        f"on_inexact={pol.on_inexact}, on_mismatch={schema_get_policy().on_mismatch}, "
-        f"on_uninferable={temporal_get_policy().on_uninferable}"
-    )
     if caught:
-        typer.echo(f"  ✓ input contracts checked ({axes}, {len(caught)} warning(s)):")
-        for w in caught:
-            typer.echo(f"      ! {w.message}")
+        _ok(f"input contracts checked ({len(caught)} warning(s))")
     else:
-        typer.echo(f"  ✓ input contracts validated ({axes})")
+        _ok("input contracts validated")
+    _echo_policy()
+    for w in caught:
+        _finding(str(w.message))
 
     if parsed.output_specs:
         assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
-        typer.echo(
-            f"  ✓ output paths writable: {len(parsed.output_specs)} destination(s)"
-        )
+        _ok(f"output paths writable: {len(parsed.output_specs)} destination(s)")
     else:
-        typer.echo("  - output paths: skipped (no [outputs.*] configured)")
+        _skip("output paths: skipped (no [outputs.*] configured)")
 
     typer.echo("Dry run passed.")
 

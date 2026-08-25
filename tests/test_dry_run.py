@@ -10,6 +10,7 @@ Three layers:
   output paths) via ``runner.invoke(app, ["run", ..., "--dry-run"])``.
 """
 
+import pathlib
 import sys
 import types
 
@@ -260,6 +261,60 @@ vars = ["temperature"]
     p = tmp_path / "config.toml"
     p.write_text(content)
     return str(p)
+
+
+class TestPolicyReport:
+    """The dry run prints the active contract policy grouped by policy object.
+
+    The three axes come from three separate ``get_policy()`` calls in
+    ``xarray_annotated``; the report groups them that way so no line is long
+    enough to wrap.  Captured CLI output carries no escape codes, because
+    ``typer.echo`` strips them when stdout is not a terminal.
+    """
+
+    def test_all_three_axes_reported(self, tmp_path, synthetic_data_dir):
+        cfg = _config(tmp_path, synthetic_data_dir)
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "units " in result.output
+        assert "on_inexact=" in result.output
+        assert "schema " in result.output
+        assert "on_mismatch=" in result.output
+        assert "temporal " in result.output
+        assert "on_uninferable=" in result.output
+
+    def test_reports_the_configured_policy(self, tmp_path, synthetic_data_dir):
+        cfg = _config(tmp_path, synthetic_data_dir)
+        text = pathlib.Path(cfg).read_text()
+        pathlib.Path(cfg).write_text(text + '\n[annotations]\non_inexact = "warn"\n')
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "on_inexact=warn" in result.output
+
+    def test_no_line_wraps_at_eighty_columns(self, tmp_path, synthetic_data_dir):
+        """The old single-line form ran past 110 characters.  Keep it short.
+
+        The recipe pages capture this output verbatim at documentation-build
+        time, so a line long enough to wrap would wrap differently depending on
+        the terminal width wherever the build ran.
+        """
+        cfg = _config(tmp_path, synthetic_data_dir)
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        # The header echoes the config path, whose length conduit does not
+        # control; every line conduit composes itself is indented.
+        too_long = [
+            line
+            for line in result.output.splitlines()
+            if line.startswith(" ") and len(line) > 80
+        ]
+        assert not too_long, too_long
+
+    def test_output_carries_no_escape_codes(self, tmp_path, synthetic_data_dir):
+        cfg = _config(tmp_path, synthetic_data_dir)
+        result = runner.invoke(app, ["run", cfg, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "\x1b[" not in result.output
 
 
 class TestDryRunCLI:
