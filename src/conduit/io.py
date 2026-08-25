@@ -1,6 +1,7 @@
 """I/O functions for loading inputs and saving outputs outside the Hamilton DAG."""
 
 import os
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,40 @@ def var_mapping(
     suffix = effective_suffix(label, spec)
     names = list(available or []) if spec.vars is None else spec.vars
     return {f"{var}{suffix}": var for var in names}
+
+
+def _check_requested_vars(
+    label: str, path: str, ds: xr.Dataset, mapping: dict[str, str]
+) -> None:
+    """Raise if a section names variables the file does not contain.
+
+    Without this, a typo in ``vars`` surfaces as an ``xarray`` ``KeyError`` from
+    deep inside `load_inputs`, naming neither the config section nor the file.
+    Every missing name in the section is reported at once, so fixing a config
+    with several typos takes one run rather than several.
+
+    Coordinates count as present: selecting one by name is legitimate, even
+    though only data variables are *suggested* as alternatives.
+    """
+    missing = [
+        var for var in dict.fromkeys(mapping.values()) if var not in ds.variables
+    ]
+    if not missing:
+        return
+    available = sorted(str(var) for var in ds.data_vars)
+    lines = [
+        f"[inputs.{label}] names variables that are not in {path}: "
+        f"{', '.join(repr(var) for var in missing)}."
+    ]
+    for var in missing:
+        close = get_close_matches(var, available, n=3, cutoff=0.6)
+        if close:
+            suggestions = ", ".join(repr(name) for name in close)
+            lines.append(f"  {var!r}: did you mean {suggestions}?")
+    lines.append(
+        f"The file contains: {', '.join(available) if available else '(none)'}."
+    )
+    raise ValueError("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +193,10 @@ def load_inputs(
     input's frequency is validated only where a consumer declares a
     `xarray_annotated.temporal.Freq` contract for it.
 
+    A section naming a variable the file does not contain is a conduit error that
+    reports the section, the file, and every missing name at once (see
+    `_check_requested_vars`); it never reaches ``xarray`` as a ``KeyError``.
+
     The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
     ``latitude``/``longitude``) is **opt-in**: it activates only when an input carries
     CRS metadata (see `conduit.gridded`). Pass ``geospatial=True``/``False`` to force
@@ -208,6 +247,7 @@ def load_inputs(
         ds_raw = raw_datasets[label]
         ds = stack_if_gridded(ds_raw) if geospatial else ds_raw
         mapping = var_mapping(label, spec, available=[str(v) for v in ds.data_vars])
+        _check_requested_vars(label, spec.path, ds, mapping)
         for node_name, file_var in mapping.items():
             if node_name in inputs:
                 raise ValueError(
