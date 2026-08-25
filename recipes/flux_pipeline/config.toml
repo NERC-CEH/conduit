@@ -16,7 +16,7 @@ vars = ["sat_gpp"]
 on_inexact = "warn"
 
 [flux_nodes]
-_import_path = "examples.flux_pipeline.nodes"
+_import_path = "recipes.flux_pipeline.nodes"
 
 [outputs.products]
 path = "results/flux_products.nc"

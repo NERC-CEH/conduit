@@ -36,16 +36,16 @@ A node needs an input that nothing produces. Usually one of:
    suffix (`{var}{suffix}`); a parameter named `temperature_daily` needs a
    `temperature` variable under a `daily`-suffixed section (or a `vars` mapping alias).
 3. **Wrong frequency** — the variable may exist at another resolution; add a
-   [`[[resample]]`](configuration.md#resample) step.
+   [`[[resample]]`](../reference/configuration.md#resample) step.
 
-Run [`conduit run --dry-run`](../guides/validate-before-running.md) to surface this
+Run [`conduit run --dry-run`](running/validate-before-running.md) to surface this
 before executing.
 
 ### A unit / dimension mismatch error
 
 A node's declared contract disagrees with its producer's. See
-[Validate before running › reading a contract failure](../guides/validate-before-running.md#reading-a-contract-failure).
-To relax an over-strict check, adjust the [`[annotations]`](configuration.md#annotations)
+[Validate before running › reading a contract failure](running/validate-before-running.md#reading-a-contract-failure).
+To relax an over-strict check, adjust the [`[annotations]`](../reference/configuration.md#annotations)
 policy.
 
 ### `[[resample]]` entry is missing required key `freq`
@@ -89,7 +89,7 @@ wrong. Fix whichever, or drop the declaration to opt that node out.
 
 `frequency of 'time' is uninferable` means the axis has fewer than three timestamps or
 irregular spacing, so the declaration could not be *tested*. It warns by default; set
-`on_uninferable` in [`[annotations]`](configuration.md#annotations) to `"error"` to make
+`on_uninferable` in [`[annotations]`](../reference/configuration.md#annotations) to `"error"` to make
 an untested contract fatal, or `"ignore"` to silence it (short test fixtures).
 
 ## Running pipelines
@@ -121,10 +121,10 @@ Check that:
 
 ### Slow on large grids
 
-- Validate on a small [`[subset]`](configuration.md#subset) first.
-- Bound memory with [`[blocking]`](configuration.md#blocking).
-- Enable [`[cache]`](configuration.md#cache) for iterative re-runs.
-- Parallelise across shards — see [Scale up](../guides/scale-up.md).
+- Validate on a small [`[subset]`](../reference/configuration.md#subset) first.
+- Bound memory with [`[blocking]`](../reference/configuration.md#blocking).
+- Enable [`[cache]`](../reference/configuration.md#cache) for iterative re-runs.
+- Parallelise across shards — see [Scale up](scaling/scale-up.md).
 
 ## Visualisation
 

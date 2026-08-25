@@ -14,56 +14,58 @@ copyright = "Copyright &copy; 2026 The authors"
 
 nav = [
   { "Home" = "index.md" },
-  { "Get started" = [
-      "get-started/install.md",
-      "get-started/first-pipeline.md",
-      "get-started/units-and-contracts.md",
-  ]},
-  { "Concepts" = [
-      "concepts/why-conduit.md",
-      "concepts/dag-model.md",
-      "concepts/contracts.md",
-      "concepts/scaling.md",
-  ]},
+  { "How it works" = "how-it-works.md" },
   { "Guides" = [
-      "guides/bring-your-own-module.md",
-      "guides/inline-nodes-and-fan-out.md",
-      "guides/drive-from-python.md",
-      "guides/run-and-visualise.md",
-      "guides/resampling-and-units.md",
-      "guides/validate-before-running.md",
-      "guides/scale-up.md",
+      "guides/install.md",
+      { "Authoring" = [
+          "guides/authoring/bring-your-own-module.md",
+          "guides/authoring/contracts.md",
+          "guides/authoring/inline-nodes-and-fan-out.md",
+          "guides/authoring/resampling-and-units.md",
+          "guides/authoring/test-your-pipeline.md",
+      ]},
+      { "Running" = [
+          "guides/running/run-and-visualise.md",
+          "guides/running/drive-from-python.md",
+          "guides/running/validate-before-running.md",
+      ]},
+      { "Scaling" = [
+          "guides/scaling/scale-up.md",
+      ]},
+      "guides/troubleshooting.md",
+  ]},
+  { "Recipes" = [
+      "recipes/index.md",
+      "recipes/pipeline-101.md",
+      "recipes/pipeline-101-demo.md",
+      "recipes/flux-pipeline.md",
+      "recipes/flux-pipeline-demo.md",
   ]},
   { "Reference" = [
       "reference/configuration.md",
       "reference/data-formats.md",
-      "reference/troubleshooting.md",
-      "cli.md",
-      { "API" = [
-          "api/conduit.pipeline.md",
-          "api/conduit.graph.md",
-          "api/conduit.graph_style.md",
-          "api/conduit.config.md",
-          "api/conduit.specs.md",
-          "api/conduit.io.md",
-          "api/conduit.formats.md",
-          "api/conduit.checks.md",
-          "api/conduit.transforms.md",
-          "api/conduit.dag.driver.md",
-          "api/conduit.dag/node.md",
-          "api/conduit.dag/contract_check.md",
-          "api/conduit.dag/wiring_check.md",
-          "api/conduit.dag/caching.md",
-          "api/conduit.dag/blocking.md",
-          "api/conduit.gridded/spatial.md",
-          "api/conduit.gridded/io.md",
-          "api/conduit.gridded/cli.md",
+      "reference/python-api.md",
+      "reference/cli.md",
+      { "Modules" = [
+          "reference/modules/conduit.pipeline.md",
+          "reference/modules/conduit.graph.md",
+          "reference/modules/conduit.graph_style.md",
+          "reference/modules/conduit.config.md",
+          "reference/modules/conduit.specs.md",
+          "reference/modules/conduit.io.md",
+          "reference/modules/conduit.formats.md",
+          "reference/modules/conduit.checks.md",
+          "reference/modules/conduit.transforms.md",
+          "reference/modules/conduit.dag.driver.md",
+          "reference/modules/conduit.dag/node.md",
+          "reference/modules/conduit.dag/contract_check.md",
+          "reference/modules/conduit.dag/wiring_check.md",
+          "reference/modules/conduit.dag/caching.md",
+          "reference/modules/conduit.dag/blocking.md",
+          "reference/modules/conduit.gridded/spatial.md",
+          "reference/modules/conduit.gridded/io.md",
+          "reference/modules/conduit.gridded/cli.md",
       ]},
-  ]},
-  { "Recipes" = [
-      "recipes/index.md",
-      "recipes/flux-pipeline.md",
-      "recipes/flux-pipeline-demo.md",
   ]},
 ]
 
@@ -82,6 +84,7 @@ extra_css = [
 
 [project.theme]
 language = "en"
+custom_dir = "overrides"
 features = [
     "announce.dismiss",
     "content.code.annotate",
@@ -163,7 +166,7 @@ custom_checkbox = true
 
 [project.plugins.mkdocstrings.handlers.python]
 inventories = ["https://docs.python.org/3/objects.inv"]
-paths = ["src", "examples"]
+paths = ["src", "recipes"]
 
 [project.plugins.mkdocstrings.handlers.python.options]
 annotations_path = "brief"

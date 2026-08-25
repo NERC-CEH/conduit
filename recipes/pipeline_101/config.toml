@@ -1,0 +1,22 @@
+# The smallest pipeline that still has every moving part: an input file, an
+# imported node function, an inline node, and an output file.
+
+[inputs.climate]
+path = "data/climate.nc"
+vars = ["temperature"]
+
+# Any section conduit does not recognise is one of your own modules, and must
+# say where to import it from.
+[climate_nodes]
+_import_path = "recipes.pipeline_101.nodes"
+
+# Glue that does not deserve a Python module can be declared inline.
+[[node]]
+name = "anomaly_range_climate"
+inputs = ["temperature_anomaly_climate"]
+expression = "temperature_anomaly_climate.max('time') - temperature_anomaly_climate.min('time')"
+units = "degC"
+
+[outputs.climate]
+path = "results/anomaly.nc"
+vars = { temperature_anomaly_climate = "temperature_anomaly", anomaly_range_climate = "anomaly_range" }

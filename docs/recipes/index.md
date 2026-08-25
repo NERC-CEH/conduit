@@ -5,28 +5,26 @@ icon: lucide/book-open
 
 # Recipes
 
-The first recipe is available now; more will follow as they are written.
+A recipe is a complete, worked pipeline you can read end to end: the data, the node module, the config, and the run.
+Where the [guides](../guides/authoring/bring-your-own-module.md) answer "how do I do X?" one piece at a time, a recipe shows the whole shape of a task at once.
 
-**Recipes** are self-contained, worked examples of conduit applied to realistic — though
-not full-complexity — problems. Where the [tutorials](../get-started/first-pipeline.md)
-teach the mechanics on a toy pipeline and the [guides](../guides/bring-your-own-module.md)
-answer "how do I do X?", a recipe shows the *whole shape* of a real task end to end:
-the data, the config, the modules, and the run.
+Each one lives in its own directory under [`recipes/`](https://github.com/NERC-CEH/conduit/tree/main/recipes) and holds a node module, a `config.toml`, a generator for synthetic inputs, and a marimo notebook that runs the pipeline.
+Every recipe is executed by the test suite and again by the documentation build, so nothing here can drift away from the library without something failing.
 
-Each recipe is designed to be read on its own and to cross-link into the
-[guides](../guides/bring-your-own-module.md) and
-[reference](../reference/configuration.md) rather than re-explain them.
+To run one without cloning the repository:
 
-## Recipes
+```sh
+uvx marimo edit --sandbox recipes/pipeline_101/demo.py
+```
 
-- **[Flux processing with conduit](flux-pipeline.md)** — an end-to-end annotated
-  eddy-covariance pipeline driven by a Python module and TOML config.
+## Available
 
-Other planned recipes:
+- **[Pipeline 101](pipeline-101.md)** — the smallest pipeline with every moving part: one input, one imported node, one inline node, one output. Start here. There is also a [notebook walkthrough](pipeline-101-demo.md) of the same pipeline through the Python API.
+- **[Flux processing](flux-pipeline.md)** — an annotated eddy-covariance pipeline with unit conversion, temporal resampling and a deliberately broken config that fails the contract check. The [notebook version](flux-pipeline-demo.md) adds plots.
 
-- **Land-cover classification** — a simple gridded classification pipeline over
-  multi-band inputs.
-- **Nowcasting** — a short-horizon forecast pipeline with temporal resampling.
+## Planned
 
-More will follow. If there is a pattern you would like to see worked through,
-[open an issue](https://github.com/NERC-CEH/conduit/issues).
+- **Land-cover classification** — a gridded classification pipeline over multi-band inputs.
+- **Nowcasting** — a short-horizon forecast with temporal resampling.
+
+If there is a pattern you would like worked through, [open an issue](https://github.com/NERC-CEH/conduit/issues).

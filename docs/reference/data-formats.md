@@ -23,7 +23,7 @@ NetCDF and Zarr are the primary formats for N-dimensional (gridded or multi-poin
 CSV/Parquet are for single-site time series. JSON/TOML are for time-invariant scalar
 parameters, and are input-only.
 
-This table *is* [`conduit.formats.FORMATS`](../api/conduit.formats.md) — every
+This table *is* [`conduit.formats.FORMATS`](modules/conduit.formats.md) — every
 extension-based decision conduit makes (which reader, which writer, whether a
 `[subset]` run can write it, whether it needs a pre-created store) is a lookup into
 that one registry. Adding a format means adding one entry to it.
@@ -35,7 +35,7 @@ conduit handles three spatial layouts automatically:
 - **Gridded (NetCDF/Zarr with a CRS).** Spatial dimensions (`x`/`y` or `lat`/`lon`) with
   a CRS are stacked into a single `pixel` dimension — each grid cell becomes one pixel.
   This path uses the optional `geo` extra and activates only when CRS metadata is
-  present. See [`conduit.gridded`](../api/conduit.gridded/io.md).
+  present. See [`conduit.gridded`](modules/conduit.gridded/io.md).
 - **Pre-stacked.** Data that already has a `pixel` dimension is used as-is.
 - **Single-point (CSV/Parquet/JSON/TOML).** Flat files are treated as one site; a size-1
   dimension with a single coordinate (`0`) is added automatically — named by the
@@ -67,7 +67,7 @@ mechanisms cover it:
 
 - a consumer declaring `Freq("7D")` on its input (or a `[[node]]` with `freq = "7D"` on
   its output) — validated per node by the
-  [contract check](../concepts/contracts.md), at build time and in `--dry-run`;
+  [contract check](../guides/authoring/contracts.md), at build time and in `--dry-run`;
 - the [`time_equal` / `time_subset` checks](configuration.md#validation)
   — validated across whole input datasets.
 
@@ -75,7 +75,7 @@ mechanisms cover it:
 
 Set a CF-style `units` attribute on your input variables so conduit can validate and
 convert them against the contracts your nodes declare (see
-[Add unit contracts](../get-started/units-and-contracts.md)). A missing or unparseable
+[Declaring contracts](../guides/authoring/contracts.md)). A missing or unparseable
 `units` attribute cannot be validated, so it follows the active
 [`[annotations]` policy](configuration.md#annotations).
 

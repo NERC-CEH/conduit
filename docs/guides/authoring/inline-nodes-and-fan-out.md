@@ -56,7 +56,7 @@ related functions, shared parameters, or want unit annotations on a signature, w
 A node transforms its inputs, so conduit cannot infer its output contract. Declare any
 of `units`, `dims`, `dtype`, `coords` to make the node a *typed producer* — its output
 is stamped and validated at run time, and the [build-time contract
-check](../concepts/contracts.md) can verify downstream consumers against it.
+check](contracts.md) can verify downstream consumers against it.
 
 ```toml
 [[node]]
@@ -122,9 +122,9 @@ freq = "1D"
 aggfunc = "max"
 ```
 
-## See also
+## Where next
 
-- [Bring your own module](bring-your-own-module.md) — for logic that outgrows an inline
-  node.
-- [Configuration reference](../reference/configuration.md) — the full `[[node]]` and
-  `[[resample]]` key list.
+- [Bring your own module](bring-your-own-module.md) — for logic that outgrows an inline node.
+- [Declaring contracts](contracts.md) — the facets a `[[node]]` can declare.
+- [Resampling and units](resampling-and-units.md) — choosing `aggfunc` correctly, which no check can do for you.
+- [Configuration reference](../../reference/configuration.md) — the full `[[node]]` and `[[resample]]` key list.

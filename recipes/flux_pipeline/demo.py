@@ -1,6 +1,9 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["conduit[all]", "marimo"]
+# dependencies = [
+#     "conduit[all] @ git+https://github.com/NERC-CEH/conduit",
+#     "marimo",
+# ]
 # ///
 
 """Interactive, executable walkthrough of the Conduit flux pipeline."""
@@ -43,32 +46,67 @@ def _(mo):
 def _():
     from pathlib import Path
 
-    example_dir = Path(__file__).parent
-    project_dir = example_dir.parents[1]
-    config_path = example_dir / "config.toml"
-    nodes_path = example_dir / "nodes.py"
-    data_dir = example_dir / "data"
-    results_dir = example_dir / "results"
+    recipe_dir = Path(__file__).parent
+    project_dir = recipe_dir.parents[1]
+    config_path = recipe_dir / "config.toml"
+    nodes_path = recipe_dir / "nodes.py"
+    data_dir = recipe_dir / "data"
+    results_dir = recipe_dir / "results"
     data_dir.mkdir(exist_ok=True)
     results_dir.mkdir(exist_ok=True)
-    return config_path, data_dir, example_dir, nodes_path, project_dir, results_dir
+
+    def rel(path):
+        """Path relative to the repository root, so output is machine-independent."""
+        return Path(path).relative_to(project_dir)
+
+    return (
+        config_path,
+        data_dir,
+        nodes_path,
+        project_dir,
+        recipe_dir,
+        rel,
+        results_dir,
+    )
+
+
+@app.cell
+def _(project_dir, subprocess):
+    def conduit(*args):
+        """Run the conduit CLI from the repository root, with absolute paths scrubbed.
+
+        cwd is the repository root, which conduit appends to sys.path, so
+        `_import_path = "recipes.flux_pipeline.nodes"` resolves.
+        """
+        proc = subprocess.run(
+            ["conduit", *args],
+            check=True,
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+        )
+        for stream in (proc.stdout, proc.stderr):
+            if stream:
+                print(stream.replace(f"{project_dir}/", ""), end="")
+
+    return (conduit,)
 
 
 @app.cell(hide_code=True)
-def _(config_path, mo):
-    mo.md(f"Using configuration: `{config_path}`")
+def _(config_path, mo, rel):
+    mo.md(f"Using configuration: `{rel(config_path)}`")
     return
 
 
 @app.cell
-def _(data_dir, example_dir):
+def _(data_dir, recipe_dir, rel):
     import sys
 
     # make_data.py sits next to this notebook, which is not necessarily importable.
-    sys.path.insert(0, str(example_dir))
+    sys.path.insert(0, str(recipe_dir))
     from make_data import write_inputs
 
-    write_inputs(data_dir)
+    [rel(written) for written in write_inputs(data_dir)]
     return
 
 
@@ -106,15 +144,9 @@ def _(mo, nodes_path):
 
 
 @app.cell
-def _(config_path, example_dir, project_dir, subprocess):
-    graph_base = example_dir / "pipeline"
-    # cwd is the repository root, which conduit appends to sys.path, so
-    # `_import_path = "examples.flux_pipeline.nodes"` resolves.
-    subprocess.run(
-        ["conduit", "graph", str(config_path), "--output", str(graph_base), "--png"],
-        check=True,
-        cwd=project_dir,
-    )
+def _(conduit, config_path, recipe_dir, rel):
+    graph_base = recipe_dir / "pipeline"
+    conduit("graph", str(rel(config_path)), "--output", str(rel(graph_base)), "--png")
     graph_path = graph_base.with_suffix(".png")
     return (graph_path,)
 
@@ -136,17 +168,9 @@ def _(graph_path, mo):
 
 
 @app.cell
-def _(config_path, project_dir, subprocess):
-    subprocess.run(
-        ["conduit", "run", str(config_path), "--dry-run"],
-        check=True,
-        cwd=project_dir,
-    )
-    subprocess.run(
-        ["conduit", "run", str(config_path)],
-        check=True,
-        cwd=project_dir,
-    )
+def _(conduit, config_path, rel):
+    conduit("run", str(rel(config_path)), "--dry-run")
+    conduit("run", str(rel(config_path)))
     return
 
 

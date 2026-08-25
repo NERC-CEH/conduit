@@ -1,104 +1,55 @@
 # `conduit`
 
-Turn a working research script into a **contract-checked, reproducible, scalable** pipeline
-— without a rewrite. You keep writing plain, typed [xarray](https://xarray.dev) functions;
-conduit adds three things that are hard to get any other way:
+An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton), [xarray](https://xarray.dev) and [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), driven by a plain [TOML](https://toml.io) file.
+You write ordinary annotated xarray functions and describe how they wire together in config.
+conduit builds the graph, proves it consistent before running it, and executes it at whatever scale the config asks for.
 
-- **Look before you leap.** The *entire* DAG is proven consistent *before any compute runs*,
-  straight from your type annotations — not just units, but dimensions, coordinates, dtypes,
-  **and the wiring itself**. Catch a hPa-vs-Pa mistake, a transposed axis, or a renamed input
-  at build time, not 40 minutes into a run. `--dry-run` validates your files' headers against
-  what each node expects without executing a single node.
-- **Config *is* the DAG.** Describe — and compose, parameterise and fan out — a whole pipeline
-  in a plain [TOML](https://toml.io) file. Import your own modules or define glue nodes inline;
-  the config doubles as a complete, reproducible provenance record of the run.
-- **Scale-up as a config knob, not a rewrite.** The same functions run in-memory, blocked, or
-  across parallel processes writing to a shared Zarr store — you change the config, not the
-  code — and stream lazily out-of-core ([dask](https://www.dask.org/)) when you feed them
-  dask-backed inputs.
+The premise is that the graph lives apart from the functions, and the functions carry their own contracts in their type annotations.
+What follows from that:
 
-Under the hood it composes [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
-(the DAG), xarray (labelled N-D arrays), and
-[xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) /
-[pint](https://pint.readthedocs.io) / [cf-xarray](https://cf-xarray.readthedocs.io)
-(the contract layer) — but the point is to let you *not* have to learn them: you write
-ordinary annotated functions and describe how they wire together, and conduit handles the
-rest. The core is fully domain-agnostic; gridded/geospatial Zarr — the primary target data
-type — is a first-class **optional** layer (`conduit[geo]`), not baked into the core.
+- **Validate the whole graph before any compute runs.** Units, dimensions, coordinates, dtypes, frequency and the wiring itself, all checked from the annotations.
+- **The config is the pipeline.** One file describes the inputs, the nodes, the fan-out and the outputs, and it is stamped into every result.
+- **Scale by changing config, not code.** The same functions run in memory, cached, blocked, or across parallel processes writing to one Zarr store.
+- **The wiring is declared, not implied.** Reading the config tells you what depends on what.
 
-This is a work in progress - expect **very** sharp edges.
+> [!WARNING]
+> **Alpha.** conduit has no users outside the core team.
+> The config schema, the Python API and the CLI all change without deprecation warnings.
 
-For usage instructions see the [documentation](https://NERC-CEH.github.io/conduit) (this is also WIP!)
-
-## Developer instructions
-
-This project uses **[uv](https://docs.astral.sh/uv/)** for dependency management and
-packaging. To get started:
+## Install
 
 ```bash
-git clone https://github.com/NERC-CEH/conduit.git
-cd conduit
-uv sync
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install "conduit[all] @ git+https://github.com/NERC-CEH/conduit"
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full development guide — pre-commit
-hooks, `just` tasks, building the docs, and PR conventions.
+The base install is the library. `cli` adds the `conduit` command, `viz` adds DAG rendering, `geo` adds CRS-aware gridded I/O.
+See the [installation guide](https://NERC-CEH.github.io/conduit/guides/install.html) for the extras individually.
 
-## Python API
-
-conduit is a framework: the library is the product, and a project built on it drives
-pipelines from Python.
+## Use
 
 ```python
 import conduit
 
-datasets = conduit.run("config.toml")      # execute, write each [outputs.*], return them
-report = conduit.dry_run("config.toml")    # validate contracts + wiring, no compute
+datasets = conduit.run("config.toml")         # execute, write each [outputs.*], return them
+report = conduit.dry_run("config.toml")       # validate contracts and wiring, no compute
 digraph = conduit.build_graph("config.toml")  # styled graphviz.Digraph, renders in a notebook
 ```
 
-Each takes a path to a TOML config or a `ParsedConfig` you have already adjusted in
-Python.
+Each takes a path to a TOML config or a `ParsedConfig` you have already adjusted in Python.
+The `conduit` command is a thin wrapper over these three.
 
-## CLI use (optional, `conduit[cli]`)
+## Documentation
 
-The `conduit` command is a thin wrapper over the three functions above, installed with
-the `cli` extra.
-You can explore the documentation using the `-h` or `--help` flags, e.g.
+<https://NERC-CEH.github.io/conduit>
 
-```bash
-conduit -h          # help for the base command
-conduit graph -h    # help for the 'graph' subcommand
-conduit gridded -h  # help for the optional gridded (parallel Zarr) commands
-```
+- [How it works](https://NERC-CEH.github.io/conduit/how-it-works.html) — the design, and what the contract check can and cannot catch.
+- [Pipeline 101](https://NERC-CEH.github.io/conduit/recipes/pipeline-101.html) — the whole workflow in miniature.
+- [Bring your own module](https://NERC-CEH.github.io/conduit/guides/authoring/bring-your-own-module.html) — start here if you are adding your own science code.
 
-### Generate a visualisation of the DAG
+## Contributing
 
-```bash
-conduit graph config.toml --pdf  # or --png
-```
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development setup, the `just` tasks, and how to add a recipe.
 
-> [!NOTE]
-> This requires graphviz to be installed. E.g. `sudo apt install graphviz` (Ubuntu) or `brew install graphviz` (MacOS).
+## Licence
 
-### Run
-
-```bash
-conduit run config.toml            # execute the pipeline
-conduit run config.toml --dry-run  # validate contracts + wiring against file headers, no compute
-```
-
-`run` writes one output file per `[outputs.*]` section defined in the config.
-
-### Parallel Zarr over a subset (optional, `conduit[geo]`)
-
-For gridded data you can split a run across processes, each writing a disjoint pixel
-subset into one shared Zarr store:
-
-```bash
-conduit gridded create-store config.toml   # pre-create the empty store(s)
-conduit run config.toml                     # (per subset, e.g. via a job array)
-conduit gridded merge config.toml           # stitch subsets back into one file per output
-```
-
+MIT. See [`LICENSE`](LICENSE).

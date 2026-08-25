@@ -55,17 +55,41 @@ uv run pytest tests/test_config.py -v
 
 ## Documentation
 
-The docs are built with [zensical](https://zensical.org/) and organised around the [Diátaxis](https://diataxis.fr/) framework (Get started / Guides / Reference / Concepts):
+The docs are built with [zensical](https://zensical.org/):
 
 ```bash
-just docs      # then open site/index.html
+just docs      # exports the recipe notebooks, then builds into site/
 ```
+
+`just docs` depends on `just docs-recipes`, which runs each recipe's marimo notebook through `marimo-md-export`. That executes the pipelines, so a docs build is also a check that the recipes still work.
+
+The structure is five tabs, and each topic has exactly one owner page:
+
+| Tab | Holds |
+| --- | --- |
+| Home | the pitch and one worked example |
+| How it works | the design, and the limits of the contract check |
+| Guides | how to do things, split into Authoring / Running / Scaling |
+| Recipes | complete worked pipelines |
+| Reference | config schema, data formats, Python API, CLI, module docstrings |
 
 When adding or changing documentation:
 
-- Put each page in the quadrant that fits its purpose (a tutorial teaches, a guide solves a task, a reference describes, a concept explains).
-- Follow the existing page structure; use admonitions (`/// admonition | Title\n    type: note`) for callouts.
-- Link between pages with relative paths. Run `just docs` and confirm the build succeeds with no warnings.
+- Find the page that owns the topic and edit that one. If you need to mention it elsewhere, link. The reorganisation that produced this structure existed to remove the same explanation from five places.
+- One sentence per line in Markdown files. It keeps diffs readable; rendering is unaffected.
+- Link between pages with relative paths, and run `just docs` to confirm the build is clean. `pymdownx.snippets` runs with `check_paths = true`, so a stale `--8<--` path fails the build.
+
+### Adding a recipe
+
+A recipe is a complete worked pipeline in `recipes/<name>/`, containing:
+
+- `nodes.py` — the node functions
+- `config.toml` — the pipeline
+- `make_data.py` — a deterministic generator for synthetic inputs, exposing `write_inputs(data_dir)`
+- `demo.py` — a marimo notebook that runs it, with a PEP 723 header so `uvx marimo edit --sandbox` works without a checkout
+- a page in `docs/recipes/`, plus a `docs-recipes` line in the `justfile` exporting the notebook
+
+Add it to `tests/test_recipes.py` as well. Every recipe is executed by the test suite and again by the docs build, so nothing can drift silently.
 
 ## Pull requests
 

@@ -53,7 +53,7 @@ dev = [
     "rust-just>=1.46.0",
 ]
 docs = [
-    {include-group = "examples"},
+    {include-group = "recipes"},
     "conduit[cli,viz]",
     "marimo>=0.23.0",
     "marimo-md-export>=0.5.2",
@@ -62,7 +62,7 @@ docs = [
     "mkdocstrings-python>=2.0.3",
     "zensical>=0.0.24",
 ]
-examples = [
+recipes = [
     "matplotlib>=3.10.8",
 ]
 test = [
@@ -118,7 +118,7 @@ select = [
 # may have unused variables from exploratory cells (F841),
 # use scientific notation with Greek letters (RUF003),
 # and are exploratory notebooks without module docstrings (D100, D401).
-"examples/**" = ["B018", "E501", "F841", "RUF001", "RUF003", "D100", "D401", "F821"]
+"recipes/**" = ["B018", "E501", "F841", "RUF001", "RUF003", "D100", "D401", "F821"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

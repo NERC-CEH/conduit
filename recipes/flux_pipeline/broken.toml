@@ -12,7 +12,7 @@ suffix = ""
 vars = ["nee_raw", "tair", "ppfd", "qc"]
 
 [flux_nodes]
-_import_path = "examples.flux_pipeline.nodes"
+_import_path = "recipes.flux_pipeline.nodes"
 
 [[node]]
 name = "sat_gpp"

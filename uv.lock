@@ -368,7 +368,7 @@ docs = [
     { name = "mkdocstrings-python" },
     { name = "zensical" },
 ]
-examples = [
+recipes = [
     { name = "matplotlib" },
 ]
 test = [
@@ -426,7 +426,7 @@ docs = [
     { name = "mkdocstrings-python", specifier = ">=2.0.3" },
     { name = "zensical", specifier = ">=0.0.24" },
 ]
-examples = [{ name = "matplotlib", specifier = ">=3.10.8" }]
+recipes = [{ name = "matplotlib", specifier = ">=3.10.8" }]
 test = [
     { name = "conduit", extras = ["cli", "viz", "geo"] },
     { name = "coverage", specifier = ">=7.13.5" },

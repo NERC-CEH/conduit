@@ -95,7 +95,7 @@ floor = 1e-4
 ```
 
 The section header (`aridity`) is a free-form label; only `_import_path` is semantic.
-See [Bring your own module](../guides/bring-your-own-module.md) for the authoring
+See [Bring your own module](../guides/authoring/bring-your-own-module.md) for the authoring
 conventions.
 
 /// admonition | Parameter namespacing
@@ -149,8 +149,8 @@ units = "1"
 | `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
 
 Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer
-the [contract check](../concepts/contracts.md) can verify. See
-[Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) for worked examples.
+the [contract check](../guides/authoring/contracts.md) can verify. See
+[Inline nodes & fan-out](../guides/authoring/inline-nodes-and-fan-out.md) for worked examples.
 
 An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an
 unanchored one (`"7D"`, `"W"`) constrains the spacing only.
@@ -200,13 +200,13 @@ The time axis is detected from the data, so it need not be called `time`.
 Resampling preserves units, so `mean` and `sum` are equally *dimensionally* valid — a
 wrong choice produces a meaningless number that no contract check will flag. Use `mean`
 for a rate and `sum` for an amount-per-period; see
-[Resampling & units](../guides/resampling-and-units.md).
+[Resampling & units](../guides/authoring/resampling-and-units.md).
 ///
 
 ## Cache
 
 `[cache]` persists intermediate results to disk (Hamilton caching). See
-[Scale up › caching](../guides/scale-up.md#caching-results).
+[Scale up › caching](../guides/scaling/scale-up.md#caching-results).
 
 ```toml
 [cache]
@@ -244,7 +244,7 @@ into `pixel` by name.
 ## Blocking
 
 `[blocking]` processes a partition dimension in fixed-size sequential chunks to bound
-peak memory. See [Scale up › blocking](../guides/scale-up.md#memory-bounded-execution-with-blocking).
+peak memory. See [Scale up › blocking](../guides/scaling/scale-up.md#memory-bounded-execution-with-blocking).
 
 ```toml
 [blocking]
@@ -261,7 +261,7 @@ dim = "pixel"
 
 `[subset]` restricts the run to a contiguous slice of one dimension, so independent
 processes can each handle a different shard of the same inputs. See
-[Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs).
+[Scale up › parallel subset runs](../guides/scaling/scale-up.md#parallel-subset-runs).
 
 ```toml
 [subset]
@@ -297,7 +297,7 @@ separate files and need no pre-created store.
 `[validation]` groups **declarations about properties you expect and want to check** — as
 opposed to the DAG's structure, which conduit derives on its own. Its `checks` array runs
 a suite of input-Dataset compatibility checks before compute (and as a stage of
-[`--dry-run`](../guides/validate-before-running.md)).
+[`--dry-run`](../guides/running/validate-before-running.md)).
 
 ```toml
 [validation]
@@ -328,8 +328,8 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks are a real importable library ([`conduit.checks`](../api/conduit.checks.md)),
-so the [notebook-driven path](../guides/drive-from-python.md) calls them directly — the
+The checks are a real importable library ([`conduit.checks`](modules/conduit.checks.md)),
+so the [notebook-driven path](../guides/running/drive-from-python.md) calls them directly — the
 config list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
 block conduit performs no cross-input validation (it does not guess which inputs are
 *meant* to align — only you know that). Under [`[subset]`](#subset) they are skipped, with
@@ -366,7 +366,7 @@ Validation happens at two points:
   attribute that is missing or unparseable follows `mode`.
 
 Run the run-time input checks against your real data *without* executing the pipeline
-with [`conduit run --dry-run`](../guides/validate-before-running.md).
+with [`conduit run --dry-run`](../guides/running/validate-before-running.md).
 
 /// admonition | Affine units (temperature)
     type: warning
@@ -381,10 +381,10 @@ is reported by name so an unintended conversion cannot pass unnoticed.
 
 ## See also
 
-- [Validate before running](../guides/validate-before-running.md) — the `--dry-run`
+- [Validate before running](../guides/running/validate-before-running.md) — the `--dry-run`
   pre-flight, the wiring check, and the `[validation]` input checks.
 - [Data formats](data-formats.md) — supported file types and spatial/temporal handling.
-- [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) — the `[[node]]` and
+- [Inline nodes & fan-out](../guides/authoring/inline-nodes-and-fan-out.md) — the `[[node]]` and
   `[[resample]]` guide.
-- [Bring your own module](../guides/bring-your-own-module.md) — external module
+- [Bring your own module](../guides/authoring/bring-your-own-module.md) — external module
   conventions.

@@ -15,19 +15,19 @@ into a conduit pipeline. It demonstrates the separation between:
 - `demo.py`: a marimo walkthrough of the same pipeline through the Python API.
 
 The example files live in
-[`examples/flux_pipeline`](https://github.com/NERC-CEH/conduit/tree/main/examples/flux_pipeline).
+[`recipes/flux_pipeline`](https://github.com/NERC-CEH/conduit/tree/main/recipes/flux_pipeline).
 The pipeline is driven entirely from the command line; the notebook is an alternative
 view of it, not a prerequisite. To open the notebook, run this from the repository root:
 
 ```sh
-uv run marimo run examples/flux_pipeline/demo.py
+uv run marimo run recipes/flux_pipeline/demo.py
 ```
 
 !!! note "Requirements"
 
     Install the documentation dependencies with `uv sync --group docs`. Graph generation
     also requires the Graphviz system executable; see the
-    [installation guide](../get-started/install.md).
+    [installation guide](../guides/install.md).
 
 ## Pipeline configuration
 
@@ -35,15 +35,15 @@ The TOML imports the Python module as a user module. Input and output paths are
 resolved relative to this file, as with every conduit configuration.
 
 ```toml
---8<-- "examples/flux_pipeline/config.toml"
+--8<-- "recipes/flux_pipeline/config.toml"
 ```
 
 The complete file is available at
-[`config.toml`](https://github.com/NERC-CEH/conduit/blob/main/examples/flux_pipeline/config.toml).
+[`config.toml`](https://github.com/NERC-CEH/conduit/blob/main/recipes/flux_pipeline/config.toml).
 
 ## Python module
 
-`examples.flux_pipeline.nodes` is an ordinary importable Python module. The
+`recipes.flux_pipeline.nodes` is an ordinary importable Python module. The
 `[flux_nodes]` section in the TOML imports it with `_import_path`, and Hamilton
 discovers the public functions below as pipeline nodes. Their annotations provide the
 contracts used by the whole-DAG check.
@@ -52,7 +52,7 @@ The complete module is included below so that the implementation and its annotat
 can be read together:
 
 ```python
---8<-- "examples/flux_pipeline/nodes.py"
+--8<-- "recipes/flux_pipeline/nodes.py"
 ```
 
 ## Running the pipeline
@@ -60,7 +60,7 @@ can be read together:
 Every command below runs when the documentation is built, from the repository root.
 The output on this page is what conduit printed.
 
-`config.toml` names its node module as `_import_path = "examples.flux_pipeline.nodes"`,
+`config.toml` names its node module as `_import_path = "recipes.flux_pipeline.nodes"`,
 which conduit resolves as an ordinary Python import. That module is not installed, so it
 resolves against the working directory, which conduit appends to `sys.path`. An
 installed package of the same name would win, and `PYTHONSAFEPATH=1` turns the working
@@ -71,15 +71,15 @@ eddy-covariance data and weekly satellite GPP, from a fixed seed, so the product
 further down are reproducible.
 
 ```bash exec="true" source="material-block"
-python examples/flux_pipeline/make_data.py
+python recipes/flux_pipeline/make_data.py
 ```
 
 `conduit graph` renders the DAG. Each node carries its declared unit, and edges are
 coloured by temporal frequency, both taken from the annotations in `nodes.py`.
 
 ```bash exec="true" source="material-block"
-conduit graph examples/flux_pipeline/config.toml --png \
-  --output examples/flux_pipeline/pipeline
+conduit graph recipes/flux_pipeline/config.toml --png \
+  --output recipes/flux_pipeline/pipeline
 ```
 
 `conduit run --dry-run` is the step worth dwelling on. It parses the config, opens the
@@ -88,7 +88,7 @@ computed. A unit or frequency mismatch anywhere in the graph fails here rather t
 after several minutes of work.
 
 ```bash exec="true" source="material-block"
-conduit run --dry-run examples/flux_pipeline/config.toml
+conduit run --dry-run recipes/flux_pipeline/config.toml
 ```
 
 ### The conversion the dry run reported
@@ -99,7 +99,7 @@ The `!` line under the contract check is not decoration.
 ```bash exec="true" source="material-block"
 python -c "
 import xarray as xr
-with xr.open_dataset('examples/flux_pipeline/data/flux.nc') as ds:
+with xr.open_dataset('recipes/flux_pipeline/data/flux.nc') as ds:
     print(ds.tair.attrs['units'], float(ds.tair.min()).__round__(1), 'to', float(ds.tair.max()).__round__(1))
 "
 ```
@@ -127,8 +127,8 @@ intend stand out; `"error"` refuses them outright.
 Then execute it for real.
 
 ```bash exec="true" source="material-block"
-conduit run examples/flux_pipeline/config.toml
-ls -1 examples/flux_pipeline/results/
+conduit run recipes/flux_pipeline/config.toml
+ls -1 recipes/flux_pipeline/results/
 ```
 
 The products land in a single NetCDF file, one variable per requested output.
@@ -137,7 +137,7 @@ The products land in a single NetCDF file, one variable per requested output.
 python - <<'EOF'
 import xarray as xr
 
-with xr.open_dataset("examples/flux_pipeline/results/flux_products.nc") as ds:
+with xr.open_dataset("recipes/flux_pipeline/results/flux_products.nc") as ds:
     for name, da in ds.items():
         print(f"{name:12s} {str(da.dims):16s} {da.attrs.get('units', '-')}")
 EOF
@@ -152,7 +152,7 @@ The check above passed, which is the least interesting thing it can do. `broken.
 is the same pipeline with one mistake in it:
 
 ```toml
---8<-- "examples/flux_pipeline/broken.toml"
+--8<-- "recipes/flux_pipeline/broken.toml"
 ```
 
 A stand-in for the satellite retrieval is built from the modelled weekly GPP, but
@@ -161,7 +161,7 @@ than the `g m-2 d-1` that `compare_with_satellite` consumes. Read either declara
 its own and nothing is wrong. The two are only inconsistent with each other.
 
 ```bash exec="true" source="material-block" returncode="1"
-conduit run --dry-run examples/flux_pipeline/broken.toml
+conduit run --dry-run recipes/flux_pipeline/broken.toml
 ```
 
 Two things are worth noticing. The check names both ends of the edge and why they cannot

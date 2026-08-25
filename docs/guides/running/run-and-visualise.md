@@ -13,7 +13,7 @@ write a config.toml  →  conduit graph  →  conduit run
 ```
 
 For a full reference of every command and flag, see the
-[CLI reference](../cli.md).
+[CLI reference](../../reference/cli.md).
 
 ## Visualise the pipeline
 
@@ -40,7 +40,7 @@ Pass `--png` for PNG instead, and `-o/--output` to change the base filename (def
     type: note
 
 `conduit graph` needs the `viz` extra **and** the Graphviz system binary — see
-[Installation](../get-started/install.md).
+[Installation](../install.md).
 ///
 
 ### Customising the styling
@@ -50,11 +50,11 @@ custom style function. Keeping style in its own file lets one look be reused acr
 pipelines:
 
 ```sh
-conduit graph config.toml --style examples/graphviz.toml --pdf
+conduit graph config.toml --style recipes/graphviz.toml --pdf
 ```
 
 See the commented
-[`examples/graphviz.toml`](https://github.com/NERC-CEH/conduit/blob/main/examples/graphviz.toml)
+[`recipes/graphviz.toml`](https://github.com/NERC-CEH/conduit/blob/main/recipes/graphviz.toml)
 template for the full set of keys (`palette`, `graph_attr`/`node_attr`/`edge_attr`,
 `show_legend`, `cluster_by_frequency`, `style_function`).
 
@@ -90,7 +90,7 @@ A few flags override the config per invocation, without editing the file:
 | `--allow-overrides` | Permit a later module to override an earlier one's node. |
 
 Caching, memory-bounded execution and parallel runs are covered in
-[Scale up a pipeline](scale-up.md).
+[Scale up a pipeline](../scaling/scale-up.md).
 
 ## Inspecting results
 
@@ -113,3 +113,10 @@ conduit run -h
 conduit graph -h
 conduit gridded -h   # parallel-Zarr commands (needs the geo extra)
 ```
+
+## Where next
+
+- [CLI reference](../../reference/cli.md) — every command and flag.
+- [Validate before running](validate-before-running.md) — what `--dry-run` checks.
+- [Drive conduit from Python](drive-from-python.md) — the same steps, without the CLI.
+- [Scale up a pipeline](../scaling/scale-up.md) — caching, blocking and parallel runs.

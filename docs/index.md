@@ -5,95 +5,64 @@ icon: lucide/house
 
 # conduit
 
-**Turn a working research script into a contract-checked, reproducible, scalable pipeline —
-without a rewrite.**
+conduit is an opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton), [xarray](https://xarray.dev) and [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), driven by a plain [TOML](https://toml.io) file.
+You write ordinary annotated xarray functions.
+You describe how they wire together in config.
+conduit builds the graph, proves it consistent before running it, and executes it at whatever scale the config asks for.
 
-You keep writing plain, typed [xarray](https://xarray.dev) functions. conduit adds
-three things that are hard to get any other way:
+The premise is that the graph lives apart from the functions, and the functions carry their own contracts in their type annotations.
+Everything below follows from that.
 
-- **Look before you leap.** The *entire* DAG is proven consistent *before any compute runs*,
-  straight from your type annotations — not just units, but dimensions, coordinates, dtypes,
-  **and the wiring itself**. A hPa-vs-Pa slip, a transposed axis, or a renamed input is caught
-  at build time, not part-way through a run. `--dry-run` validates your files' headers against
-  what each node declares without executing a single node; runtime unit conversion comes along
-  for free.
-- **Config *is* the DAG.** Describe — and compose, parameterise and fan out — a whole pipeline
-  in a plain [TOML](https://toml.io) file. The config doubles as a complete, reproducible
-  provenance record of the run.
-- **Scale-up as a config knob, not a rewrite.** The *same* functions run in-memory, blocked,
-  or across parallel processes writing to a shared Zarr store — driven by config, not by
-  rewriting your code — and stream lazily out-of-core ([dask](https://www.dask.org/)) when you
-  feed them dask-backed inputs.
+- **Validate the whole graph before any compute runs.** Units, dimensions, coordinates, dtypes, frequency and the wiring itself are all checked from the annotations. A hPa-for-Pa slip or a renamed input fails in seconds, not forty minutes into a run.
+- **The config is the pipeline.** One file describes the inputs, the nodes, the fan-out and the outputs, and it is stamped into every result, so an output file records how it was made.
+- **Scale by changing config, not code.** The same functions run in memory, cached, blocked, or across parallel processes writing to one Zarr store.
+- **The wiring is declared, not implied.** Reading the config tells you what depends on what, without tracing a script.
 
-Under the hood conduit composes [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
-(the DAG engine), xarray (labelled N-D arrays), and
-[xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) /
-[pint](https://pint.readthedocs.io) / [cf-xarray](https://cf-xarray.readthedocs.io) (the
-contract layer). The value is not the parts but where they *compose*: whole-graph contract
-checking is only possible when the annotations and the graph are both present, and scale is
-only free when the graph is separate from the functions. The aim is to let you get that value
-**without** having to learn Hamilton or pint — you write ordinary annotated functions and
-describe how they wire together. When you *do* want the underlying machinery, conduit
-exposes the Hamilton driver and xarray objects rather than hiding them.
+## The same pipeline, three ways
 
-The core is fully domain-agnostic: forward models, land-cover classification, and analysis
-pipelines are all expressed the same way — nothing carbon-specific is baked in. Gridded,
-geospatial Zarr — the primary target data type — is a first-class **optional** layer
-(`conduit[geo]`) rather than a core assumption.
+=== "Python"
 
-## Installation
+    ```python
+    --8<-- "recipes/pipeline_101/nodes.py"
+    ```
 
-See the [Installation guide](get-started/install.md).
+=== "TOML"
 
-## Quick start
+    ```toml
+    --8<-- "recipes/pipeline_101/config.toml"
+    ```
 
-Get a pipeline running in a few minutes — see [Your first pipeline](get-started/first-pipeline.md).
+=== "Graph"
 
-## Key features
+    ```mermaid
+    graph LR
+        I["temperature_climate<br/><small>degC</small>"] --> A["temperature_anomaly_climate<br/><small>degC</small>"]
+        A --> R["anomaly_range_climate<br/><small>degC</small>"]
+        R --> O[("results/anomaly.nc")]
+        A --> O
+    ```
 
-- **Whole-DAG contract checking before compute** — declare a node's expectations with a
-  simple `Annotated[DataArray, ...]` convention and conduit proves the *entire graph*
-  consistent **before** any compute runs. Generic over every facet: units (convert
-  compatible inputs, reject incompatible), dimensions, coordinates and dtypes. This is the
-  flagship feature.
-- **Wiring validation** — the same before-compute guarantee for the plumbing: unbound inputs
-  (a file/config/signature rename drift) raise, unused inputs warn, so typos surface at build
-  time rather than mid-run.
-- **`--dry-run`** — validate loaded files' headers against every declared consumer contract
-  *and* the wiring, without executing a single node.
-- **Config-as-DAG** — describe how your functions wire together in a plain
-  [TOML](https://toml.io) file: import your own modules (`_import_path`) or define glue nodes
-  inline (`[[node]]`), with `for_each` fan-out and `{var}` templating to generate many nodes
-  from one spec. Explicit, aliasable file↔node mapping (`{node_name: file_var}`) with
-  collision detection; the config is stamped into outputs as a reproducible provenance record.
-- **Scale without a rewrite** — the same functions run in-memory, with content-addressed
-  result caching, memory-bounded blocked execution, or parallel subset runs over a shared Zarr
-  store — all driven by config, not code changes — and stream lazily out-of-core (dask) when
-  fed dask-backed inputs.
-- **Reusable transforms & presets** — annotation-preserving transforms (e.g. `resample`)
-  wired in as passthrough nodes; `[[resample]]` is a thin preset over the general fan-out
-  engine.
-- **Domain-agnostic core, optional gridded layer** — works with whatever dimensions your data
-  has; CRS-aware `(y,x)`↔`pixel` stacking, reprojection and parallel Zarr I/O live in the
-  optional `conduit.gridded` subpackage (`conduit[geo]`) behind a nested `conduit gridded` CLI.
-- **CLI and Python API** — run from the terminal (`conduit run`) or embed in a notebook;
-  conduit exposes the Hamilton driver and xarray objects rather than hiding them.
+This is [Pipeline 101](recipes/pipeline-101.md), run end to end.
 
-## Learn more
+## Where to go
 
-- [Your first pipeline](get-started/first-pipeline.md) — run a pipeline end to end
-- [Add unit contracts](get-started/units-and-contracts.md) — the flagship feature, hands-on
-- [The DAG model](concepts/dag-model.md) — how the DAG and config fit together
-- [Configuration reference](reference/configuration.md) — every TOML section
-- [Bring your own module](guides/bring-your-own-module.md) — plug in your own nodes
+- [How it works](how-it-works.md) — the design, and what the check can and cannot catch.
+- [Install](guides/install.md) — get it running.
+- [Pipeline 101](recipes/pipeline-101.md) — the whole workflow in miniature.
+- [Bring your own module](guides/authoring/bring-your-own-module.md) — the conventions your science code must follow. Start here if you are adding your own nodes.
+- [Configuration reference](reference/configuration.md) — every TOML section and key.
+
+## Contributing
+
+Development setup, conventions and how to add a recipe are in [`CONTRIBUTING.md`](https://github.com/NERC-CEH/conduit/blob/main/CONTRIBUTING.md).
 
 ## Acknowledgements
 
-conduit builds on the following open-source projects:
+conduit builds on:
 
-- [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — DAG-based dataflow framework
-- [xarray](https://docs.xarray.dev/) — N-D labelled arrays and datasets
-- [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) — per-function unit/dim/dtype/coord contracts
-- [pint](https://pint.readthedocs.io) & [cf-xarray](https://cf-xarray.readthedocs.io) — units
+- [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — the DAG engine
+- [xarray](https://docs.xarray.dev/) — labelled N-D arrays
+- [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) — per-function unit, dim, dtype, coord and frequency contracts
+- [pint](https://pint.readthedocs.io) and [cf-xarray](https://cf-xarray.readthedocs.io) — units
 - [dask](https://www.dask.org/) — parallel and out-of-core computation
-- [Typer](https://typer.tiangolo.com/) — CLI framework
+- [Typer](https://typer.tiangolo.com/) — the CLI

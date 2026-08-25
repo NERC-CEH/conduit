@@ -5,11 +5,16 @@ icon: lucide/download
 
 # Installation
 
-conduit is currently only available from GitHub.
+conduit is installed from GitHub; it is not on PyPI.
+
+!!! warning "Alpha"
+
+    conduit has no users outside the core team.
+    The config schema, the Python API and the CLI all change without deprecation warnings, so pin a commit if you need a build to keep working.
 
 ## Prerequisites
 
-- **Python 3.13** or later
+- **Python 3.12** or later. CI tests 3.12, 3.13 and 3.14.
 
 ## Install into an existing project
 
@@ -92,7 +97,7 @@ conduit --version
 
 ## Next steps
 
-- Build your first pipeline in the [Quickstart tutorial](first-pipeline.md).
+- Build your first pipeline with [Pipeline 101](../recipes/pipeline-101.md).
 - Contributors setting up a development checkout should follow the
   [`CONTRIBUTING.md`](https://github.com/NERC-CEH/conduit/blob/main/CONTRIBUTING.md)
   guide instead (`git clone` + `uv sync`).

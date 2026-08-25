@@ -5,11 +5,10 @@ icon: lucide/code-2
 
 # Drive conduit from Python
 
-`conduit run` is a thin wrapper over `conduit.run`, and everything the CLI does is
-available from Python with no extra installed. Taking the steps yourself gives you
-finer control: inspect individual nodes, plot intermediate results, override values
-between runs, or skip writing to disk entirely. This guide walks the same steps `run`
-takes; [the whole thing in one call](#the-whole-thing-in-one-call) is at the end.
+The library is the product and `conduit run` is a wrapper over `conduit.run`, so everything the CLI does is available from Python with nothing extra installed.
+
+Taking the steps yourself buys you control: inspect individual nodes, plot intermediate results, override values between runs, or skip writing to disk entirely.
+This guide walks the same steps `run` takes, and [the whole thing in one call](#the-whole-thing-in-one-call) is at the end.
 
 /// admonition | Import convention
     type: info
@@ -25,7 +24,7 @@ from conduit.config import Config
 ## 1. Build a config
 
 A pipeline is described by a config — a Python dict with the same structure as a
-[TOML config](../reference/configuration.md) file. Pass it straight to `Config`:
+[TOML config](../../reference/configuration.md) file. Pass it straight to `Config`:
 
 ```python
 config_data = {
@@ -199,7 +198,7 @@ datasets = conduit.run(parsed)          # same run, with the spec tweaked first
 ```
 
 `conduit.dry_run` validates the same pipeline without executing it and returns a
-[`DryRunReport`](../api/conduit.pipeline.md) — the stage list `conduit run --dry-run`
+[`DryRunReport`](../../reference/modules/conduit.pipeline.md) — the stage list `conduit run --dry-run`
 prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
 `conduit graph` writes to disk, which renders inline in a notebook.
 
@@ -211,9 +210,9 @@ a store says how it was made. A run from a `ParsedConfig` has no text to stamp, 
 stamps nothing.
 ///
 
-## See also
+## Where next
 
-- [Run & visualise](run-and-visualise.md) — the CLI equivalent.
-- [Configuration reference](../reference/configuration.md) — the config schema.
-- [Python API reference](../api/conduit.pipeline.md) — full signatures for these
-  functions.
+- [Python API reference](../../reference/python-api.md) — signatures for every function used here.
+- [Run and visualise](run-and-visualise.md) — the CLI equivalent.
+- [Test your pipeline](../authoring/test-your-pipeline.md) — these same calls, from a test.
+- [Configuration reference](../../reference/configuration.md) — the config schema.

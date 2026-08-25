@@ -75,7 +75,8 @@ units = "g C m-2"
 Now the declared units say what the number is, and the contract check has something to
 verify.
 
-## See also
+## Where next
 
-- [Configuration › Resample](../reference/configuration.md#resample) — the `[[resample]]` keys.
-- [Contracts](../concepts/contracts.md) — what the checks can and cannot catch.
+- [Configuration › Resample](../../reference/configuration.md#resample) — the `[[resample]]` keys.
+- [Declaring contracts](contracts.md) — what the checks can and cannot catch.
+- [Test your pipeline](test-your-pipeline.md) — how to catch this one, since contracts will not.

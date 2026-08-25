@@ -5,10 +5,16 @@ icon: lucide/gauge
 
 # Scale up a pipeline
 
-The same functions that run on a laptop scale to a cluster — you change the config, not
-the code. This guide covers the four scaling knobs: result **caching**, out-of-core
-**dask**, memory-bounded **blocking**, and parallel **subset** runs over a shared Zarr
-store. For the *why* behind this, see [Scaling model](../concepts/scaling.md).
+The same functions that run on a laptop run across a cluster.
+You change the config, not the code.
+
+There are four knobs, in rough order of the scale they address: result **caching**, out-of-core **dask**, memory-bounded **blocking**, and parallel **subset** runs over a shared Zarr store.
+They compose — a blocked, dask-backed run over a subset with caching on is entirely ordinary.
+
+None of them changes the result or the contracts.
+Same graph, same before-compute checks, same outputs, different execution strategy.
+That invariance is the point: you develop against a tiny in-memory run and deploy the identical pipeline at scale.
+[How it works](../../how-it-works.md) explains why that is possible.
 
 ## Caching results
 
@@ -140,8 +146,8 @@ misaligned raises a `ValueError`. Keep subset ranges as multiples of the chunk s
 With a SLURM array job, vary `start`/`stop` via environment variables or per-task
 config files.
 
-## See also
+## Where next
 
-- [Scaling model](../concepts/scaling.md) — why the same functions scale for free.
-- [Configuration reference](../reference/configuration.md) — the `[cache]`,
-  `[blocking]` and `[subset]` keys.
+- [How it works](../../how-it-works.md) — why execution is a separate decision from the science.
+- [Configuration reference](../../reference/configuration.md) — the `[cache]`, `[blocking]` and `[subset]` keys.
+- [CLI reference](../../reference/cli.md) — every `conduit gridded` flag.

@@ -5,9 +5,11 @@ icon: lucide/shield-check
 
 # Validate before running
 
-conduit can prove your pipeline is wired and typed correctly *before* it computes
-anything. This guide shows how to use that guarantee: the `--dry-run` pre-flight, the
-wiring check, and how to read a contract failure.
+Loading inputs and building the DAG is cheap.
+Computing the pipeline may not be.
+
+`--dry-run` does everything a real run does up to the point of executing a node, so a transposed axis, a hPa-for-Pa slip or a renamed input fails at the terminal in a second rather than forty minutes into a run.
+Wire it into CI and config drift never reaches a cluster.
 
 ## The `--dry-run` pre-flight
 
@@ -40,14 +42,14 @@ It validates, in order, and prints a per-stage summary:
 A clean pre-flight exits `0`. A genuine problem with the config, inputs, DAG plan,
 wiring or output paths always fails. Contract problems honour the active policy: in
 `warn` mode they are reported but the dry run still passes; in `strict` mode they fail
-with a non-zero exit (see [`[annotations]`](../reference/configuration.md#annotations)).
+with a non-zero exit (see [`[annotations]`](../../reference/configuration.md#annotations)).
 
 ## Input compatibility checks
 
 Contracts and wiring validate what the DAG *declares*. Some expectations, though, are
 about the **input files themselves** and nothing in the DAG records them — for example
 "the climate and land-cover inputs must sit on the same grid", or "these two records must
-share a time axis". Declare those in a [`[validation]`](../reference/configuration.md#validation)
+share a time axis". Declare those in a [`[validation]`](../../reference/configuration.md#validation)
 block:
 
 ```toml
@@ -69,8 +71,8 @@ align — different time axes across inputs are perfectly normal (a daily forcin
 monthly boundary condition), so an automatic all-pairs check would false-positive on most
 real pipelines. The `[validation]` block is where *you* state which relationships must
 hold. (The full check list and keyword arguments are in the
-[configuration reference](../reference/configuration.md#validation); the predicates
-themselves are documented in [`conduit.checks`](../api/conduit.checks.md).)
+[configuration reference](../../reference/configuration.md#validation); the predicates
+themselves are documented in [`conduit.checks`](../../reference/modules/conduit.checks.md).)
 
 ## The wiring check
 
@@ -94,19 +96,19 @@ When the build-time check rejects an edge, the message names the two nodes, the 
 declaring it needs pressure in `Pa` fed by a producer declaring `m`:
 
 ```
-Contract mismatch on edge 'pressure_climate' -> 'pressure_anomaly_climate':
-  units 'm' is not convertible to 'Pa'
+Error: contract declaration mismatch(es) in DAG:
+  'sat_gpp': output of sat_gpp declares 'umol m-2 s-1' but input of
+  compare_with_satellite declares 'g m-2 d-1' (dimensionally incompatible)
 ```
 
-To fix it, make the declarations agree — correct whichever annotation is wrong, or (if
-the units are merely different but compatible, like `hPa` vs `Pa`) let conduit convert
-by leaving `on_inexact = "convert"`. See [Add unit contracts](../get-started/units-and-contracts.md)
-for a worked example and [Contracts before compute](../concepts/contracts.md) for how
-the check generalises across facets.
+That is the [flux recipe's `broken.toml`](../../recipes/flux-pipeline.md), which exists to produce this failure on demand.
 
-## Why pre-flight at all?
+To fix one, make the declarations agree: correct whichever annotation is wrong.
+Where the units are merely different but compatible, like `hPa` against `Pa`, conduit converts them for you and there is nothing to fix — leave `on_inexact = "convert"`.
 
-Loading inputs and building the DAG is cheap; computing the pipeline may not be. A
-dry run turns a class of mistakes that would otherwise surface 40 minutes into a run —
-a transposed axis, a hPa/Pa slip, a renamed input — into a one-second failure at the
-terminal. Wire it into CI to catch config drift before it reaches a cluster.
+## Where next
+
+- [Declaring contracts](../authoring/contracts.md) — writing the declarations these checks compare.
+- [Test your pipeline](../authoring/test-your-pipeline.md) — calling `dry_run` from a test.
+- [`[annotations]` reference](../../reference/configuration.md#annotations) — every policy key.
+- [Troubleshooting](../troubleshooting.md) — specific error messages and their causes.
