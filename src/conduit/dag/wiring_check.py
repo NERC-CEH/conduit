@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 from hamilton import graph_types
 
+from ..errors import ConduitValueError
+
 if TYPE_CHECKING:
     from hamilton import driver
 
@@ -88,7 +90,7 @@ def check_wiring(
 
     unbound = required_external - loaded
     if unbound:
-        raise ValueError(
+        raise ConduitValueError(
             f"unbound pipeline input(s): {sorted(unbound)}. These are required by "
             f"the DAG but no input was loaded for them. Check for a naming mismatch "
             f"between [inputs.*] vars/suffix and the consuming function's parameter "

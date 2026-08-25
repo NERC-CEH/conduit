@@ -38,6 +38,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .errors import ConduitValueError
+
 #: Readers and writers all take a keyword-only ``point_dim``; the ``dataset``
 #: group ignores it (see the module docstring).
 Reader = Callable[..., xr.Dataset]
@@ -221,13 +223,13 @@ def format_for(path: str | PathLike, *, writable: bool = False) -> Format:
     for fmt in FORMATS:
         if suffix in fmt.suffixes:
             if writable and fmt.write is None:
-                raise ValueError(
+                raise ConduitValueError(
                     f"Cannot write {fmt.key} ({suffix}) — it is an input-only "
                     f"format. Writable formats: {supported_suffixes(writable=True)}."
                 )
             return fmt
 
-    raise ValueError(
+    raise ConduitValueError(
         f"Unsupported file extension {suffix or '(none)'!r} (path {str(path)!r}). "
         f"Supported: {supported_suffixes(writable=writable)}."
     )
@@ -245,7 +247,7 @@ def _in_group(path: str | PathLike, group: str, *, writable: bool = False) -> Fo
     """Look ``path`` up, requiring it to be in ``group``."""
     fmt = format_for(path, writable=writable)
     if fmt.group != group:
-        raise ValueError(
+        raise ConduitValueError(
             f"Unsupported file extension {Path(path).suffix or '(none)'!r} for a "
             f"{group} file (path {str(path)!r}). Use one of {group_suffixes(group)}."
         )

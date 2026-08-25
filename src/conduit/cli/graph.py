@@ -13,6 +13,7 @@ from xarray_annotated import declarations_from_signature
 
 from ..config import load_config
 from ..dag.driver import build_driver
+from ..errors import ConduitValueError
 from ..io import get_final_vars
 from .graph_style import FREQ_COLOR_CYCLE, GraphvizSpec, load_graphviz_spec
 
@@ -64,7 +65,7 @@ def _import_style_function(path: str) -> StyleFunction:
     """Import a ``"module:function"`` style function reference."""
     module_name, _, attr = path.partition(":")
     if not module_name or not attr:
-        raise ValueError(
+        raise ConduitValueError(
             f"style_function must be of the form 'module:function', got {path!r}."
         )
     module = importlib.import_module(module_name)

@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
+from .errors import ConduitFileNotFoundError, ConduitPermissionError, ConduitValueError
 from .formats import (
     DEFAULT_POINT_DIM,
     FORMATS,
@@ -81,7 +82,7 @@ def _check_requested_vars(
     lines.append(
         f"The file contains: {', '.join(available) if available else '(none)'}."
     )
-    raise ValueError("\n".join(lines))
+    raise ConduitValueError("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +135,11 @@ def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
     if len(dims) == 1:
         return dims[0]
     if not dims:
-        raise ValueError(
+        raise ConduitValueError(
             f"{what} has no time dimension (no dimension coordinate is "
             f"datetime-like); its dimensions are {list(obj.dims)}."
         )
-    raise ValueError(
+    raise ConduitValueError(
         f"{what} has multiple time dimensions {sorted(dims)}; conduit cannot tell "
         f"which is meant. Merge, select, or rename the extra datetime axis."
     )
@@ -234,7 +235,7 @@ def load_inputs(
     for label, ds in raw_datasets.items():
         tdims = time_dims(ds)
         if len(tdims) > 1:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[inputs.{label}] has multiple time dimensions {sorted(tdims)}; "
                 f"conduit requires at most one time dimension per input dataset. "
                 f"Merge, select, or rename the extra datetime axis before loading."
@@ -250,7 +251,7 @@ def load_inputs(
         _check_requested_vars(label, spec.path, ds, mapping)
         for node_name, file_var in mapping.items():
             if node_name in inputs:
-                raise ValueError(
+                raise ConduitValueError(
                     f"input node name {node_name!r} (from [inputs.{label}]) collides "
                     f"with an already-loaded input. Use distinct suffixes or an "
                     f"explicit {{node_name = file_var}} mapping to disambiguate."
@@ -375,7 +376,7 @@ def _subset_format(path: str, label: str) -> "Format":
     """Return the `Format` for a ``[subset]`` output, or raise if it cannot be one."""
     fmt = format_for(path, writable=True)
     if not fmt.supports_subset:
-        raise ValueError(
+        raise ConduitValueError(
             f"[subset] is only supported for "
             f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
             f"outputs, but output {label!r} has path {path!r}."
@@ -406,7 +407,7 @@ def assert_output_paths_writable(
             fmt = _subset_format(spec.path, label)
             if fmt.needs_store:
                 if not Path(spec.path).exists():
-                    raise FileNotFoundError(
+                    raise ConduitFileNotFoundError(
                         f"Zarr store {spec.path!r} for output {label!r} does not "
                         f"exist. Create it once before subset runs with "
                         f"`conduit gridded create-store <config>`."
@@ -418,12 +419,12 @@ def assert_output_paths_writable(
 
         parent = path.parent
         if not parent.is_dir():
-            raise FileNotFoundError(
+            raise ConduitFileNotFoundError(
                 f"output {label!r} parent directory {str(parent)!r} does not exist "
                 f"(path {spec.path!r})."
             )
         if not os.access(parent, os.W_OK):
-            raise PermissionError(
+            raise ConduitPermissionError(
                 f"output {label!r} parent directory {str(parent)!r} is not writable "
                 f"(path {spec.path!r})."
             )
@@ -465,7 +466,7 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     for label, spec in output_specs.items():
         for node in var_mapping(label, spec):
             if node in seen:
-                raise ValueError(
+                raise ConduitValueError(
                     f"output node name {node!r} (from [outputs.{label}]) is requested "
                     f"by more than one output section. Give each output a distinct "
                     f"node name (suffix or explicit mapping)."

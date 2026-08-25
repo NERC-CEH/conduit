@@ -14,6 +14,7 @@ from typing import Any, Self
 import tomli_w
 
 from .checks import CHECKS
+from .errors import ConduitValueError
 from .formats import DEFAULT_POINT_DIM
 from .specs import (
     AnnotationPolicySpec,
@@ -154,13 +155,13 @@ class Config:
         """
         for label, params in data.pop("inputs", {}).items():
             if "path" not in params:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[inputs.{label}] is missing a 'path' key. "
                     f"Input sections must specify a file path."
                 )
             vars_ = params.get("vars")
             if vars_ is not None and len(vars_) == 0:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[inputs.{label}] has an empty 'vars'. Either list the "
                     f"variables to load, or omit 'vars' entirely to load every "
                     f"variable in the file."
@@ -178,13 +179,13 @@ class Config:
         for label, params in data.pop("outputs", {}).items():
             vars_ = params.get("vars") or []
             if not vars_:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[outputs.{label}] has no 'vars'. "
                     f"Output sections must list at least one variable, "
                     f"or be removed from the config."
                 )
             if "path" not in params:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[outputs.{label}] is missing a 'path' key. "
                     f"Output sections must specify a file path."
                 )
@@ -211,7 +212,7 @@ class Config:
         for concrete in expand_node_entries(entries):
             spec = NodeSpec.from_config(concrete)
             if spec.name in seen_names:
-                raise ValueError(f"Duplicate node name '{spec.name}'")
+                raise ConduitValueError(f"Duplicate node name '{spec.name}'")
             seen_names.add(spec.name)
             specs.append(spec)
         return specs
@@ -274,7 +275,7 @@ class Config:
         section = data.pop("validation", {})
         unknown_keys = set(section) - {"checks"}
         if unknown_keys:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[validation] has unknown key(s) {sorted(unknown_keys)}; "
                 f"only 'checks' is supported"
             )
@@ -283,19 +284,23 @@ class Config:
         for entry in entries:
             entry = dict(entry)
             if "check" not in entry:
-                raise ValueError(f"checks entry {entry!r} is missing a 'check' key")
+                raise ConduitValueError(
+                    f"checks entry {entry!r} is missing a 'check' key"
+                )
             name = entry.pop("check")
             if name not in CHECKS:
-                raise ValueError(
+                raise ConduitValueError(
                     f"unknown check {name!r}; known checks: {sorted(CHECKS)}"
                 )
             raw_inputs = entry.pop("inputs", None)
             if not raw_inputs:
-                raise ValueError(f"check {name!r} is missing a non-empty 'inputs' list")
+                raise ConduitValueError(
+                    f"check {name!r} is missing a non-empty 'inputs' list"
+                )
 
             if "*" in raw_inputs:
                 if raw_inputs != ["*"]:
-                    raise ValueError(
+                    raise ConduitValueError(
                         f"check {name!r}: '*' must be the sole element of 'inputs', "
                         f"got {raw_inputs!r}"
                     )
@@ -304,14 +309,14 @@ class Config:
                 inputs = list(raw_inputs)
                 unknown = [s for s in inputs if s not in input_specs]
                 if unknown:
-                    raise ValueError(
+                    raise ConduitValueError(
                         f"check {name!r} references unknown input section(s) "
                         f"{unknown}; known: {sorted(input_specs)}"
                     )
 
             arity = CHECKS[name].arity
             if arity != "variadic" and len(inputs) != arity:
-                raise ValueError(
+                raise ConduitValueError(
                     f"check {name!r} takes exactly {arity} input(s), "
                     f"got {len(inputs)}: {inputs}"
                 )
@@ -353,14 +358,16 @@ class Config:
             elif mode == "warn":
                 on_missing = "warn"
             else:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[{label}] 'mode' must be one of 'strict', 'warn', 'off', "
                     f"got {mode!r}."
                 )
         exact = entry.get("exact")
         if exact is not None:
             if not isinstance(exact, bool):
-                raise ValueError(f"[{label}] 'exact' must be a boolean, got {exact!r}.")
+                raise ConduitValueError(
+                    f"[{label}] 'exact' must be a boolean, got {exact!r}."
+                )
             if exact:
                 on_inexact = "error"
         return AnnotationPolicySpec(
@@ -387,13 +394,13 @@ class Config:
             params = dict(params)
             import_path = params.pop("_import_path", None)
             if import_path is None:
-                raise ValueError(
+                raise ConduitValueError(
                     f"Section [{section_label!r}] is missing '_import_path'. "
                     f"All non-built-in sections must include "
                     f"'_import_path = \"pkg.module\"'."
                 )
             if not _is_valid_module_path(import_path):
-                raise ValueError(
+                raise ConduitValueError(
                     f"'_import_path = {import_path!r}' in [{section_label!r}] "
                     f"is not a valid dotted module path."
                 )
@@ -484,7 +491,7 @@ def _merge_params(
     cannot fix a collision without knowing who they are colliding with.
     """
     for key in sorted(set(params) & set(driver_config)):
-        raise ValueError(
+        raise ConduitValueError(
             f"Parameter {key!r} is defined by both [{defined_by[key]}] and "
             f"[{section}]. Module parameters share one flat namespace, so give the "
             f"two parameters distinct names (e.g. {defined_by[key]}_{key} and "

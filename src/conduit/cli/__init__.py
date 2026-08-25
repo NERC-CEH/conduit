@@ -5,6 +5,7 @@ from pathlib import Path
 
 import typer
 
+from ..errors import ConduitError
 from ..gridded.cli import app as gridded_app
 from .graph import app as graph_app
 from .run import app as run_app
@@ -13,6 +14,8 @@ from .version import app as version_app
 app = typer.Typer(
     help="Command-line interface for the conduit framework.",
     context_settings={"help_option_names": ["-h", "--help"]},
+    # `main` renders ConduitError itself; typer's traceback would bury the message.
+    pretty_exceptions_enable=False,
 )
 
 
@@ -44,5 +47,15 @@ app.add_typer(version_app)
 
 
 def main() -> None:
-    """Entry point for the conduit CLI."""
-    app()
+    """Entry point for the conduit CLI.
+
+    A `ConduitError` is a condition conduit anticipated and wrote a message for, so
+    the message is all a user needs; the frames above it are conduit's own call
+    stack. Every other exception propagates with its traceback, because that is a
+    bug and the frames are the point.
+    """
+    try:
+        app()
+    except ConduitError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise SystemExit(1) from exc

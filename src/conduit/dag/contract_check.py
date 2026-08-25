@@ -61,6 +61,8 @@ from xarray_annotated.temporal import get_policy as temporal_get_policy
 from xarray_annotated.units import check_units, units_compatible, units_equal
 from xarray_annotated.units import get_policy as units_get_policy
 
+from ..errors import ConduitValueError
+
 if TYPE_CHECKING:
     from hamilton import driver
     from xarray_annotated import Declared
@@ -333,7 +335,7 @@ def _check_dag(dr: "driver.Driver", facets: tuple[_Facet, ...]) -> None:
                         f"declares {b_decl!r} ({why})"
                     )
     if findings:
-        raise ValueError(
+        raise ConduitValueError(
             "contract declaration mismatch(es) in DAG:\n" + "\n".join(findings)
         )
 

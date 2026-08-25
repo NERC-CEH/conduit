@@ -10,7 +10,8 @@ import xarray as xr
 from typer.testing import CliRunner
 
 from conduit._version import __version__
-from conduit.cli import _prepare_import_path, app
+from conduit.checks import InputCheckError
+from conduit.cli import _prepare_import_path, app, main
 from conduit.cli.graph import (
     _import_style_function,
     assign_freq_colors,
@@ -27,6 +28,12 @@ from conduit.cli.graph_style import (
     load_graphviz_spec,
 )
 from conduit.config import load_config
+from conduit.errors import (
+    ConduitError,
+    ConduitFileNotFoundError,
+    ConduitPermissionError,
+    ConduitValueError,
+)
 
 runner = CliRunner()
 
@@ -681,3 +688,52 @@ class TestWorkingDirectoryImports:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["graph", "config.toml", "--output", "graph"])
         assert result.exit_code == 0, result.output
+
+
+class TestErrorRendering:
+    """`main` prints a ConduitError alone; anything else keeps its traceback."""
+
+    def test_conduit_error_prints_message_without_traceback(self, monkeypatch, capsys):
+        def _raise():
+            raise ConduitValueError("something the user can fix")
+
+        monkeypatch.setattr("conduit.cli.app", _raise)
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+        assert excinfo.value.code == 1
+        captured = capsys.readouterr()
+        assert "Error: something the user can fix" in captured.err
+        assert "Traceback" not in captured.err
+
+    def test_other_exceptions_propagate(self, monkeypatch):
+        """A bug must keep its frames, so `main` must not swallow it."""
+
+        def _raise():
+            raise TypeError("a bug, not a bad input")
+
+        monkeypatch.setattr("conduit.cli.app", _raise)
+        with pytest.raises(TypeError, match="a bug"):
+            main()
+
+    def test_input_check_error_is_a_conduit_error(self):
+        assert issubclass(InputCheckError, ConduitError)
+
+
+class TestErrorTypes:
+    """Concrete errors keep the stdlib type a library caller would catch."""
+
+    @pytest.mark.parametrize(
+        ("error", "stdlib"),
+        [
+            (ConduitValueError, ValueError),
+            (ConduitFileNotFoundError, FileNotFoundError),
+            (ConduitPermissionError, PermissionError),
+        ],
+    )
+    def test_inherits_stdlib_type(self, error, stdlib):
+        assert issubclass(error, stdlib)
+        assert issubclass(error, ConduitError)
+
+    def test_base_is_not_a_value_error(self):
+        """`except ValueError` must not catch a missing-file error by accident."""
+        assert not issubclass(ConduitError, ValueError)

@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..errors import ConduitValueError
+
 # ColorBrewer "Set2": a colour-blind-friendly qualitative palette. These work both as
 # node fill colours (with black text) and as edge colours. Frequencies are arbitrary
 # offset aliases ("7D", "1ME", "W-SUN"), not a fixed vocabulary, so colours are
@@ -106,7 +108,7 @@ def load_graphviz_spec(path: Path | None) -> GraphvizSpec:
 
     unknown = set(data) - _KNOWN_KEYS
     if unknown:
-        raise ValueError(
+        raise ConduitValueError(
             f"Unknown key(s) in graphviz style file {path}: {sorted(unknown)}. "
             f"Recognised keys: {sorted(_KNOWN_KEYS)}."
         )

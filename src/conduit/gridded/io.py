@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from ..errors import ConduitFileNotFoundError, ConduitValueError
 from ..formats import FORMATS, format_for
 from ..specs import IOSpec, ParsedConfig, SubsetSpec
 from .spatial import stack_spatial_dims
@@ -218,14 +219,14 @@ def _assert_coords_match(
         if dim == partition_dim or dim not in ds.coords:
             continue
         if dim not in store.coords:
-            raise ValueError(
+            raise ConduitValueError(
                 f"Zarr store '{path}' has no '{dim}' coordinate, but the data being "
                 f"written into it does. Re-create the store from the current config "
                 f"with `conduit gridded create-store`."
             )
         ours, theirs = ds.indexes[dim], store.indexes[dim]
         if len(ours) != len(theirs) or not (ours == theirs).all():
-            raise ValueError(
+            raise ConduitValueError(
                 f"'{dim}' coordinate does not match Zarr store '{path}': the store "
                 f"has {len(theirs)} value(s) ({theirs[0]} … {theirs[-1]}), the data "
                 f"being written has {len(ours)} ({ours[0]} … {ours[-1]}). Region "
@@ -250,7 +251,7 @@ def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
     dim = spec.dim
     store = Path(path)
     if not store.exists():
-        raise FileNotFoundError(
+        raise ConduitFileNotFoundError(
             f"Zarr store '{path}' does not exist. Create it once before running "
             f"subset processes with: `conduit gridded create-store <config>`."
         )
@@ -258,7 +259,7 @@ def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
     template = xr.open_zarr(store, consolidated=False)
     _assert_coords_match(ds, template, path, partition_dim=dim)
     if dim not in template.dims:
-        raise ValueError(
+        raise ConduitValueError(
             f"Zarr store '{path}' has no {dim!r} dimension, so a [subset] over "
             f"{dim!r} cannot be region-written into it. The store's dimensions are "
             f"{sorted(str(d) for d in template.dims)}."
@@ -275,7 +276,7 @@ def save_zarr_region(ds: xr.Dataset, path: str, spec: SubsetSpec) -> None:
         else n_along_dim
     )
     if spec.start % chunk != 0 or (spec.stop % chunk != 0 and spec.stop != n_along_dim):
-        raise ValueError(
+        raise ConduitValueError(
             f"[subset] range {spec.start}-{spec.stop} is not aligned to the store's "
             f"{dim} chunk size ({chunk}). Concurrent region writes require subset "
             f"boundaries to fall on chunk boundaries. Re-create the store with a "
@@ -303,7 +304,7 @@ def _pixel_template(inputs: dict[str, Any]) -> xr.Dataset:
         None,
     )
     if da_first is None:
-        raise ValueError(
+        raise ConduitValueError(
             "No pixel-bearing inputs found; cannot create a spatial output store."
         )
     reduced = da_first.isel({d: 0 for d in da_first.dims if d != "pixel"}, drop=True)
@@ -356,14 +357,14 @@ def create_output_store(
         return []
 
     if parsed.point_dim != "pixel":
-        raise ValueError(
+        raise ConduitValueError(
             f"point_dim is {parsed.point_dim!r}, but a Zarr output store is the "
             f"stacked 'pixel' grid and can only be built over 'pixel'. Either leave "
             f"point_dim at its default, or use a NetCDF output (whose subset parts "
             f"are separate files and need no pre-created store)."
         )
     if parsed.subset_spec is not None and parsed.subset_spec.dim != "pixel":
-        raise ValueError(
+        raise ConduitValueError(
             f"[subset] dim is {parsed.subset_spec.dim!r}, but a Zarr output store is "
             f"the stacked 'pixel' grid and can only be partitioned over 'pixel'. "
             f"Either subset over 'pixel', or use a NetCDF output (whose subset parts "
@@ -446,7 +447,7 @@ def _find_subset_parts(path: Path, dim: str = "pixel") -> list[Path]:
             found.append((int(match[1]), int(match[2]), part))
 
     if not found:
-        raise FileNotFoundError(
+        raise ConduitFileNotFoundError(
             f"No subset parts found matching "
             f"'{path.stem}_{dim}<start>-<stop>{path.suffix}' in {path.parent}."
         )
@@ -457,7 +458,7 @@ def _find_subset_parts(path: Path, dim: str = "pixel") -> list[Path]:
     for start, stop, part in found:
         if start != expected:
             kind = "gap" if start > expected else "overlap"
-            raise ValueError(
+            raise ConduitValueError(
                 f"Subset parts for {path.name} do not cover the {dim!r} dimension: "
                 f"{kind} at {dim} {expected} (part '{part.name}' starts at {start}). "
                 f"Ranges found: {covered}. Every {dim} must be written exactly once "
@@ -494,7 +495,7 @@ def merge_subset_outputs(
     for NaNs, so a failed Zarr subset run is *not* caught here.
     """
     if out is not None and len(output_specs) > 1:
-        raise ValueError(
+        raise ConduitValueError(
             f"'out' cannot be used with multiple [outputs.*] sections "
             f"({sorted(output_specs)}); the destination would be ambiguous. "
             f"Omit it to use the per-output defaults."
@@ -506,7 +507,7 @@ def merge_subset_outputs(
         fmt = format_for(spec.path, writable=True)
 
         if not fmt.supports_subset:
-            raise ValueError(
+            raise ConduitValueError(
                 f"merge is only supported for "
                 f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
                 f"outputs, but output {label!r} has path {spec.path!r}."

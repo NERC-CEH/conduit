@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .errors import ConduitValueError
 from .io import time_dims
 
 if TYPE_CHECKING:
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class InputCheckError(ValueError):
+class InputCheckError(ConduitValueError):
     """Raised (by `run_input_checks`) when one or more input checks fail."""
 
 
@@ -48,7 +49,7 @@ def _single_time_index(ds: xr.Dataset) -> pd.DatetimeIndex:
     """
     tdims = time_dims(ds)
     if not tdims:
-        raise ValueError(
+        raise ConduitValueError(
             "dataset has no time dimension; a time check cannot be applied to it"
         )
     return ds.get_index(tdims[0])  # type: ignore[return-value]
@@ -57,7 +58,7 @@ def _single_time_index(ds: xr.Dataset) -> pd.DatetimeIndex:
 def _require_arity(datasets: tuple[xr.Dataset, ...], name: str, arity: int) -> None:
     """Backstop arity guard for fixed-arity checks (the parser catches this earlier)."""
     if len(datasets) != arity:
-        raise ValueError(
+        raise ConduitValueError(
             f"check '{name}' takes exactly {arity} datasets, got {len(datasets)}"
         )
 
@@ -75,7 +76,7 @@ def time_equal(*datasets: xr.Dataset) -> None:
     for i, ds in enumerate(datasets[1:], start=1):
         idx = _single_time_index(ds)
         if not ref.equals(idx):
-            raise ValueError(
+            raise ConduitValueError(
                 f"dataset {i} time index differs from dataset 0 "
                 f"({len(idx)} vs {len(ref)} timestamps)"
             )
@@ -92,7 +93,7 @@ def time_subset(*datasets: xr.Dataset) -> None:
     sub = _single_time_index(datasets[1])
     missing = sub[~sub.isin(sup)]
     if len(missing) > 0:
-        raise ValueError(
+        raise ConduitValueError(
             f"dataset 1 has {len(missing)} timestamp(s) absent from dataset 0: "
             f"{missing.tolist()}"
         )
@@ -126,7 +127,7 @@ def crs_equal(*datasets: xr.Dataset) -> None:
     ref_crs = datasets[0].rio.crs
     for i, ds in enumerate(datasets[1:], start=1):
         if ds.rio.crs != ref_crs:
-            raise ValueError(
+            raise ConduitValueError(
                 f"dataset {i} CRS ({ds.rio.crs}) differs from dataset 0 ({ref_crs})"
             )
 
@@ -147,24 +148,26 @@ def coords_equal(*datasets: xr.Dataset, coords: list[str], atol: float = 1e-6) -
     for coord in coords:
         ref = datasets[0].coords.get(coord)
         if ref is None:
-            raise ValueError(f"coordinate '{coord}' missing from dataset 0")
+            raise ConduitValueError(f"coordinate '{coord}' missing from dataset 0")
         for i, ds in enumerate(datasets[1:], start=1):
             other = ds.coords.get(coord)
             if other is None:
-                raise ValueError(f"coordinate '{coord}' missing from dataset {i}")
+                raise ConduitValueError(
+                    f"coordinate '{coord}' missing from dataset {i}"
+                )
             if other.shape != ref.shape:
-                raise ValueError(
+                raise ConduitValueError(
                     f"coordinate '{coord}' has shape {other.shape} in dataset {i} "
                     f"but {ref.shape} in dataset 0"
                 )
             if np.issubdtype(ref.dtype, np.floating):
                 if not np.allclose(ref.values, other.values, atol=atol):
-                    raise ValueError(
+                    raise ConduitValueError(
                         f"coordinate '{coord}' values differ between dataset 0 and "
                         f"dataset {i} (atol={atol})"
                     )
             elif not ref.equals(other):
-                raise ValueError(
+                raise ConduitValueError(
                     f"coordinate '{coord}' values differ between dataset 0 and "
                     f"dataset {i}"
                 )

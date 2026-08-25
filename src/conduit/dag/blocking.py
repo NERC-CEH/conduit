@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 import xarray as xr
 
+from ..errors import ConduitValueError
+
 if TYPE_CHECKING:
     from hamilton import driver
 
@@ -39,7 +41,7 @@ def _block_dim_size(inputs: dict[str, Any], block_names: list[str], dim: str) ->
     distinct = set(sizes.values())
     if len(distinct) > 1:
         detail = ", ".join(f"{name}={size}" for name, size in sorted(sizes.items()))
-        raise ValueError(
+        raise ConduitValueError(
             f"Inputs disagree on the size of the blocking dimension {dim!r}: "
             f"{detail}. Every input carrying {dim!r} must span the same domain."
         )
@@ -80,7 +82,7 @@ def _concat_results(
     for var in final_vars:
         first = block_results[0][var]
         if not (isinstance(first, xr.DataArray) and dim in first.dims):
-            raise ValueError(
+            raise ConduitValueError(
                 f"Blocking cannot recombine '{var}' "
                 f"(dims: {getattr(first, 'dims', '(scalar)')}) — it has no "
                 f"{dim!r} dimension. Remove it from [outputs] when using "

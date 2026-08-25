@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
+from ..errors import ConduitValueError
+
 if TYPE_CHECKING:
     from conduit.specs import CacheSpec, NodeSpec
 
@@ -56,7 +58,7 @@ def build_driver(
     from conduit.dag.node import make_node_module
 
     if "node" in modules and not node_specs:
-        raise ValueError(
+        raise ConduitValueError(
             "The built-in 'node' module was requested but no node_specs were "
             "given, so it would generate no nodes. Pass "
             "node_specs=parsed.node_specs."
@@ -83,7 +85,7 @@ def build_driver(
                         "conduit looks for an installed package of that name first, "
                         f"then for it under the working directory ({Path.cwd()})."
                     )
-                raise ValueError(
+                raise ConduitValueError(
                     f"Could not import {mod!r}, named by an '_import_path' in the "
                     f"config. {where} Built-in module names are: "
                     f"{', '.join(sorted(MODULES))}."

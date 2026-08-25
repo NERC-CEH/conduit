@@ -15,6 +15,8 @@ import keyword
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from .errors import ConduitValueError
+
 _VALID_AGGFUNCS: frozenset[str] = frozenset(
     {"mean", "sum", "max", "min", "first", "last"}
 )
@@ -49,12 +51,12 @@ class ResampleSpec:
         """Construct and validate from a raw [[resample]] TOML entry."""
         aggfunc = entry.get("aggfunc", "mean")
         if aggfunc not in _VALID_AGGFUNCS:
-            raise ValueError(
+            raise ConduitValueError(
                 f"Unsupported aggfunc '{aggfunc}'. Supported: {sorted(_VALID_AGGFUNCS)}"
             )
         missing = [key for key in ("vars", "from", "to", "freq") if key not in entry]
         if missing:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[[resample]] entry is missing required key(s) {missing}. Every "
                 f"entry needs 'vars', 'from' and 'to' (the node-name suffixes to read "
                 f"from and write to) and 'freq' (the target pandas offset alias, e.g. "
@@ -87,14 +89,14 @@ def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
 
     where = f"[[node]] '{node_name}' {field_}"
     if not isinstance(value, str) or not value.isidentifier():
-        raise ValueError(
+        raise ConduitValueError(
             f"{where}: {value!r} is not a valid Python identifier, and node names "
             f"and inputs become identifiers in the generated node module."
         )
     if keyword.iskeyword(value):
-        raise ValueError(f"{where}: {value!r} is a Python keyword.")
+        raise ConduitValueError(f"{where}: {value!r} is a Python keyword.")
     if value in RESERVED_NODE_NAMES:
-        raise ValueError(
+        raise ConduitValueError(
             f"{where}: {value!r} is reserved — it names a helper bound in every "
             f"generated node module ({sorted(RESERVED_NODE_NAMES)}). Choose "
             f"another name."
@@ -135,19 +137,19 @@ class NodeSpec:
         has_import_path = "_import_path" in entry
         has_function = "function" in entry
         if has_expression and (has_import_path or has_function):
-            raise ValueError(
+            raise ConduitValueError(
                 f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function'), not both."
             )
         if not has_expression and not (has_import_path or has_function):
-            raise ValueError(
+            raise ConduitValueError(
                 f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function')."
             )
         if has_import_path != has_function:
             missing = "function" if has_import_path else "_import_path"
             present = "_import_path" if has_import_path else "function"
-            raise ValueError(
+            raise ConduitValueError(
                 f"Node entry for '{name}' specifies '{present}' but is missing "
                 f"'{missing}'. A function node needs both keys: "
                 f"'_import_path' (the module) and 'function' (the name within it)."
@@ -208,7 +210,7 @@ class CacheSpec:
                 return val
             if isinstance(val, list) and all(isinstance(v, str) for v in val):
                 return val
-            raise ValueError(
+            raise ConduitValueError(
                 f"[cache] '{key}' must be a boolean or a list of node names, "
                 f"got {val!r}."
             )
@@ -227,7 +229,7 @@ def assert_dim_name(value: Any, where: str) -> str:
     overrides that default to it fail the same way, with the same message.
     """
     if not isinstance(value, str) or not value:
-        raise ValueError(f"{where} must be a non-empty string, got {value!r}.")
+        raise ConduitValueError(f"{where} must be a non-empty string, got {value!r}.")
     return value
 
 
@@ -249,7 +251,7 @@ class BlockingSpec:
         """Construct and validate from a raw [blocking] TOML entry."""
         block_size = entry.get("block_size")
         if not isinstance(block_size, int) or block_size < 1:
-            raise ValueError(
+            raise ConduitValueError(
                 "[blocking] 'block_size' must be a positive integer, "
                 f"got {block_size!r}."
             )
@@ -285,7 +287,7 @@ class SubsetSpec:
         def _index(key: str) -> int:
             value = entry.get(key)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[subset] {key!r} must be a non-negative integer, got {value!r}."
                 )
             return value
@@ -293,7 +295,7 @@ class SubsetSpec:
         start = _index("start")
         stop = _index("stop")
         if stop <= start:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[subset] 'stop' ({stop}) must be greater than 'start' ({start})."
             )
         dim = assert_dim_name(entry.get("dim", default_dim), "[subset] 'dim'")
@@ -333,7 +335,7 @@ class IOSpec:
 def _severity(value: Any, label: str, key: str) -> str | None:
     """Validate an ``error``/``warn``/``ignore`` policy key; ``None`` passes through."""
     if value is not None and value not in ("error", "warn", "ignore"):
-        raise ValueError(
+        raise ConduitValueError(
             f"[{label}] {key!r} must be one of 'error', 'warn', 'ignore', "
             f"got {value!r}."
         )
@@ -349,14 +351,14 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
             if not isinstance(k, str) or not isinstance(v, str)
         ]
         if bad:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[{label}] 'vars' mapping must be {{node_name = file_var}} with "
                 f"string keys and values, got offending entries {bad!r}."
             )
         return dict(vars_)
     if isinstance(vars_, list) and all(isinstance(v, str) for v in vars_):
         return list(vars_)
-    raise ValueError(
+    raise ConduitValueError(
         f"[{label}] 'vars' must be a list of names or a {{node_name = file_var}} "
         f"mapping, got {vars_!r}."
     )
