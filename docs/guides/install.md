@@ -9,7 +9,7 @@ conduit is installed from GitHub; it is not on PyPI.
 
 !!! warning "Alpha"
 
-    conduit has no users outside the core team.
+    conduit has no users outside the core team yet.
     The config schema, the Python API and the CLI all change without deprecation warnings, so pin a commit if you need a build to keep working.
 
 ## Prerequisites
@@ -34,9 +34,9 @@ This installs the `conduit` library: the core engine (Hamilton, xarray, contract
 checking, the config parser) and its Python API, `conduit.run`, `conduit.dry_run` and
 `conduit.build_graph`.
 
-The `conduit` command is an optional wrapper over that API and lives in the `cli`
-extra, along with geospatial and DAG-visualisation support (see below).
-Install it with `conduit[cli]` if you want to drive pipelines from a terminal.
+The `conduit` command is an optional wrapper over that API. It lives in the `cli` extra,
+alongside geospatial and DAG-visualisation support (see below). Install `conduit[cli]` if
+you want to drive pipelines from a terminal.
 
 ## Optional features (extras)
 
@@ -49,8 +49,8 @@ conduit groups its optional dependencies into installable extras:
 | `viz` | `apache-hamilton[visualization]` | rendering the DAG with `conduit graph` |
 | `all` | everything above | convenience — installs every optional feature |
 
-The `geo` dependencies are imported lazily and only when an input carries CRS metadata,
-so non-gridded pipelines never need them.
+conduit imports the `geo` dependencies lazily, and only when an input carries CRS
+metadata, so non-gridded pipelines never need them.
 
 Append the extra(s) in square brackets:
 

@@ -5,16 +5,16 @@ icon: lucide/code-2
 
 # Python API
 
-The library is the product and the CLI is an optional wrapper over it, so everything `conduit run` does is available from Python with nothing extra installed.
-This page is the public API: what you need to write science code on top of conduit, and nothing else.
+The CLI is an optional wrapper over the library, so everything `conduit run` does is available from Python with nothing extra installed.
+This page lists the public API: what you need in order to write science code on top of conduit, and nothing else.
 
-For the internals — the checkers, the specs, the Hamilton module generator — see [Modules](modules/conduit.pipeline.md), where each module's docstring is the design document for that part of the system.
+The internals — the checkers, the specs, the Hamilton module generator — are under [Modules](modules/conduit.pipeline.md), where each module's docstring is the design document for that part of the system.
 For a walkthrough rather than signatures, see [Drive conduit from Python](../guides/running/drive-from-python.md).
 
 ## Running a pipeline
 
 `run` and `dry_run` take either a path to a TOML file or a `ParsedConfig`.
-Passing a path is what stamps the config text and its SHA-256 into the outputs; passing a `ParsedConfig` stamps nothing, because there is no canonical text to record.
+Passing a path stamps the config text and its SHA-256 into the outputs. Passing a `ParsedConfig` stamps nothing.
 
 ::: conduit.pipeline
     options:

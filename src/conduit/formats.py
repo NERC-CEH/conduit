@@ -1,13 +1,11 @@
-"""The file-format registry: one table, one dispatch.
+"""The file-format registry.
 
 Every extension-based decision conduit makes — which reader to call, which writer,
 whether a format can be region-written by a ``[subset]`` run, whether it needs a
-pre-created store — is an entry in `FORMATS` and a lookup through `format_for`.
-Adding a format means adding one `Format`; nothing else in the codebase enumerates
-suffixes.
+pre-created store — is an entry in `FORMATS`, looked up through `format_for`.
 
-Formats fall into three **groups**, which is what the public loaders in
-`conduit.io` mean by their names:
+Formats fall into three **groups**, which is what the loaders in `conduit.io`
+mean by their names:
 
 - ``dataset`` — NetCDF/Zarr: an n-dimensional Dataset, read as-is;
 - ``table`` — CSV/Parquet: a single-point time series, reshaped to
@@ -19,12 +17,9 @@ rejects a ``.json`` destination.
 
 **``point_dim``** is the size-1 axis the ``table`` and ``scalar`` groups invent so
 single-point inputs broadcast against the partitioned ones. Its name must match the
-dimension the pipeline blocks/subsets over, or a subset run would skip these inputs
-(`conduit.io.subset_inputs` passes over anything lacking the dim) and leave a
-phantom axis in the outputs — so it is threaded from the config's top-level
-``point_dim`` rather than hardcoded. Every reader and writer takes it, including the
-``dataset`` ones, which ignore it: a uniform signature keeps `FORMATS` a flat table
-and the dispatch in `read_in_group` / `write_in_group` free of special cases.
+dimension the pipeline blocks or subsets over, or a subset run skips these inputs
+and leaves a stray axis in the outputs, so it comes from the config's top-level
+``point_dim`` rather than being hardcoded.
 """
 
 import json
@@ -40,8 +35,10 @@ import xarray as xr
 
 from .errors import ConduitValueError
 
-#: Readers and writers all take a keyword-only ``point_dim``; the ``dataset``
-#: group ignores it (see the module docstring).
+# Every reader and writer takes a keyword-only ``point_dim``, including the
+# ``dataset`` ones, which ignore it. The uniform signature is what keeps FORMATS a
+# flat table and the dispatch in read_in_group / write_in_group free of per-group
+# special cases, so do not drop the parameter from the readers that ignore it.
 Reader = Callable[..., xr.Dataset]
 Writer = Callable[..., None]
 FrameWriter = Callable[[pd.DataFrame, str | PathLike], None]

@@ -5,7 +5,7 @@ icon: lucide/shield-check
 
 # Declaring contracts
 
-A contract is a machine-checkable claim your node makes about the data on one of its edges, written as an ordinary type annotation:
+A contract is a claim your node makes about the data on one of its edges, written as an ordinary type annotation:
 
 ```python
 from typing import Annotated
@@ -25,7 +25,8 @@ def aridity_index_daily(
 
 conduit checks every such claim across the whole graph before any node runs.
 This page is about writing them.
-For the pre-flight that runs the checks against your real files, see [Validate before running](../running/validate-before-running.md); for why a before-compute check is possible at all, see [How it works](../../how-it-works.md).
+For the pre-flight that runs the checks against your real files, see [Validate before running](../running/validate-before-running.md).
+[How it works](../../how-it-works.md) covers why a before-compute check is possible at all.
 
 ## The five facets
 
@@ -38,7 +39,7 @@ For the pre-flight that runs the checks against your real files, see [Validate b
 | freq | how often the time axis ticks, and on what phase | `Freq("7D")`, `Freq("W-SUN")` |
 
 A bare string in the annotation metadata is always a unit.
-Every other facet uses a marker, so there is nothing to disambiguate:
+Every other facet uses a marker, so nothing needs disambiguating:
 
 ```python
 from typing import Annotated
@@ -90,15 +91,15 @@ def pressure_anomaly_climate(
     return pressure_climate - pressure_climate.mean("time")
 ```
 
-An edge is proven where both ends declare a contract.
+An edge is checked wherever both ends declare a contract.
 
-## Compatible units are converted, not rejected
+## Compatible units are converted for you
 
 Suppose your file stores pressure in hectopascals and the node above wants pascals.
-conduit converts the data before the function runs.
-You never hand-write `* 100`, and a unit that is merely spelled differently — `"pascal"` for `"Pa"` — is relabelled without touching the values.
+conduit converts the data before the function runs, so you never hand-write `* 100`.
+A unit that is only spelled differently, `"pascal"` for `"Pa"`, is relabelled without touching the values.
 
-Incompatible units are a different matter.
+Incompatible units are another matter.
 Change that annotation to metres:
 
 ```python
@@ -110,8 +111,7 @@ def pressure_anomaly_climate(
 ```
 
 Length and pressure do not interconvert, so conduit rejects the edge when the driver is built, naming both nodes and the facet that failed.
-Nothing has been computed at that point.
-`conduit run config.toml --dry-run` surfaces it without executing anything.
+Nothing has been computed at that point, and `conduit run config.toml --dry-run` will show you the same failure without executing anything.
 
 ## Choosing the strictness
 
@@ -125,9 +125,10 @@ on_inexact = "convert"  # "convert" (default) | "warn" | "error"
 
 `mode` decides whether a unit problem raises, reports, or is ignored entirely.
 
-`on_inexact` governs implicit conversion, and only a *value-changing* one consults it.
+`on_inexact` governs implicit conversion, and only a *value-changing* conversion consults it.
 `"convert"` scales silently, `"warn"` scales and tells you, `"error"` refuses.
-Set it to `"warn"` when you want every conversion in the run to be visible — the flux recipe does this deliberately, because a kelvin-to-Celsius conversion is worth seeing.
+Set it to `"warn"` when you want every conversion in the run to be visible.
+The flux recipe does this, on the grounds that a kelvin-to-Celsius conversion is worth seeing.
 
 Every policy key, `on_uninferable` included, is in the [`[annotations]` reference](../../reference/configuration.md#annotations).
 
@@ -135,26 +136,25 @@ Every policy key, `on_uninferable` included, is in the [`[annotations]` referenc
 
 Some nodes transform data while preserving its facets.
 Resampling is the usual case: `temperature_weekly` should inherit whatever `temperature_daily` declared.
-These nodes are tagged **passthrough**, and the checker propagates the upstream contract across them, so an edge that runs through a resample is still covered end to end.
+These nodes are tagged **passthrough**, and the checker carries the upstream contract across them, so an edge running through a resample is still covered end to end.
 
-Propagation is decided per facet, because a passthrough preserves some and changes others.
+That happens per facet, since a passthrough preserves some and changes others.
 A resample preserves units.
-It does not preserve frequency, since frequency is the thing it changes — so a `[[resample]]` declares its own output frequency instead and becomes an ordinary checkable producer for that facet.
+It does not preserve frequency, since frequency is what it changes, so a `[[resample]]` declares its own output frequency and becomes an ordinary checkable producer for that facet.
 Declare `Freq("W-SUN")` downstream and a mistyped `W-WED` offset fails when the driver is built.
 
 `[[resample]]` produces passthrough nodes; you can mark your own inline `[[node]]` passthrough too.
 
 ## What contracts will not catch
 
-A contract constrains the shape and units of data on an edge.
-Anything that leaves both unchanged passes.
+A contract constrains the shape and units of data on an edge, so anything that leaves both unchanged passes.
 
-Summing a rate where you meant to average it gives you the same units and the same dimensions, and no check will save you.
-[Resampling and units](resampling-and-units.md) exists for that specific trap.
+Summing a rate where you meant to average it gives the same units and the same dimensions, and no check will save you.
+[Resampling and units](resampling-and-units.md) is about that specific trap.
 Sign errors, wrong coefficients and the right calculation on the wrong variable are all invisible here too.
 
 ## Where next
 
 - [Bring your own module](bring-your-own-module.md) — the rest of the authoring conventions.
 - [Validate before running](../running/validate-before-running.md) — running the checks against real files.
-- [Test your pipeline](test-your-pipeline.md) — for everything contracts cannot prove.
+- [Test your pipeline](test-your-pipeline.md) — for everything contracts cannot cover.

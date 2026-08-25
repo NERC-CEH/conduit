@@ -5,16 +5,15 @@ icon: lucide/flask-conical
 
 # Test your pipeline
 
-Contracts prove your pipeline is *consistent*.
+Contracts show your pipeline is *consistent*.
 Tests are how you show it is *right*.
-The two do not overlap: a contract check will happily pass a node that sums a rate it should have averaged, and a unit test will happily pass a node whose output nothing downstream can consume.
+The two barely overlap: a contract check will happily pass a node that sums a rate it should have averaged, and a unit test will happily pass a node whose output nothing downstream can consume.
 
-There are three things worth testing, and they want different tools.
+Three things are worth testing, and each wants a different tool.
 
 ## 1. Node functions, as plain functions
 
-A conduit node is an ordinary function of xarray objects.
-It has no framework dependency, so test it by calling it:
+A conduit node is an ordinary function of xarray objects with no framework dependency, so test it by calling it:
 
 ```python
 import numpy as np
@@ -44,7 +43,7 @@ Two things to know about calling a decorated node directly:
 - The decorators do not need a config, a driver, or a DAG. Nothing about the test has to know conduit exists beyond the import.
 
 This is where the science belongs.
-Assert on known analytic cases, on conservation properties, on limits — whatever tells you the calculation is the one you meant.
+Assert on known analytic cases, on conservation properties, on limits, or on whatever else tells you the calculation is the one you meant.
 
 ## 2. The config, without computing anything
 
@@ -65,10 +64,10 @@ def test_config_is_valid():
     assert not [f for stage in report.stages for f in stage.findings]
 ```
 
-There is no `passed` flag on the report, because a hard failure raises out of `dry_run`.
-A report exists only for a pipeline that got through, and `Stage.findings` holds the soft issues the active `[annotations]` policy let past.
+A hard failure raises out of `dry_run`, so a report exists only for a pipeline that got through.
+`Stage.findings` holds the soft issues the active `[annotations]` policy let past.
 
-Run this as a CI step and a renamed input, a mistyped section, a unit that stopped matching, or an output nothing produces all fail the build in seconds.
+Run this as a CI step and a renamed input, a mistyped section, a unit that stopped matching or an output nothing produces will all fail the build in seconds.
 The [`--dry-run` guide](../running/validate-before-running.md) covers what each stage checks and what the exit codes mean.
 
 If your inputs are large or not present in CI, point the test at a small synthetic file with the same headers.
@@ -89,7 +88,7 @@ def test_pipeline_writes_expected_variables(tmp_path):
 ```
 
 Generate the inputs from a fixed seed so the expected values are stable.
-Keep them small — the point of this test is the wiring and the file layout, not the numerics, which belong in the node tests above.
+Keep them small. This test is about the wiring and the file layout; the numerics belong in the node tests above.
 
 ## What to assert on
 
@@ -103,11 +102,11 @@ Roughly in order of how often they catch something:
 | Output `units` attributes | a node that lost its declaration |
 | Output dimension sizes | a resample or a reduction going the wrong way |
 
-Note what is *not* on that list: asserting that a node produces the units it declares.
-The contract check already proves that, and a test restating it will pass for as long as the declaration exists, whether or not the declaration is correct.
+Skip asserting that a node produces the units it declares.
+The contract check already covers that, and a test restating it passes for as long as the declaration exists, whether or not the declaration is right.
 
 ## Where next
 
 - [Validate before running](../running/validate-before-running.md) — every stage `--dry-run` performs.
 - [Drive conduit from Python](../running/drive-from-python.md) — the API these tests call.
-- [Declaring contracts](contracts.md) — what the checks can prove for you, so your tests do not have to.
+- [Declaring contracts](contracts.md) — what the checks cover, so your tests do not have to.

@@ -5,8 +5,7 @@ icon: lucide/terminal
 
 # Run & visualise from the CLI
 
-conduit provides a `conduit` command for running pipelines from the terminal. The
-typical workflow is:
+The `conduit` command runs pipelines from the terminal. The usual workflow is:
 
 ```
 write a config.toml  →  conduit graph  →  conduit run
@@ -27,11 +26,11 @@ This writes `pipeline.pdf` showing every node and its dependencies. Each node di
 its declared **unit** (read from the `Annotated[DataArray, "<unit>"]` type) in place of
 the generic `DataArray` type, and requested output nodes are highlighted.
 
-Nodes are coloured and clustered by their declared **frequency** — the `freq` contract on
-a `[[node]]` or `[[resample]]` (`"7D"`, `"1ME"`). This is read from the DAG, not guessed
-from node names: a pipeline whose resample targets are called `raw` and `smoothed` groups
-exactly as well as one using `daily` and `weekly`. Nodes with no declared frequency
-inherit one when all their neighbours agree, and are otherwise left ungrouped.
+Nodes are coloured and clustered by their declared **frequency**, meaning the `freq`
+contract on a `[[node]]` or `[[resample]]` (`"7D"`, `"1ME"`). This comes from the DAG, so
+a pipeline whose resample targets are called `raw` and `smoothed` groups just as well as
+one using `daily` and `weekly`. Nodes with no declared frequency inherit one when all
+their neighbours agree, and are otherwise left ungrouped.
 
 Pass `--png` for PNG instead, and `-o/--output` to change the base filename (default
 `pipeline`). The `.dot` source is always written.
@@ -46,8 +45,8 @@ Pass `--png` for PNG instead, and `-o/--output` to change the base filename (def
 ### Customising the styling
 
 Pass a styling file with `-s`/`--style` to override colours, layout, the legend, or a
-custom style function. Keeping style in its own file lets one look be reused across many
-pipelines:
+custom style function. Keeping style in its own file means one look can be reused across
+several pipelines:
 
 ```sh
 conduit graph config.toml --style recipes/graphviz.toml --pdf
@@ -66,7 +65,7 @@ conduit run config.toml
 
 conduit reads the config, builds the DAG, executes the nodes needed for your
 `[outputs.*]` sections in dependency order, and writes the output files. Each output is
-stamped with the config used to produce it, so the file is self-describing.
+stamped with the config used to produce it, so the file records how it was made.
 
 ### Pre-flight without running
 

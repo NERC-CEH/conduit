@@ -5,19 +5,19 @@ icon: lucide/timer
 
 # Resampling & units: choosing `aggfunc`
 
-Resampling reduces along the time axis. That reduction is **dimensionally homogeneous**:
+Resampling reduces along the time axis, and that reduction is dimensionally homogeneous:
 both `mean` and `sum` leave the units unchanged, so conduit copies the input's attributes
 (including CF `units`) straight through to the result. This matches `pint-xarray`, which
 also does not multiply by the timestep on a sum.
 
-The consequence is important, and it is the reason this page exists:
+Which means:
 
 /// admonition | Unit validation cannot catch a wrong `aggfunc`
     type: warning
 
-Because the units are the same either way, **no contract check will save you here**. A
-wrong `aggfunc` produces a result that is dimensionally consistent and physically
-meaningless. Choosing it correctly is on you.
+The units are the same either way, so **no contract check will save you here**. A wrong
+`aggfunc` gives a result that is dimensionally consistent and physically meaningless.
+Choosing it correctly is on you.
 ///
 
 ## Match `aggfunc` to the *kind* of quantity
@@ -40,7 +40,7 @@ the Δt factor, so you get:
 ```
 
 a number seven times too large, wearing the units of a rate. It is dimensionally
-consistent — which is exactly why the units check passes — and it is wrong.
+consistent, which is why the units check passes, and it is wrong.
 
 ```toml
 # WRONG: gpp is a rate (g C m-2 day-1); summing it does not integrate it.
@@ -73,7 +73,7 @@ units = "g C m-2"
 ```
 
 Now the declared units say what the number is, and the contract check has something to
-verify.
+check it against.
 
 ## Where next
 

@@ -1,28 +1,12 @@
 """Run a configured pipeline end to end, or validate one without running it.
 
-This module is conduit's top-level Python API: `run` executes everything a
-``config.toml`` describes, and `dry_run` performs the same setup and validation
-while executing nothing and writing nothing.
+`run` executes everything a ``config.toml`` describes. `dry_run` performs the
+same setup and validation but executes nothing and writes nothing, returning a
+`DryRunReport` of what each stage found.
 
-**Why these live here and not in the CLI.** conduit is a framework — downstream
-projects depend on it *instead of* depending on Hamilton directly. The sequence a
-run performs (parse, apply the annotation policy, load inputs, run the input
-checks, build the driver, check wiring, execute, collect, save) is therefore part
-of the product, not an implementation detail of a terminal command. ``conduit.cli``
-is a presentation layer over these two functions and holds no pipeline logic of
-its own.
-
-**`dry_run` returns a `DryRunReport` rather than printing one.** Validation and
-presentation are separable concerns: the report is an ordered list of `Stage`
-records that the CLI renders with colour and glyphs, a CI script can serialise,
-and a test can assert on without parsing stdout. Hard failures still raise, so a
-`DryRunReport` that comes back at all is a pipeline that passed; `Stage.findings`
-carry the soft issues that the active contract policy allowed through as warnings.
-
-Both functions accept either a path to a config file or an already-parsed
-`ParsedConfig`, so a caller can parse, adjust the spec in Python, and run the
-result. Only the path form can stamp output provenance, which needs the config
-text (see `_config_provenance`).
+Both accept either a path to a config file or an already-parsed `ParsedConfig`,
+so you can parse, adjust the spec in Python, and run the result. Only the path
+form stamps output provenance, which needs the config text.
 """
 
 import hashlib
@@ -94,9 +78,8 @@ def run(
     -------
     dict
         The dataset written for each ``[outputs.*]`` section, keyed by section
-        name. Empty when the config declares no outputs — a legitimate
-        checks-only invocation, which still parses, loads inputs, runs the input
-        checks and builds the DAG.
+        name. Empty when the config declares no outputs, which still parses,
+        loads inputs, runs the input checks and builds the DAG.
     """
     parsed, config_file = _prepare(config)
     cache_spec = _resolve_cache(parsed.cache_spec, cache, cache_dir)
@@ -145,13 +128,15 @@ def run(
 class Stage:
     """One step of a dry run, and what it found.
 
-    ``detail`` is a complete phrase ("inputs loaded: 18 variable(s) from 4
-    source(s)"), not a fragment to be assembled by the caller, so every renderer
-    words a stage the same way.
+    ``detail`` is a complete phrase, e.g. "inputs loaded: 18 variable(s) from 4
+    source(s)".
     """
 
     name: str
     status: Literal["ok", "skipped"]
+    # A whole phrase, never a fragment for the caller to assemble: the wording of a
+    # stage is fixed here so every renderer (the CLI, a CI script, a test) words it
+    # the same way.
     detail: str
     findings: tuple[str, ...] = ()
 
@@ -160,9 +145,9 @@ class Stage:
 class DryRunReport:
     """The outcome of a dry run.
 
-    There is no ``passed`` flag: a hard failure raises out of `dry_run`, so a
-    report exists only for a pipeline that passed. ``findings`` on the individual
-    stages are the soft issues the active contract policy allowed through.
+    A hard failure raises out of `dry_run`, so a report exists only for a pipeline
+    that passed. ``findings`` on the individual stages are the soft issues the
+    active contract policy allowed through.
     """
 
     #: The config's path, or ``None`` when `dry_run` was given a `ParsedConfig`.
@@ -183,8 +168,7 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     writable.
 
     Hard failures raise; soft issues follow the active policy and are collected
-    into `Stage.findings` rather than left to scatter across stderr. No model runs
-    and nothing is written.
+    into `Stage.findings`. No model runs and nothing is written.
     """
     from .dag.contract_check import check_input_contracts
 

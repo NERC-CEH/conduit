@@ -8,8 +8,7 @@ icon: lucide/puzzle
 This is where your science code goes.
 Inline `[[node]]` expressions handle glue, but anything worth testing belongs in a Python module, and any importable module can become part of a pipeline.
 
-There is no base class and nothing to register.
-A node is a plain function; conduit reads its signature to work out how it wires in.
+A node is a plain function. conduit reads its signature to work out how it wires in.
 
 ## The conventions
 
@@ -46,12 +45,13 @@ def aridity_index_daily(
 ```
 
 `precipitation_daily` and `evapotranspiration_daily` must be produced somewhere else in the pipeline, typically by an `[inputs.daily]` section.
-`floor` is keyword-only, so it is a config parameter rather than an edge, and its default holds unless the config overrides it.
+`floor` is keyword-only, which makes it a config parameter rather than an edge. Its default holds unless the config overrides it.
 
 ## 2. Declare contracts
 
 Annotating the parameters and the return turns the function into a checkable node.
-Add `@declare_units` and conduit validates and converts units at call time, stamps the output, and — because the annotations are readable statically — proves this node's edges against its neighbours before anything runs.
+Add `@declare_units` and conduit validates and converts units at call time and stamps the output.
+The annotations are readable statically, so it can also check this node's edges against its neighbours before anything runs.
 
 ```python
 from typing import Annotated
@@ -72,8 +72,7 @@ def aridity_index_daily(
     return precipitation_daily / (evapotranspiration_daily + floor)
 ```
 
-This is optional in the sense that a pipeline runs without it.
-It is also the reason to use conduit at all.
+A pipeline runs perfectly well without any of this, but the contracts are most of what conduit adds, so they are worth writing.
 [Declaring contracts](contracts.md) covers the other four facets and the decorator ordering rule.
 
 ## 3. Multiple outputs

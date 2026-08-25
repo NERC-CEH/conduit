@@ -5,8 +5,7 @@ node (see `conduit.dag.node`). Transforms that *preserve* their inputs'
 declared contracts (units/dims/dtype) are wired in as **passthrough** nodes: the
 generated node declares no fixed output contract and is tagged so the contract
 check propagates the input's declaration across it
-(`conduit.dag.contract_check`). This is what lets the built-in ``[[resample]]``
-preset be an ordinary generated node rather than a special-cased DAG module.
+(`conduit.dag.contract_check`).
 """
 
 import xarray as xr

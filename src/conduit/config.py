@@ -1,7 +1,7 @@
 """Configuration management: parse a TOML file into a `ParsedConfig`.
 
-The data model itself lives in `conduit.specs` (a leaf module); this module owns
-the TOML -> spec translation: section dispatch, the `[[node]]` fan-out expansion,
+The data model itself lives in `conduit.specs`; this module owns the
+TOML -> spec translation: section dispatch, the `[[node]]` fan-out expansion,
 the `[[resample]]` preset desugaring, and path resolution.
 """
 
@@ -70,9 +70,6 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
     but declares its own ``freq`` — the one facet a resample does not preserve — so
     every resample carries a checkable output-frequency contract, anchor included (a
     fat-fingered ``W-WED`` is caught at build time). See `conduit.dag.contract_check`.
-
-    This preset is why ``[[resample]]`` needs no special-cased DAG module: it is an
-    ordinary generated node.
     """
     src = f"{{var}}_{spec.source}"
     return {
@@ -103,15 +100,16 @@ _ANNOTATION_KEYS: frozenset[str] = frozenset(
 class Config:
     """Configuration class with loading, parsing, and serialization.
 
-    The raw TOML data is held **exactly as written**: relative paths are resolved
-    against ``base`` (the config file's directory) as the specs are built in `parse`,
-    not by rewriting ``_data``. That keeps `dumps` round-trip faithful — it emits the
-    relative paths the user wrote, not absolutised ones — and keeps `load` and `loads`
-    behaving the same way apart from the base they resolve against.
+    The raw TOML data is held exactly as written. Relative paths are resolved
+    against ``base`` (the config file's directory) as the specs are built in
+    `parse`, so `dumps` round-trips: it emits the relative paths you wrote.
     """
 
     def __init__(self, data: dict[str, Any], base: Path | None = None) -> None:
         """Initialize with a config dict, and the base its paths resolve against."""
+        # ``_data`` is never rewritten: paths are resolved against ``_base`` by
+        # ``_resolve`` as the specs are built in ``parse``. Absolutising them here
+        # instead would make ``dumps`` emit absolute paths and break round-tripping.
         self._data = data
         self._base = base
 

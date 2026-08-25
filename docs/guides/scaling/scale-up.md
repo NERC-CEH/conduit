@@ -8,12 +8,11 @@ icon: lucide/gauge
 The same functions that run on a laptop run across a cluster.
 You change the config, not the code.
 
-There are four knobs, in rough order of the scale they address: result **caching**, out-of-core **dask**, memory-bounded **blocking**, and parallel **subset** runs over a shared Zarr store.
-They compose — a blocked, dask-backed run over a subset with caching on is entirely ordinary.
+There are four knobs, in rough order of the scale they address: result caching, out-of-core dask, memory-bounded blocking, and parallel subset runs over a shared Zarr store.
+They compose, so a blocked, dask-backed run over a subset with caching on is entirely ordinary.
 
-None of them changes the result or the contracts.
-Same graph, same before-compute checks, same outputs, different execution strategy.
-That invariance is the point: you develop against a tiny in-memory run and deploy the identical pipeline at scale.
+None of them changes the result or the contracts: same graph, same before-compute checks, same outputs, different execution strategy.
+So you can develop against a tiny in-memory run and deploy the identical pipeline at scale.
 [How it works](../../how-it-works.md) explains why that is possible.
 
 ## Caching results
@@ -31,10 +30,10 @@ each node is keyed on a fingerprint of its code plus its inputs' fingerprints, s
 cache invalidates automatically when either changes. conduit registers a content-based
 fingerprint for `xarray.DataArray` that hashes both values *and* metadata.
 
-The main payoff is **calibration loops** — re-running a pipeline many times while
+The main payoff is calibration loops, where you re-run a pipeline many times while
 changing only a few parameters. In an `a → b → c → d` chain, tweaking `c`'s parameters
-leaves `a` and `b` with the same fingerprint, so they are served from cache and only
-`c` (and downstream) recompute. No manual selection of which nodes to cache is needed.
+leaves `a` and `b` with the same fingerprint, so they come from the cache and only `c`
+and downstream recompute. You do not have to choose which nodes to cache.
 
 | Key | Description |
 |-----|-------------|
@@ -48,9 +47,9 @@ editing the config.
 
 ## Out-of-core with dask
 
-Because nodes are plain xarray functions, passing dask-backed arrays makes them execute
-lazily and out-of-core with no code change — open inputs with a `chunks` argument, or
-rely on Zarr's native chunking. Combine with blocking (below) to cap peak memory.
+Nodes are plain xarray functions, so passing dask-backed arrays makes them execute
+lazily and out-of-core with no code change. Open inputs with a `chunks` argument, or rely
+on Zarr's native chunking. Combine with blocking (below) to cap peak memory.
 
 ## Memory-bounded execution with `[blocking]`
 
@@ -85,9 +84,9 @@ stop  = 500          # exclusive (Python slice convention)
 dim   = "pixel"      # optional; the default. Any dimension works.
 ```
 
-Like `[blocking]`, `dim` is free: a non-gridded pipeline can shard over `location` or
-`site`. The two mechanisms partition identically and differ only in who runs the
-parts — one process sequentially versus many processes concurrently.
+As with `[blocking]`, `dim` is free, so a non-gridded pipeline can shard over `location`
+or `site`. The two mechanisms partition identically and differ only in who runs the
+parts: one process sequentially, or many processes concurrently.
 
 `load_inputs` reads only that slice (lazy NetCDF/Zarr I/O means the rest is never
 loaded). Because the processes share one config — and one output `path` — conduit
@@ -123,15 +122,14 @@ destination.
 /// admonition | What `create-store` computes
     type: note
 
-To lay out the empty store, `create-store` needs each output's non-`pixel` axes — its
-time coordinate, above all. It gets them by **running the pipeline over a single pixel**
-and reading the real coordinates, dims and dtype off the result. So the store matches
-what the shards will write by construction, and a *derived* axis (a `[[resample]]`'s
-weekly time axis, say) needs no input file to already have it.
+`create-store` derives each output's non-`pixel` axes by running the pipeline over a
+single pixel and reading the coordinates, dims and dtype off the result, so the layout
+matches what the shards will write. A derived axis — a `[[resample]]`'s weekly time axis,
+say — works without any input file already having it.
 
-The practical consequence: the store belongs to the config that created it. Change the
-config in a way that moves an output's time axis and the next `run` will refuse to write
-into the stale store rather than mislabel it — re-create it with `--overwrite`.
+The store therefore belongs to the config that created it. Change the config in a way
+that moves an output's time axis and the next `run` refuses to write into the stale
+store. Re-create it with `--overwrite`.
 ///
 
 /// admonition | Chunk alignment for Zarr

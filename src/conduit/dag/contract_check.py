@@ -9,36 +9,30 @@ a run; `check_input_contracts` validates the metadata of the actually-loaded inp
 ``DataArray``\\ s against the contracts declared by their consumers, without
 executing any node (the basis of ``conduit run --dry-run``).
 
-This module is the canonical home for the two design stories below; other modules
-refer here rather than restating them.
-
 **Facets.** The checks are generic over every `xarray-annotated` facet — **units**
 (pint/CF), **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and
 phase of the time axis). Each is a `_Facet` entry pairing a policy, a
-marker-vs-marker edge predicate, and a marker-vs-array runtime check, all taken from
-`xarray-annotated`'s public API; conduit only assembles them. Adding a facet is one
-`_Facet`.
+marker-vs-marker edge predicate, and a marker-vs-array runtime check.
 
 Two distinctions fall out of that table:
 
 - **Edge vs input.** ``coords`` declarations are lower bounds ("at least these"), so
-  two of them can never be *proven* inconsistent — coords participates in the input
-  check but not the edge check (``edge=None``). ``freq`` is inferred from coordinate
-  *values* rather than metadata, but reading a 1-D datetime coordinate executes no
-  node, so it stays a legitimate ``--dry-run`` pre-flight.
+  two of them can never be shown inconsistent; coords participates in the input
+  check only (``edge=None``). ``freq`` is inferred from coordinate *values*, but
+  reading a 1-D datetime coordinate executes no node, so it stays a legitimate
+  ``--dry-run`` pre-flight.
 - **Provable-only.** An edge is flagged only when the two declarations are *provably*
   inconsistent (incompatible units, disjoint dim sets, different dtype kinds).
   Compatible-but-inexact ones are flagged only when the facet's policy demands it
-  (units ``on_inexact="error"``). Partially-annotated pipelines therefore never see
-  false positives — the contract stays opt-in.
+  (units ``on_inexact="error"``), which is what lets a partially-annotated pipeline
+  adopt the check without a wave of false positives.
 
 **Passthrough propagation.** A node with no declared producer contract breaks the
-edge chain. But a node tagged *passthrough* (`conduit.dag.node.PASSTHROUGH_TAG`)
+edge chain. A node tagged *passthrough* (`conduit.dag.node.PASSTHROUGH_TAG`)
 preserves its input's contract, so a declaration is propagated across it — forward
-for the DAG check, backward for the input check. Any passthrough-tagged node
-qualifies; no module is special-cased. A non-passthrough ``[[node]]`` may transform
-its input arbitrarily, so nothing is propagated and it falls back to the runtime
-check.
+for the DAG check, backward for the input check. A non-passthrough ``[[node]]`` may
+transform its input arbitrarily, so nothing is propagated and it falls back to the
+runtime check.
 
 Propagation is *per facet* (`_Facet.passthrough_preserving`): a resample preserves
 its input's units but is precisely the thing that *changes* its frequency, so
@@ -157,6 +151,9 @@ _FACETS: tuple[_Facet, ...] = (
         "coords",
         schema_get_policy,
         lambda d: d.coords,
+        # No edge predicate: a coords declaration is a lower bound ("at least
+        # these"), so two of them can never be shown inconsistent. coords takes
+        # part in the input check only.
         None,
         _schema_input_check,
         False,
@@ -174,6 +171,9 @@ _FACETS: tuple[_Facet, ...] = (
         temporal_get_policy,
         lambda d: d.freq,
         _freq_edge,
+        # freq is inferred from coordinate *values* rather than metadata, but
+        # reading a 1-D datetime coordinate executes no node, so this stays a
+        # legitimate --dry-run pre-flight rather than a run-time-only check.
         _freq_input_check,
         # A passthrough (e.g. [[resample]]) is exactly what *changes* a frequency,
         # so a source's declared freq is never propagated across one.

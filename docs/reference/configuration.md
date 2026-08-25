@@ -6,15 +6,12 @@ icon: lucide/settings
 # Configuration reference
 
 A conduit pipeline is described by a [TOML](https://toml.io/en/) file. Each section
-activates a pipeline component; absent sections are simply not included, so you build a
-pipeline from only the parts you need.
+switches on one part of the pipeline; leave a section out and that part is not there.
 
 Recognised top-level sections are listed below. **Any section not listed here is treated
-as your own module** and must carry an `_import_path` key (see [Modules](#modules)) — so
-a mistyped section name is an error rather than a silently ignored one. In particular
-there is no `[grid]` section (gridding is detected from the inputs' CRS) and no
-`[graphviz]` section (styling belongs in a `conduit graph --style` file, not the science
-config).
+as your own module** and must carry an `_import_path` key (see [Modules](#modules)), so a
+mistyped section name is an error rather than a silently ignored one. Gridding comes from
+the inputs' CRS, and graph styling from a `conduit graph --style` file.
 
 /// admonition | Paths are resolved relative to the config file
     type: note
@@ -61,9 +58,7 @@ vars = ["elevation"]
   path = "data/daily.nc"   # no `vars`: loads every variable as `{var}_daily`
   ```
 
-  An *empty* list (`vars = []`) is a parse error rather than a way to spell this — it
-  would bind nothing, which is never what a section is for. (Output sections always
-  require `vars`; there is nothing to enumerate a destination file's variables from.)
+  An empty list (`vars = []`) is a parse error. Output sections always require `vars`.
 
 ## Outputs
 
@@ -101,15 +96,12 @@ conventions.
 /// admonition | Parameter namespacing
     type: note
 
-Module parameters from **every** section are merged into a single flat dictionary — the
-Hamilton driver config. This is deliberate: Hamilton resolves a node function's
-keyword-only arguments by *name* against that one dict, so a parameter's config key and
-the function's argument name are the same string. Auto-prefixing by section would mean
-every module had to name its argument `aridity_floor` rather than `floor`, which is a
-worse trade for the common single-module case.
+Module parameters from **every** section are merged into a single flat dictionary, the
+Hamilton driver config. A parameter's config key and the function's argument name are
+therefore the same string.
 
-The consequence is that parameter names must be unique across active sections. Two
-sections defining `threshold` is a parse-time error naming both:
+Parameter names must be unique across active sections. Two sections defining `threshold`
+is a parse-time error naming both:
 
 ```
 Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
@@ -178,14 +170,12 @@ aggfunc = "mean"
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 
-/// admonition | `from` and `to` are names, not frequencies
+/// admonition | `from` and `to` are node-name suffixes
     type: note
 
-They are **node-name suffixes** and nothing more: `from = "daily"` reads
-`{var}_daily`, `to = "weekly"` writes `{var}_weekly`. They are free-form —
-`from = "raw"`, `to = "smoothed"` is equally valid — and no frequency is inferred from
-them. `freq` alone says what actually happens to the time axis. There is no table of
-"supported directions": any pair of labels works, given a `freq`.
+`from = "daily"` reads `{var}_daily` and `to = "weekly"` writes `{var}_weekly`. They are
+free-form, so `from = "raw"`, `to = "smoothed"` works just as well. `freq` is what sets
+the time axis.
 ///
 
 `freq` also becomes the generated node's **declared output frequency**, so every
@@ -197,9 +187,9 @@ The time axis is detected from the data, so it need not be called `time`.
 /// admonition | Choosing `aggfunc` is not something the checks can help with
     type: warning
 
-Resampling preserves units, so `mean` and `sum` are equally *dimensionally* valid — a
-wrong choice produces a meaningless number that no contract check will flag. Use `mean`
-for a rate and `sum` for an amount-per-period; see
+Resampling preserves units, so `mean` and `sum` are equally valid *dimensionally*, and a
+wrong choice gives a meaningless number that no contract check will flag. Use `mean` for
+a rate and `sum` for an amount-per-period; see
 [Resampling & units](../guides/authoring/resampling-and-units.md).
 ///
 
@@ -236,7 +226,7 @@ point_dim = "location"   # optional; defaults to "pixel"
 
 The two must agree. If a table input were given a `pixel` axis while `[subset]`
 partitioned over `location`, the subset would skip that input entirely and leave a
-phantom `pixel` axis in the outputs — so one key drives both.
+stray `pixel` axis in the outputs, which is why one key drives both.
 
 Gridded pipelines should leave this at its default: the geospatial layer stacks `(y, x)`
 into `pixel` by name.
@@ -294,10 +284,10 @@ separate files and need no pre-created store.
 
 ## Validation
 
-`[validation]` groups **declarations about properties you expect and want to check** — as
-opposed to the DAG's structure, which conduit derives on its own. Its `checks` array runs
-a suite of input-Dataset compatibility checks before compute (and as a stage of
-[`--dry-run`](../guides/running/validate-before-running.md)).
+`[validation]` is where you declare properties you expect and want checked, as opposed to
+the DAG's structure, which conduit works out on its own. Its `checks` array runs a set of
+input-Dataset compatibility checks before compute, and as a stage of
+[`--dry-run`](../guides/running/validate-before-running.md).
 
 ```toml
 [validation]
@@ -328,12 +318,11 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks are a real importable library ([`conduit.checks`](modules/conduit.checks.md)),
-so the [notebook-driven path](../guides/running/drive-from-python.md) calls them directly — the
-config list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
-block conduit performs no cross-input validation (it does not guess which inputs are
-*meant* to align — only you know that). Under [`[subset]`](#subset) they are skipped, with
-a warning, since they describe the whole domain rather than a single shard.
+The checks are an importable library ([`conduit.checks`](modules/conduit.checks.md)), so
+the [notebook-driven path](../guides/running/drive-from-python.md) can call them directly.
+They are **opt-in**: conduit cannot know which inputs are *meant* to align, so declare the
+ones that must. Under [`[subset]`](#subset) they are skipped with a warning, since they
+describe the whole domain rather than a single shard.
 
 ## Annotations
 
@@ -372,11 +361,11 @@ with [`conduit run --dry-run`](../guides/running/validate-before-running.md).
     type: warning
 
 Converting between offset units such as `degC` and `K` applies the offset
-(`degC → K` adds 273.15), which is correct for an *absolute* temperature but wrong for a
-*difference* or anomaly. Declare such quantities in the unit they are stored in (no
-conversion), or set `on_inexact = "error"` to forbid implicit temperature conversions.
-`on_inexact = "warn"` is the middle course: the conversion still happens, but every one
-is reported by name so an unintended conversion cannot pass unnoticed.
+(`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a
+*difference* or anomaly. Declare such quantities in the unit they are stored in, so no
+conversion happens, or set `on_inexact = "error"` to forbid implicit temperature
+conversions. `on_inexact = "warn"` is the middle course: the conversion still happens,
+but each one is reported by name, so an unintended one cannot pass unnoticed.
 ///
 
 ## See also

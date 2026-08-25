@@ -5,12 +5,9 @@ A small library of pairwise/variadic predicates over input ``Dataset``s,
 pass), plus a registry (`CHECKS`) and a runner (`run_input_checks`) that applies
 a parsed ``[validation].checks`` config block and aggregates failures.
 
-Every check here is a statement about the inputs *alone* — no DAG operation is
-baked in. Operation-coupled guarantees (e.g. "does a resample node land on the
-right anchor?") belong to the Freq facet, not this suite.
-
-Importing this module stays free of the optional ``geo`` extra: the spatial
-checks import from ``conduit.gridded`` lazily, only when invoked.
+Every check here is a statement about the inputs *alone*. Anything coupled to a
+DAG operation ("does a resample node land on the right anchor?") is a Freq
+contract instead, not a check.
 """
 
 import logging
@@ -100,7 +97,11 @@ def time_subset(*datasets: xr.Dataset) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Spatial / CRS checks (lazy: optional geo extra — see conduit.gridded)
+# Spatial / CRS checks
+#
+# Every conduit.gridded import below sits inside a function body so that importing
+# this module stays free of the optional geo extra. Keep them there: hoisting one
+# to the top would make `import conduit.checks` require rioxarray/pyproj.
 # ---------------------------------------------------------------------------
 
 

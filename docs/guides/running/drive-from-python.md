@@ -5,10 +5,10 @@ icon: lucide/code-2
 
 # Drive conduit from Python
 
-The library is the product and `conduit run` is a wrapper over `conduit.run`, so everything the CLI does is available from Python with nothing extra installed.
+`conduit run` is a thin wrapper over `conduit.run`, so everything the CLI does is available from Python with nothing extra installed.
 
-Taking the steps yourself buys you control: inspect individual nodes, plot intermediate results, override values between runs, or skip writing to disk entirely.
-This guide walks the same steps `run` takes, and [the whole thing in one call](#the-whole-thing-in-one-call) is at the end.
+Taking the steps yourself lets you inspect individual nodes, plot intermediate results, override values between runs, or skip writing to disk entirely.
+This guide walks through the same steps `run` takes; [the whole thing in one call](#the-whole-thing-in-one-call) is at the end.
 
 /// admonition | Import convention
     type: info
@@ -70,9 +70,9 @@ and modules), `node_specs` (the `[[node]]` / `[[resample]]` specs), `input_specs
 
 ## 3. Apply the contract policy
 
-The `[annotations]` section is *not* applied by parsing — it sets `xarray-annotated`'s
-process-global policy, which the build-time contract check then consults. Apply it
-before building, exactly as the CLI does:
+Apply the `[annotations]` policy yourself before building, exactly as the CLI does. It
+sets `xarray-annotated`'s process-global policy, which the build-time contract check
+reads:
 
 ```python
 parsed.annotations.apply()
@@ -96,7 +96,7 @@ dr = build_driver(
 `node_specs` is required whenever the config defines `[[node]]` or `[[resample]]`
 entries — it is what the built-in `node` module is generated from.
 
-The driver is the DAG runtime — it resolves dependencies and executes nodes in order.
+The driver is the DAG runtime: it resolves dependencies and executes nodes in order.
 You can inspect it now with `dr.display_all_functions()` or
 `dr.visualize_path_between(...)`.
 
@@ -122,13 +122,13 @@ Call `dr.execute()` with the node names you want. `get_final_vars()` turns
 results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)
 ```
 
-You can also request any node by name — handy for inspecting intermediates:
+You can also request any node by name, which is handy for inspecting intermediates:
 
 ```python
 anomaly = dr.execute(["temperature_anomaly_climate"], inputs=inputs)
 ```
 
-Or override a node's value at runtime without rebuilding the DAG — useful when
+Or override a node's value at runtime without rebuilding the DAG, which is useful when
 re-running with different parameters:
 
 ```python
@@ -183,9 +183,9 @@ save_outputs(datasets, parsed.output_specs)
 
 ## The whole thing in one call
 
-Every step above is what `conduit.run` does, so when you want the outputs and nothing
-else, call it directly. It takes a path to a TOML config, or a `ParsedConfig` you have
-already adjusted in Python:
+`conduit.run` does every step above, so when you want the outputs and nothing else, call
+it directly. It takes a path to a TOML config, or a `ParsedConfig` you have already
+adjusted in Python:
 
 ```python
 import conduit
@@ -206,7 +206,7 @@ prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
     type: info
 
 A run from a config *path* stamps the config text and its SHA-256 onto every output, so
-a store says how it was made. A run from a `ParsedConfig` has no text to stamp, so it
+the store says how it was made. A run from a `ParsedConfig` has no text to stamp, so it
 stamps nothing.
 ///
 

@@ -1,4 +1,4 @@
-"""Blocked driver execution for memory management (Mechanism B).
+"""Blocked driver execution for memory management.
 
 Partitions a chosen dimension (``dim``, default ``pixel``) into fixed-size blocks
 and calls ``dr.execute`` per block sequentially, then concatenates results along

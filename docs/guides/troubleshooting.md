@@ -5,7 +5,7 @@ icon: lucide/wrench
 
 # Troubleshooting & FAQ
 
-Common issues and their fixes.
+Things that go wrong, and what to do about them.
 
 ## Installation
 
@@ -96,13 +96,13 @@ an untested contract fatal, or `"ignore"` to silence it (short test fixtures).
 
 ### `'time' coordinate does not match Zarr store`
 
-A subset run produced data whose time axis differs from the shared store's. Region
-writes don't write coordinates, so this is caught rather than allowed to silently
-mislabel the store.
+A subset run produced data whose time axis differs from the shared store's. Region writes
+do not write coordinates, so conduit catches this rather than let it silently mislabel the
+store.
 
-The store's axes are computed from the pipeline when it is created, so this means the
-config has changed since — a different `[[resample]]` `freq`, a different input file, a
-different date range. Re-create the store from the current config:
+The store's axes are computed from the pipeline when it is created, so the config has
+changed since: a different `[[resample]]` `freq`, a different input file, or a different
+date range. Re-create the store from the current config:
 
 ```sh
 conduit gridded create-store config.toml --overwrite

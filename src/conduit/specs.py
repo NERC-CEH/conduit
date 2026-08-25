@@ -1,14 +1,10 @@
 """The parsed configuration data model: one dataclass per config section.
 
-A **leaf** module: it imports nothing else from conduit. That is deliberate. These
-specs are what `conduit.io`, `conduit.checks` and `conduit.dag` all need to talk
-about, and while they lived in `config.py` — alongside the TOML parser, which needs
-`checks` to validate check names — every one of those modules had to import
-`config` lazily to dodge a `config -> checks -> io -> config` cycle. Keeping the
-data model separate from the parser removes the cycle rather than working around it.
+`conduit.config` builds these from a TOML file; `run`, `dry_run` and
+`build_graph` accept the resulting `ParsedConfig` in place of a path.
 
 Each spec validates itself in `from_config`, so a malformed section fails at parse
-time with a message naming the section — never later, inside a DAG node.
+time with a message naming the section, never later inside a DAG node.
 """
 
 import keyword
@@ -317,7 +313,7 @@ class IOSpec:
       ``gpp_daily`` to file var ``gpp``). Use this to decouple file naming from DAG
       naming, or to alias a variable without renaming the file;
     - **omitted** (``None``) — *inputs only*: bind **every** variable in the file,
-      through the suffix. An empty list is not a way to spell this and is rejected:
+      through the suffix. An empty list is rejected:
       binding nothing is never what a section is for.
 
     ``suffix`` controls the list/load-everything forms' node names. When ``None``

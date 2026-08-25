@@ -23,9 +23,7 @@ def effective_suffix(label: str, spec: IOSpec) -> str:
     """Resolve the node-name suffix for an input/output section.
 
     Honours an explicit ``IOSpec.suffix`` when set; otherwise defaults to
-    ``_<label>``. This is the single place the frequency-suffix naming
-    convention is applied, so it is opt-out (set ``suffix = ""`` for bare
-    names) and not a hard requirement.
+    ``_<label>``. Set ``suffix = ""`` for bare names.
     """
     if spec.suffix is not None:
         return spec.suffix
@@ -37,7 +35,7 @@ def var_mapping(
 ) -> dict[str, str]:
     """Resolve a section's ``node_name -> file_var`` mapping.
 
-    The single place the two `IOSpec.vars` forms are reconciled:
+    The two `IOSpec.vars` forms are reconciled here:
 
     - a **mapping** ``{node_name: file_var}`` is used verbatim (suffix-free);
     - a **list** yields ``{f"{var}{suffix}": var}`` using `effective_suffix`;
@@ -106,13 +104,12 @@ def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
     """Names of ``obj``'s dimensions whose coordinate is datetime-like.
 
     A dimension counts as temporal when its dimension coordinate is a NumPy
-    ``datetime64`` array or a cftime index (``CFTimeIndex``). Scalar or
-    non-dimension datetime coordinates do not count — only true dimensions.
+    ``datetime64`` array or a cftime index (``CFTimeIndex``). Only true
+    dimensions qualify.
 
-    The single time-axis detector. It underpins the "at most one time dimension
-    per input dataset" invariant enforced in `load_inputs`, and is what lets the
-    rest of conduit find *the* time axis without hardcoding the name ``time`` —
-    see `conduit.transforms.resample` and `conduit.checks`.
+    This is how conduit finds *the* time axis without hardcoding the name
+    ``time``, and it backs the "at most one time dimension per input dataset"
+    rule enforced in `load_inputs`.
     """
     dims: list[str] = []
     for dim in obj.dims:
@@ -128,8 +125,7 @@ def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
 def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
     """Return the name of ``obj``'s one time dimension, or raise.
 
-    ``what`` names the object in the error message (e.g. a node name). Callers
-    that need *the* time axis go through this rather than assuming ``"time"``.
+    ``what`` names the object in the error message (e.g. a node name).
     """
     dims = time_dims(obj)
     if len(dims) == 1:
@@ -167,9 +163,8 @@ def load_raw_datasets(
 ) -> dict[str, xr.Dataset]:
     """Open every configured input as a raw ``Dataset`` (pre-stack, pre-subset).
 
-    The single source of truth for "load the raw input files": `load_inputs`
-    calls it internally, and the input-checks pre-flight calls it too. Opens are
-    lazy (metadata only), so calling it twice per run is cheap.
+    `load_inputs` calls this internally, and so does the input-checks pre-flight.
+    Opens are lazy (metadata only), so calling it twice per run is cheap.
 
     ``point_dim`` names the synthetic axis given to single-point ``table``/``scalar``
     inputs; see `conduit.formats`.
@@ -189,14 +184,12 @@ def load_inputs(
 
     Node names are formed from each section's variables and its
     `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily``, or
-    ``elevation`` for a section that sets ``suffix = ""``). Section labels are
-    otherwise inert — nothing is inferred from ``daily``/``weekly``/``monthly``; an
-    input's frequency is validated only where a consumer declares a
-    `xarray_annotated.temporal.Freq` contract for it.
+    ``elevation`` for a section that sets ``suffix = ""``). A section label
+    supplies that suffix and nothing else; an input's frequency is validated
+    where a consumer declares a `xarray_annotated.temporal.Freq` contract for it.
 
-    A section naming a variable the file does not contain is a conduit error that
-    reports the section, the file, and every missing name at once (see
-    `_check_requested_vars`); it never reaches ``xarray`` as a ``KeyError``.
+    A section naming a variable the file does not contain raises a conduit error
+    reporting the section, the file, and every missing name at once.
 
     The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
     ``latitude``/``longitude``) is **opt-in**: it activates only when an input carries
@@ -277,8 +270,6 @@ def subset_inputs(
     """Slice every input carrying ``subset_spec.dim`` to that spec's range.
 
     Inputs without the dimension (a static scalar, say) pass through untouched.
-    Shared by `load_inputs` and by `conduit.gridded.io.create_output_store`, which
-    reuses it to derive a single-pixel probe of the pipeline.
     """
     dim = subset_spec.dim
     sl = slice(subset_spec.start, subset_spec.stop)
@@ -393,9 +384,8 @@ def assert_output_paths_writable(
     Raises (before any computation) if a destination would fail at save time: an
     unsupported file extension, a missing or unwritable parent directory, a subset
     run targeting a Zarr store that has not been pre-created, or a subset run
-    targeting a format that cannot be partially written (CSV/Parquet). Both this and
-    `save_outputs` derive those rules from `conduit.formats`, so a clean pass here
-    means ``save_outputs`` will not reject the path. Used by ``conduit run
+    targeting a format that cannot be partially written (CSV/Parquet). A clean
+    pass here means `save_outputs` will accept the path. Used by ``conduit run
     --dry-run``.
     """
     for label, spec in output_specs.items():
@@ -434,9 +424,8 @@ def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
     """Names of auto-derived inputs `load_inputs` emits that nodes needn't consume.
 
     The geospatial ``latitude`` / ``longitude`` arrays are computed from the input
-    files' CRS rather than read from them, so a pipeline that doesn't consume them
-    is not misconfigured. The wiring check
-    (`conduit.dag.wiring_check.check_wiring`) excludes these from its "unused
+    files' CRS, so a pipeline may legitimately ignore them. The wiring check
+    (`conduit.dag.wiring_check.check_wiring`) excludes them from its "unused
     input" diagnostic.
     """
     return {"latitude", "longitude"} & set(inputs)

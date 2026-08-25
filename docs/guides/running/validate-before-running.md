@@ -9,7 +9,7 @@ Loading inputs and building the DAG is cheap.
 Computing the pipeline may not be.
 
 `--dry-run` does everything a real run does up to the point of executing a node, so a transposed axis, a hPa-for-Pa slip or a renamed input fails at the terminal in a second rather than forty minutes into a run.
-Wire it into CI and config drift never reaches a cluster.
+Run it in CI and config drift never reaches a cluster.
 
 ## The `--dry-run` pre-flight
 
@@ -29,7 +29,7 @@ It validates, in order, and prints a per-stage summary:
    declared pass (compatible grids, aligned time axes, matching coordinates). Skipped if
    you declared none, or under `[subset]`.
 4. **DAG** — the driver builds, and the build-time contract check passes (every internal
-   edge where both ends declare a contract is proven consistent).
+   edge where both ends declare a contract is checked for consistency).
 5. **Execution plan** — every variable in `[outputs.*]` is reachable from the inputs.
 6. **Wiring** — required inputs are all bound; unused inputs are reported (see below).
 7. **Input contracts** — each loaded input's metadata (units, dims, coords, dtype) is
@@ -46,11 +46,10 @@ with a non-zero exit (see [`[annotations]`](../../reference/configuration.md#ann
 
 ## Input compatibility checks
 
-Contracts and wiring validate what the DAG *declares*. Some expectations, though, are
-about the **input files themselves** and nothing in the DAG records them — for example
-"the climate and land-cover inputs must sit on the same grid", or "these two records must
-share a time axis". Declare those in a [`[validation]`](../../reference/configuration.md#validation)
-block:
+Contracts and wiring validate what the DAG *declares*. Some expectations are about the
+input files themselves, and nothing in the DAG records them: "the climate and land-cover
+inputs must sit on the same grid", say, or "these two records must share a time axis".
+Declare those in a [`[validation]`](../../reference/configuration.md#validation) block:
 
 ```toml
 [validation]
@@ -66,23 +65,22 @@ them. A failure aborts the run before any node executes, with a single message l
 every check that failed and why. The checks run automatically on every `conduit run` and
 are reported as a stage under `--dry-run`.
 
-They are **opt-in by design.** conduit will not guess that two inputs are *supposed* to
-align — different time axes across inputs are perfectly normal (a daily forcing and a
-monthly boundary condition), so an automatic all-pairs check would false-positive on most
-real pipelines. The `[validation]` block is where *you* state which relationships must
-hold. (The full check list and keyword arguments are in the
+They are **opt-in.** Different time axes across inputs are perfectly normal — a daily
+forcing and a monthly boundary condition — so the `[validation]` block is where you state
+which relationships must hold. (The full check list and keyword arguments are in the
 [configuration reference](../../reference/configuration.md#validation); the predicates
 themselves are documented in [`conduit.checks`](../../reference/modules/conduit.checks.md).)
 
 ## The wiring check
 
-Separately from *contracts* (are the units/dims right?), conduit checks the *plumbing*
-(does every node get fed?). Before compute it diffs the DAG's required external inputs
-against what `load_inputs` actually produced:
+Contracts ask whether the units and dims are right. The wiring check asks a separate
+question: does every node get fed? Before compute, conduit diffs the DAG's required
+external inputs against what `load_inputs` actually produced:
 
-- **Unbound input → raises.** A node needs `temperature_daily` but nothing produces it
-  — usually a rename drift across file ↔ config ↔ function signature, or a missing
-  `[inputs.*]` entry. conduit fails with a clear message naming the missing node.
+- **Unbound input → raises.** A node needs `temperature_daily` but nothing produces it.
+  Usually this is a rename that did not propagate across file, config and function
+  signature, or a missing `[inputs.*]` entry. conduit fails with a message naming the
+  missing node.
 - **Unused input → warns.** You loaded a variable no node consumes. Harmless, but often
   a typo or a leftover — so conduit warns.
 
@@ -101,10 +99,10 @@ Error: contract declaration mismatch(es) in DAG:
   compare_with_satellite declares 'g m-2 d-1' (dimensionally incompatible)
 ```
 
-That is the [flux recipe's `broken.toml`](../../recipes/flux-pipeline.md), which exists to produce this failure on demand.
+That is the [flux recipe's `broken.toml`](../../recipes/flux-pipeline.md), which is there to produce this failure on demand.
 
-To fix one, make the declarations agree: correct whichever annotation is wrong.
-Where the units are merely different but compatible, like `hPa` against `Pa`, conduit converts them for you and there is nothing to fix — leave `on_inexact = "convert"`.
+To fix one, correct whichever annotation is wrong so the two agree.
+Where the units are different but compatible, `hPa` against `Pa` say, conduit converts them for you and there is nothing to fix; leave `on_inexact = "convert"`.
 
 ## Where next
 

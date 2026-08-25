@@ -1,11 +1,9 @@
 """Build a styled Graphviz visualisation of a configured pipeline.
 
-`build_graph` returns a ``graphviz.Digraph`` rather than writing a file: choosing
-formats and destinations is a caller's concern (``conduit graph`` does it in
-`conduit.cli.graph`), while a notebook wants the object itself, which renders
-inline.
+`build_graph` returns a ``graphviz.Digraph``, which renders inline in a notebook.
+Write it with ``digraph.source`` or render it with ``digraph.pipe(format=...)``.
 
-**Everything shown is read off the built DAG's contracts, never off names.**
+**Everything shown is read off the built DAG's contracts.**
 Section labels in a config are inert, so node fills, edge colours and the
 frequency clusters all come from declared `xarray_annotated.temporal.Freq`
 contracts via `_node_maps`, and node labels carry each node's declared unit in
@@ -275,9 +273,6 @@ def cluster_nodes_by_frequency(
     same-frequency nodes are enclosed too.  Input tables (``_<fn>_inputs``) join the
     cluster of the node they feed.
 
-    The rebuilt body lists every node definition (clustered or not) *before* any
-    edge, so an edge never implicitly creates one of its endpoints at the top
-    level before the cluster claims it — the usual Graphviz clustering pitfall.
     """
     legend: list[str] = []
     rest: list[str] = []
@@ -324,6 +319,10 @@ def cluster_nodes_by_frequency(
         else:
             ungrouped.append(line)
 
+    # Every node definition (clustered or not) must precede every edge: an edge
+    # naming a node not yet defined implicitly creates it at the top level, before
+    # the cluster can claim it. That is the usual Graphviz clustering pitfall, and
+    # it is why ``edges`` is appended only once all groups have been emitted.
     new_body: list[str] = list(other)
     for freq, lines in groups.items():
         if not lines:

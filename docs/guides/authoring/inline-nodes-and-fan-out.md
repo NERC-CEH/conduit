@@ -5,15 +5,15 @@ icon: lucide/braces
 
 # Inline nodes & fan-out
 
-The `[[node]]` section defines DAG nodes directly in the config — no separate Python
-module needed. It is ideal for glue (renames, arithmetic, simple derivations) and, with
-`for_each`, for generating many similar nodes from one spec. This guide covers the two
-node forms, declaring contracts, fan-out templating, and the `[[resample]]` preset.
+The `[[node]]` section defines DAG nodes directly in the config, with no separate Python
+module. It suits glue — renames, arithmetic, simple derivations — and, with `for_each`,
+generating many similar nodes from one spec. This guide covers the two node forms,
+declaring contracts, fan-out templating, and the `[[resample]]` preset.
 
 ## Inline expressions
 
-The simplest node is a Python `expression`, evaluated with the listed `inputs` in
-scope. The `xr` (xarray) module is available in the expression namespace.
+The simplest node is a Python `expression`, evaluated with the listed `inputs` in scope.
+The `xr` (xarray) module is also in the expression namespace.
 
 ```toml
 [[node]]
@@ -46,17 +46,17 @@ The function must accept keyword arguments matching `inputs` and return an
 /// admonition | When to reach for a module instead
     type: tip
 
-`[[node]]` calling a function is fine for a single derivation. When you have several
+`[[node]]` calling a function is fine for a single derivation. Once you have several
 related functions, shared parameters, or want unit annotations on a signature, write a
-[proper module](bring-your-own-module.md) — it is easier to test and reuse.
+[proper module](bring-your-own-module.md) instead. It is easier to test and reuse.
 ///
 
 ## Declaring contracts on a node
 
-A node transforms its inputs, so conduit cannot infer its output contract. Declare any
-of `units`, `dims`, `dtype`, `coords` to make the node a *typed producer* — its output
-is stamped and validated at run time, and the [build-time contract
-check](contracts.md) can verify downstream consumers against it.
+A node transforms its inputs, so conduit cannot infer its output contract. Declare any of
+`units`, `dims`, `dtype`, `coords` to make the node a *typed producer*: its output is
+stamped and validated at run time, and the [build-time contract check](contracts.md) can
+check downstream consumers against it.
 
 ```toml
 [[node]]
@@ -85,13 +85,13 @@ inputs = ["{var}_daily"]
 expression = "{var}_daily - {var}_daily.mean('time')"
 ```
 
-This expands to three nodes — `temperature_anomaly_daily`, `precipitation_anomaly_daily`
-and `humidity_anomaly_daily` — each wired to its own input. One spec, many nodes.
+This expands to three nodes, `temperature_anomaly_daily`, `precipitation_anomaly_daily`
+and `humidity_anomaly_daily`, each wired to its own input.
 
 ## The `[[resample]]` preset
 
-`[[resample]]` is a thin preset over the fan-out engine: it desugars to one
-annotation-preserving passthrough node per variable that applies
+`[[resample]]` is a thin preset over the same fan-out machinery. It desugars to one
+annotation-preserving passthrough node per variable, each applying
 `conduit.transforms.resample`. Use it to aggregate one temporal frequency to a coarser
 one.
 
@@ -105,11 +105,11 @@ aggfunc = "mean"          # mean | sum | max | min | first | last (default: mean
 ```
 
 This produces `temperature_weekly` and `precipitation_weekly` from their daily
-counterparts. Because resampling preserves units and dims, the contract check
-propagates each source's declared contract across the resample edge — and because it
-does *not* preserve frequency, the node declares `freq` as its own output contract.
+counterparts. Resampling preserves units and dims, so the contract check carries each
+source's declared contract across the resample edge. It does *not* preserve frequency, so
+the node declares `freq` as its own output contract.
 
-`from` and `to` are only the node-name suffixes to read from and write to; the pandas
+`from` and `to` are only the node-name suffixes to read from and write to. The pandas
 offset alias in `freq` is what sets the frequency. Nothing is inferred from the labels,
 so any pair works:
 

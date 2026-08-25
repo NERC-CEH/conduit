@@ -1,10 +1,10 @@
 """Before-compute validation of the file<->node wiring.
 
-The contract check (`conduit.dag.contract_check`) proves the *declared* contracts
-are consistent; this proves the *wiring* is complete. It compares the external
-inputs the built DAG requires (to produce the requested ``final_vars``) against the
-inputs actually loaded from the config, and reports the two failure modes that
-otherwise only surface part way through a run:
+The contract check (`conduit.dag.contract_check`) covers the *declared* contracts;
+this covers the *wiring*. It compares the external inputs the built DAG requires (to
+produce the requested ``final_vars``) against the inputs actually loaded from the
+config, and reports the two failure modes that otherwise only surface part way
+through a run:
 
 - **unbound** — a node requires an external input that nothing loaded (an error:
   the run cannot proceed);
@@ -12,8 +12,7 @@ otherwise only surface part way through a run:
   suffix/alias typo, e.g. loading ``temperature_daily`` for a node that wants
   ``temperature_weekly``).
 
-This is the wiring analogue of the dry-run contract check, and — like it — needs no
-compute: it reads the graph structure only.
+It reads the graph structure only, so it needs no compute.
 """
 
 import warnings

@@ -5,18 +5,18 @@ icon: lucide/lightbulb
 
 # How it works
 
-conduit rests on one structural choice: **the graph lives apart from the functions, and the functions carry their own contracts**.
+conduit is built around one choice: keep the graph separate from the functions, and let the functions carry their own contracts.
 
 A node is a plain xarray function.
-It names its inputs by parameter name and its output by return type, and it says nothing about where its data comes from, what else consumes it, or how it will be executed.
+It names its inputs by parameter name and its output by return type, and says nothing about where its data comes from, what else consumes it, or how it will be executed.
 The wiring lives in a TOML file instead.
 
-Two properties follow, and they are the reason conduit exists.
+Two useful things come out of that.
 
 ## The whole graph exists before anything runs
 
-Because the config names every node and every function declares its own signature, conduit can assemble the complete graph without computing a single array.
-And because each function's annotations declare what it expects and produces, every edge in that graph carries a claim that can be checked against the claim at the other end.
+The config names every node and every function declares its own signature, so conduit can assemble the complete graph without computing a single array.
+Each function's annotations say what it expects and what it produces, so every edge in that graph carries a claim that can be checked against the claim at the other end.
 
 ```mermaid
 graph LR
@@ -24,42 +24,43 @@ graph LR
     B --> C["anomaly_range_climate<br/><small>degC</small>"]
 ```
 
-Checking one function's annotations against its own arguments is what [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) does on its own.
-Checking every edge of a graph before the graph runs needs the annotations *and* the graph together, which is what conduit adds.
-Neither library gives you that alone.
+[xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) already checks one function's annotations against its own arguments.
+Checking every edge before the graph runs needs the annotations *and* the graph together, and that is the bit conduit adds.
 
-The check covers units, dimensions, coordinates, dtype and temporal frequency, and it covers the wiring as well: an input nothing produces is an error, an input nothing consumes is a warning.
+The check covers units, dimensions, coordinates, dtype and temporal frequency, plus the wiring itself.
+An input nothing produces is an error; an input nothing consumes is a warning.
 See [Declaring contracts](guides/authoring/contracts.md) for the vocabulary and [Validate before running](guides/running/validate-before-running.md) for the pre-flight that uses it.
 
 ### What it cannot catch
 
-The check proves the pipeline is *consistent*, not that it is *correct*.
+The check shows the pipeline is *consistent*.
+It says nothing about whether it is *correct*.
 
 A contract is a claim about the shape and units of data on an edge, so anything that leaves those unchanged passes.
-Summing a rate where you meant to average it produces the same units and the same dimensions, and no check will save you — see [Resampling and units](guides/authoring/resampling-and-units.md), which exists for exactly this reason.
-The same goes for a sign error, a wrong coefficient, or the right calculation on the wrong variable.
+Summing a rate where you meant to average it gives the same units and the same dimensions, and no check will save you.
+[Resampling and units](guides/authoring/resampling-and-units.md) is about that specific trap.
+A sign error, a wrong coefficient, or the right calculation on the wrong variable are all invisible here too.
 
 Contracts narrow the space of mistakes. They do not empty it.
 
 ## Execution is a separate decision
 
-A node operates on xarray objects, which are backed by NumPy or dask arrays interchangeably.
-Nothing in the function knows which, how much of the data is in flight at once, or how many processes are participating.
-That makes all of it a config decision:
+A node operates on xarray objects, and those are backed by NumPy or dask arrays interchangeably.
+Nothing in the function knows which, how much of the data is in flight at once, or how many processes are involved.
+So all of that becomes a config decision:
 
 - Hand a node dask-backed inputs and it streams lazily and out-of-core, unchanged.
-- Because conduit holds the whole graph as a value, it can slice the inputs, drive the graph over one partition, and recombine.
-- Because a run is a pure function of its config and inputs, running disjoint spatial shards in separate processes is safe. There is no shared mutable state to contend over.
+- conduit holds the whole graph as a value, so it can slice the inputs, drive the graph over one partition, and recombine.
+- A run is a pure function of its config and inputs, so running disjoint spatial shards in separate processes is safe. There is no shared mutable state to contend over.
 
-In a hand-written script the *how* — loop bounds, chunk sizes, parallelism — is tangled into the *what*.
-Separating them is what makes scale a configuration concern.
+In a hand-written script the loop bounds, chunk sizes and parallelism end up tangled into the science.
+Pulling them apart is what makes scale a configuration concern.
 The practical knobs are in [Scale up a pipeline](guides/scaling/scale-up.md).
 
-None of those knobs changes the result or the contracts.
-Same graph, same checks, same outputs, different execution strategy.
-That invariance is what lets you develop against a tiny in-memory run and deploy the identical pipeline across a cluster.
+None of those knobs changes the result or the contracts: same graph, same checks, same outputs, different execution strategy.
+That is what lets you develop against a tiny in-memory run and then deploy the identical pipeline across a cluster.
 
-## A run, stage by stage
+## What a run does
 
 1. **Parse.** Read the TOML into a validated `ParsedConfig`.
 2. **Build.** Import the modules — the `[[node]]` built-in plus anything named by `_import_path` — inspect their signatures, connect input loaders, nodes and output savers into one graph, and run the build-time contract check.
@@ -74,27 +75,25 @@ Ask for one variable and unrelated branches never run.
 ## Design principles
 
 **DAG-first.**
-The graph is the primary abstraction, not an implementation detail.
-You declare what to compute; the engine works out how.
+The graph is the main abstraction.
+You declare what to compute and the engine works out how.
 
 **Config-driven.**
-A pipeline is described in TOML, not assembled imperatively in a script.
+A pipeline is described in TOML.
 You can run and compose one without writing Python, and the config is easy to version, diff and review.
 
 **Module independence.**
-A node knows its own inputs and output and nothing about its neighbours.
-So you add a computation without touching existing code, and test each module in isolation.
-Your modules follow exactly the same conventions as the built-ins.
+A node knows its own inputs and output and nothing about its neighbours, so you can add a computation without touching existing code, and test each module on its own.
+Your modules follow the same conventions as the built-ins.
 
 **Expose, don't wrap.**
-conduit is an integration, not a framework that hides its parts.
-Where you want the Hamilton driver or the raw xarray objects, they are reachable rather than wrapped.
-The aim is that you never *have* to learn Hamilton or pint, not that you are prevented from using them.
+The Hamilton driver and the raw xarray objects stay reachable when you want them.
+The aim is that you never *have* to learn Hamilton or pint.
 
 **Domain-agnostic core.**
 Nothing domain-specific is built in.
 Forward models, land-cover classification and analysis pipelines are all expressed the same way.
-Gridded geospatial Zarr is the primary target data type, but it lives in an optional layer (`conduit[geo]`), so importing conduit never pulls geospatial dependencies.
+Gridded geospatial Zarr is the main target, but it lives in an optional layer (`conduit[geo]`), so importing conduit never pulls in geospatial dependencies.
 
 ## Where next
 

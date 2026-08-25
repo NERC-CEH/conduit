@@ -9,7 +9,7 @@ The smallest pipeline that still has every moving part.
 One input file, one node function imported from a Python module, one node declared inline in the config, one output file.
 
 It derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces that anomaly to a per-site range.
-There is no domain model and no geospatial setup, so nothing distracts from the wiring.
+Plain arrays throughout, so the wiring is all there is to look at.
 
 The files live in [`recipes/pipeline_101`](https://github.com/NERC-CEH/conduit/tree/main/recipes/pipeline_101).
 
@@ -27,7 +27,7 @@ The function name is the node name, each parameter name is the node it consumes,
 --8<-- "recipes/pipeline_101/nodes.py"
 ```
 
-`@declare_units` is what turns the annotations from documentation into a contract.
+`@declare_units` turns the annotations from documentation into a contract.
 It validates each input against its declared unit, converts where the units are compatible, and rejects them where they are not.
 
 ## The config
@@ -44,7 +44,7 @@ Four sections, and between them they describe the whole graph:
     See [Configuration › Inputs](../reference/configuration.md#inputs) for the other two forms `vars` takes.
 
 `[climate_nodes]`
-:   Imports the node module. conduit recognises a fixed set of section names, and treats anything else as one of your own modules — which is why an unrecognised section must carry `_import_path`, and why a typo is an error rather than a silently ignored section.
+:   Imports the node module. conduit recognises a fixed set of section names and treats anything else as one of your own modules, which is why an unrecognised section must carry `_import_path`, and why a typo is an error rather than a silently ignored section.
 
 `[[node]]`
 :   Declares a node inline. `expression` is ordinary Python evaluated with the named `inputs` in scope, and `units` declares the unit of its result.
@@ -63,7 +63,7 @@ python recipes/pipeline_101/make_data.py
 ```
 
 Render the graph before running anything.
-Node labels carry the declared units, so a wiring mistake is often visible here.
+Node labels carry the declared units, so a wiring mistake is often visible at this point.
 
 ```bash exec="true" source="material-block"
 conduit graph recipes/pipeline_101/config.toml --png \
@@ -100,7 +100,7 @@ print('config recorded:', 'conduit_config_sha256' in ds.attrs)
 ```
 
 The output carries the units declared on the nodes.
-Its attributes also carry the config text that produced it and a SHA-256 of that text, so the file records how it was made.
+Its attributes also hold the config text that produced it and a SHA-256 of that text, so the file records how it was made.
 
 ## Next
 
