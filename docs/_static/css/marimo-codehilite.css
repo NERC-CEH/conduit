@@ -1,0 +1,100 @@
+.md-typeset .codehilite .o,
+.md-typeset .codehilite .ow {
+  color: var(--md-code-hl-operator-color);
+}
+
+.md-typeset .codehilite .p {
+  color: var(--md-code-hl-punctuation-color);
+}
+
+.md-typeset .codehilite .cpf,
+.md-typeset .codehilite .l,
+.md-typeset .codehilite .s,
+.md-typeset .codehilite .s1,
+.md-typeset .codehilite .s2,
+.md-typeset .codehilite .sb,
+.md-typeset .codehilite .sc,
+.md-typeset .codehilite .si,
+.md-typeset .codehilite .ss {
+  color: var(--md-code-hl-string-color);
+}
+
+.md-typeset .codehilite .cp,
+.md-typeset .codehilite .se,
+.md-typeset .codehilite .sh,
+.md-typeset .codehilite .sr,
+.md-typeset .codehilite .sx {
+  color: var(--md-code-hl-special-color);
+}
+
+.md-typeset .codehilite .il,
+.md-typeset .codehilite .m,
+.md-typeset .codehilite .mb,
+.md-typeset .codehilite .mf,
+.md-typeset .codehilite .mh,
+.md-typeset .codehilite .mi,
+.md-typeset .codehilite .mo {
+  color: var(--md-code-hl-number-color);
+}
+
+.md-typeset .codehilite .k,
+.md-typeset .codehilite .kd,
+.md-typeset .codehilite .kn,
+.md-typeset .codehilite .kp,
+.md-typeset .codehilite .kr,
+.md-typeset .codehilite .kt {
+  color: var(--md-code-hl-keyword-color);
+}
+
+.md-typeset .codehilite .kc,
+.md-typeset .codehilite .n {
+  color: var(--md-code-hl-name-color);
+}
+
+.md-typeset .codehilite .bp,
+.md-typeset .codehilite .nb,
+.md-typeset .codehilite .no {
+  color: var(--md-code-hl-constant-color);
+}
+
+.md-typeset .codehilite .nc,
+.md-typeset .codehilite .ne,
+.md-typeset .codehilite .nf,
+.md-typeset .codehilite .nn {
+  color: var(--md-code-hl-function-color);
+}
+
+.md-typeset .codehilite .nd,
+.md-typeset .codehilite .ni,
+.md-typeset .codehilite .nl,
+.md-typeset .codehilite .nt {
+  color: var(--md-code-hl-keyword-color);
+}
+
+.md-typeset .codehilite .c,
+.md-typeset .codehilite .c1,
+.md-typeset .codehilite .ch,
+.md-typeset .codehilite .cm,
+.md-typeset .codehilite .cs,
+.md-typeset .codehilite .sd {
+  color: var(--md-code-hl-comment-color);
+}
+
+.md-typeset .codehilite .na,
+.md-typeset .codehilite .nv,
+.md-typeset .codehilite .vc,
+.md-typeset .codehilite .vg,
+.md-typeset .codehilite .vi {
+  color: var(--md-code-hl-variable-color);
+}
+
+.md-typeset .codehilite .ge,
+.md-typeset .codehilite .gh,
+.md-typeset .codehilite .go,
+.md-typeset .codehilite .gp,
+.md-typeset .codehilite .gr,
+.md-typeset .codehilite .gs,
+.md-typeset .codehilite .gt,
+.md-typeset .codehilite .gu {
+  color: var(--md-code-hl-generic-color);
+}

@@ -46,11 +46,12 @@ def _():
     example_dir = Path(__file__).parent
     project_dir = example_dir.parents[1]
     config_path = example_dir / "config.toml"
+    nodes_path = example_dir / "nodes.py"
     data_dir = example_dir / "data"
     results_dir = example_dir / "results"
     data_dir.mkdir(exist_ok=True)
     results_dir.mkdir(exist_ok=True)
-    return config_path, data_dir, example_dir, project_dir, results_dir
+    return config_path, data_dir, example_dir, nodes_path, project_dir, results_dir
 
 
 @app.cell(hide_code=True)
@@ -86,6 +87,21 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(config_path, mo):
     mo.md(f"```toml\n{config_path.read_text()}\n```")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, nodes_path):
+    mo.md(f"""
+    ## The Python module
+
+    The pipeline nodes are ordinary annotated Python functions. Their annotations
+    describe the units and frequencies that conduit checks across the DAG.
+
+    ```python
+    {nodes_path.read_text()}
+    ```
+    """)
     return
 
 
@@ -131,7 +147,6 @@ def _(config_path, project_dir, subprocess):
         check=True,
         cwd=project_dir,
     )
-    pipeline_complete = True
     return
 
 
