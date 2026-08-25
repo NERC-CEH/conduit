@@ -13,12 +13,11 @@ app = marimo.App(app_title="conduit: a flux-processing pipeline")
 @app.cell
 def _():
     import marimo as mo
-    import numpy as np
     import xarray as xr
     from xarray_annotated.units import use_cf_units
 
     use_cf_units()
-    return mo, np, xr
+    return mo, xr
 
 
 @app.cell
@@ -53,73 +52,15 @@ def _(mo):
 
 
 @app.cell
-def _(data_dir, np, xr):
-    rng = np.random.default_rng(20240301)
-    time = np.arange(
-        "2023-01-01", "2024-01-01", np.timedelta64(30, "m"), dtype="datetime64[s]"
-    )
-    day = (time.astype("datetime64[D]") - np.datetime64("2023-01-01", "D")).astype(int)
-    hour = (time.astype("datetime64[s]").astype(int) % 86400) / 3600.0
+def _(data_dir, example_dir):
+    import sys
 
-    declination = np.deg2rad(23.44) * np.sin(2 * np.pi * (day - 80) / 365.25)
-    latitude = np.deg2rad(52.0)
-    hour_angle = np.deg2rad(15.0 * (hour - 12.0))
-    solar_elevation = np.clip(
-        np.sin(latitude) * np.sin(declination)
-        + np.cos(latitude) * np.cos(declination) * np.cos(hour_angle),
-        0,
-        None,
-    )
-    ppfd_values = (
-        2100.0
-        * solar_elevation
-        * (0.85 + 0.15 * rng.normal(size=time.size).clip(-1, 1))
-    ).clip(0)
-    tair_c = (
-        9.5
-        + 8.5 * np.sin(2 * np.pi * (day - 110) / 365.25)
-        + 4.0 * np.sin(2 * np.pi * (hour - 9) / 24.0)
-        + 0.8 * rng.normal(size=time.size)
-    )
-    reco = 2.60 * 2.0 ** ((tair_c - 10.0) / 10.0)
-    lai = 0.25 + 0.75 * np.clip(np.sin(np.pi * (day - 90) / 190.0), 0, None)
-    gpp_max = 21.4 * lai
-    gpp = np.where(
-        ppfd_values > 0,
-        0.055 * ppfd_values * gpp_max / (0.055 * ppfd_values + gpp_max),
-        0.0,
-    ) / (1.0 + np.exp(-(tair_c - 2.0)))
-    nee = reco - gpp + 0.35 * rng.normal(size=time.size)
-    qc = np.zeros(time.size, dtype="int8")
-    qc[rng.random(time.size) < 0.07] = 1
-    qc[rng.random(time.size) < 0.02] = 2
+    # make_data.py sits next to this notebook, which is not necessarily importable.
+    sys.path.insert(0, str(example_dir))
+    from make_data import write_inputs
 
-    def series(values, units, dtype="float64"):
-        return xr.DataArray(
-            values.astype(dtype),
-            dims="time",
-            coords={"time": time},
-            attrs={"units": units},
-        )
-
-    nee_raw = series(nee, "umol m-2 s-1")
-    tair = series(tair_c + 273.15, "K")
-    ppfd = series(ppfd_values, "umol m-2 s-1")
-    qc_data = series(qc, "1", dtype="int8")
-
-    flux_dataset = xr.Dataset(
-        {"nee_raw": nee_raw, "tair": tair, "ppfd": ppfd, "qc": qc_data}
-    )
-    flux_dataset.to_netcdf(data_dir / "flux.nc")
-
-    conversion = 1e-6 * 12.011 * 86400.0
-    gpp_daily = series(gpp, "umol m-2 s-1").resample(time="D").mean() * conversion
-    sat_gpp = (
-        gpp_daily.resample(time="W-SUN").mean()
-        * (1.0 + 0.08 * rng.normal(size=gpp_daily.resample(time="W-SUN").count().size))
-    ).assign_attrs(units="g m-2 d-1")
-    xr.Dataset({"sat_gpp": sat_gpp}).to_netcdf(data_dir / "satellite.nc")
-    return
+    flux_path, satellite_path = write_inputs(data_dir)
+    return flux_path, satellite_path
 
 
 @app.cell

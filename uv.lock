@@ -325,6 +325,7 @@ dev = [
     { name = "coverage" },
     { name = "marimo" },
     { name = "marimo-md-export" },
+    { name = "markdown-exec" },
     { name = "matplotlib" },
     { name = "mkdocstrings-python" },
     { name = "pre-commit" },
@@ -339,6 +340,7 @@ docs = [
     { name = "conduit", extra = ["viz"] },
     { name = "marimo" },
     { name = "marimo-md-export" },
+    { name = "markdown-exec" },
     { name = "matplotlib" },
     { name = "mkdocstrings-python" },
     { name = "zensical" },
@@ -379,6 +381,7 @@ dev = [
     { name = "coverage", specifier = ">=7.13.5" },
     { name = "marimo", specifier = ">=0.23.0" },
     { name = "marimo-md-export", specifier = ">=0.5.2" },
+    { name = "markdown-exec", specifier = ">=1.11.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mkdocstrings-python", specifier = ">=2.0.3" },
     { name = "pre-commit", specifier = ">=4.5.1" },
@@ -393,6 +396,7 @@ docs = [
     { name = "conduit", extras = ["viz"] },
     { name = "marimo", specifier = ">=0.23.0" },
     { name = "marimo-md-export", specifier = ">=0.5.2" },
+    { name = "markdown-exec", specifier = ">=1.11.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mkdocstrings-python", specifier = ">=2.0.3" },
     { name = "zensical", specifier = ">=0.0.24" },
@@ -1098,6 +1102,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2b/f4/69fa6ed85ae003c2378ffa8f6d2e3234662abd02c10d216c0ba96081a238/markdown-3.10.2.tar.gz", hash = "sha256:994d51325d25ad8aa7ce4ebaec003febcce822c3f8c911e3b17c52f7f589f950", size = 368805, upload-time = "2026-02-09T14:57:26.942Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/1f/77fa3081e4f66ca3576c896ae5d31c3002ac6607f9747d2e3aa49227e464/markdown-3.10.2-py3-none-any.whl", hash = "sha256:e91464b71ae3ee7afd3017d9f358ef0baf158fd9a298db92f1d4761133824c36", size = 108180, upload-time = "2026-02-09T14:57:25.787Z" },
+]
+
+[[package]]
+name = "markdown-exec"
+version = "1.12.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pymdown-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6d/76/c47da8edb6a12b066728432fb3724109d9d91de5331df5073d12d272493f/markdown_exec-1.12.3.tar.gz", hash = "sha256:006b9cac46470a9499797bc9c579305ae4719e0a8e495e5401dfbf1e66ce7fb4", size = 77841, upload-time = "2026-07-07T09:53:13.838Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ad/a7/0279016386d611183ccc508c5688eb1e2133e8182164d7a2c6213b176f69/markdown_exec-1.12.3-py3-none-any.whl", hash = "sha256:48ac12a565f3f4331b1acd9efc48a0773e717eb7ca7c38e23c1d72ee61660de6", size = 37995, upload-time = "2026-07-07T09:53:12.619Z" },
 ]
 
 [[package]]

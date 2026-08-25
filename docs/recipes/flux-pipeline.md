@@ -11,20 +11,17 @@ into a conduit pipeline. It demonstrates the separation between:
 
 - `nodes.py`: ordinary, annotated Hamilton node functions;
 - `config.toml`: the pipeline wiring, inputs, and outputs;
-- `demo.py`: an executable marimo walkthrough that generates data, visualises the
-  DAG, runs it, and inspects the products.
+- `make_data.py`: a generator for the synthetic inputs;
+- `demo.py`: a marimo walkthrough of the same pipeline through the Python API.
 
 The example files live in
 [`examples/flux_pipeline`](https://github.com/NERC-CEH/conduit/tree/main/examples/flux_pipeline).
-Run the notebook from the repository root with:
+The pipeline is driven entirely from the command line; the notebook is an alternative
+view of it, not a prerequisite. To open the notebook, run this from the repository root:
 
 ```sh
 uv run marimo run examples/flux_pipeline/demo.py
 ```
-
-The notebook also works as a batch documentation example. It generates the Graphviz
-image using `conduit graph`, validates the pipeline with `conduit run --dry-run`, and
-then executes it with `conduit run`.
 
 !!! note "Requirements"
 
@@ -58,18 +55,69 @@ can be read together:
 --8<-- "examples/flux_pipeline/nodes.py"
 ```
 
-## What the notebook demonstrates
+## Running the pipeline
 
-The executable notebook follows this sequence:
+Every command below runs when the documentation is built, from the repository root.
+The output on this page is what conduit printed.
 
-1. Generate deterministic half-hourly flux and satellite NetCDF inputs.
-2. Display the TOML configuration.
-3. Generate the DAG with `conduit graph` and display its Graphviz output.
-4. Run `conduit run --dry-run` to check wiring, contracts, and output paths.
-5. Run the pipeline and display annual totals, weekly GPP, bias, and RMSE.
+The `PYTHONPATH=.` prefix is what makes `examples.flux_pipeline.nodes` importable, since
+`conduit` is a console script and so does not put the working directory on the import
+path. A module installed into the environment, which is the normal case, needs no
+prefix.
 
-The functions remain independent of marimo and can be reused from another config or
-driven directly through conduit's Python API.
+First generate the synthetic inputs. `make_data.py` writes a year of half-hourly
+eddy-covariance data and weekly satellite GPP, from a fixed seed, so the products
+further down are reproducible.
 
-The [exported notebook](flux-pipeline-demo.md) contains the same walkthrough with its
-rendered Graphviz graph and pipeline results.
+```bash exec="true" source="material-block"
+python examples/flux_pipeline/make_data.py
+```
+
+`conduit graph` renders the DAG. Each node carries its declared unit, and edges are
+coloured by temporal frequency, both taken from the annotations in `nodes.py`.
+
+```bash exec="true" source="material-block"
+PYTHONPATH=. conduit graph examples/flux_pipeline/config.toml --png \
+  --output examples/flux_pipeline/pipeline
+```
+
+`conduit run --dry-run` is the step worth dwelling on. It parses the config, opens the
+inputs, builds the DAG, and runs the whole-DAG contract check, all before any array is
+computed. A unit or frequency mismatch anywhere in the graph fails here rather than
+after several minutes of work.
+
+```bash exec="true" source="material-block"
+PYTHONPATH=. conduit run --dry-run examples/flux_pipeline/config.toml
+```
+
+Then execute it for real.
+
+```bash exec="true" source="material-block"
+PYTHONPATH=. conduit run examples/flux_pipeline/config.toml
+ls -1 examples/flux_pipeline/results/
+```
+
+The products land in a single NetCDF file, one variable per requested output.
+
+```bash exec="true" source="material-block"
+python - <<'EOF'
+import xarray as xr
+
+with xr.open_dataset("examples/flux_pipeline/results/flux_products.nc") as ds:
+    for name, da in ds.items():
+        print(f"{name:12s} {str(da.dims):16s} {da.attrs.get('units', '-')}")
+EOF
+```
+
+Because the documentation build executes these commands, a change that breaks the CLI
+or the contracts breaks `just docs`.
+
+## What the notebook adds
+
+The [exported notebook](flux-pipeline-demo.md) covers the same ground through conduit's
+Python API rather than the CLI, and renders the DAG image and the product time series
+inline. Read it to see how the same nodes are driven from a Python session; use the
+commands above for the config-driven path.
+
+The node functions are independent of both. They are ordinary annotated xarray
+functions, reusable from another config or imported directly.

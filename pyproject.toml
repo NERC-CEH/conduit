@@ -55,6 +55,7 @@ docs = [
     "conduit[viz]",
     "marimo>=0.23.0",
     "marimo-md-export>=0.5.2",
+    "markdown-exec>=1.11.0",
     "mkdocstrings-python>=2.0.3",
     "zensical>=0.0.24",
 ]
