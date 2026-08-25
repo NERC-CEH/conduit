@@ -45,9 +45,26 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full development guide — pre-commit
 hooks, `just` tasks, building the docs, and PR conventions.
 
-## CLI use
+## Python API
 
-Installing `conduit` will install the `conduit` command.
+conduit is a framework: the library is the product, and a project built on it drives
+pipelines from Python.
+
+```python
+import conduit
+
+datasets = conduit.run("config.toml")      # execute, write each [outputs.*], return them
+report = conduit.dry_run("config.toml")    # validate contracts + wiring, no compute
+digraph = conduit.build_graph("config.toml")  # styled graphviz.Digraph, renders in a notebook
+```
+
+Each takes a path to a TOML config or a `ParsedConfig` you have already adjusted in
+Python.
+
+## CLI use (optional, `conduit[cli]`)
+
+The `conduit` command is a thin wrapper over the three functions above, installed with
+the `cli` extra.
 You can explore the documentation using the `-h` or `--help` flags, e.g.
 
 ```bash

@@ -20,18 +20,20 @@ dependencies = [
     "numpy>=2.4.2",
     "pyarrow>=10.0",
     "tomli-w>=1.2.0",
-    "typer>=0.24.1",
     "xarray>=2026.2.0",
     "xarray-annotated[cf]>=0.5.2",
     "zarr>=3.2.1",
 ]
 
 [project.optional-dependencies]
+# The `conduit` command-line interface. The Python API (conduit.run, conduit.dry_run,
+# conduit.build_graph) needs none of this: typer is confined to `conduit.cli`.
+cli = ["typer>=0.24.1"]
 viz = ["apache-hamilton[visualization]>=1.90.0"]
 # Geospatial inputs (CRS-aware (y, x) -> pixel stacking and lat/lon reprojection).
 # Only needed when inputs carry CRS metadata; imported lazily by conduit.io.
 geo = ["pyproj>=3.7.2", "rioxarray>=0.22.0"]
-all = ["conduit[viz,geo]"]
+all = ["conduit[cli,viz,geo]"]
 
 [project.scripts]
 conduit = "conduit.cli:main"
@@ -52,7 +54,7 @@ dev = [
 ]
 docs = [
     {include-group = "examples"},
-    "conduit[viz]",
+    "conduit[cli,viz]",
     "marimo>=0.23.0",
     "marimo-md-export>=0.5.2",
     "markdown-exec>=1.11.0",
@@ -64,7 +66,7 @@ examples = [
     "matplotlib>=3.10.8",
 ]
 test = [
-    "conduit[viz,geo]",
+    "conduit[cli,viz,geo]",
     "coverage>=7.13.5",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",

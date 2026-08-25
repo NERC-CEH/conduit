@@ -17,12 +17,14 @@ from xarray_annotated.units import UnitsWarning, declare_units, use_cf_units
 from ._version import __version__
 from .config import load_config
 from .dag.driver import build_driver
+from .graph import build_graph
 from .io import (
     get_final_vars,
     get_outputs,
     load_inputs,
     save_outputs,
 )
+from .pipeline import DryRunReport, Stage, dry_run, run
 from .specs import (
     AnnotationPolicySpec,
     BlockingSpec,
@@ -44,6 +46,7 @@ __all__ = [
     "CheckSpec",
     "Coords",
     "Dims",
+    "DryRunReport",
     "Dtype",
     "Freq",
     "IOSpec",
@@ -51,16 +54,20 @@ __all__ = [
     "ParsedConfig",
     "ResampleSpec",
     "SchemaWarning",
+    "Stage",
     "SubsetSpec",
     "UnitsWarning",
     "__version__",
     "build_driver",
+    "build_graph",
     "declare_freq",
     "declare_schema",
     "declare_units",
+    "dry_run",
     "get_final_vars",
     "get_outputs",
     "load_config",
     "load_inputs",
+    "run",
     "save_outputs",
 ]

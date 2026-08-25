@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..errors import ConduitValueError
+from .errors import ConduitValueError
 
 # ColorBrewer "Set2": a colour-blind-friendly qualitative palette. These work both as
 # node fill colours (with black text) and as edge colours. Frequencies are arbitrary

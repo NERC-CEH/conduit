@@ -5,10 +5,11 @@ icon: lucide/code-2
 
 # Drive conduit from Python
 
-The `conduit run` CLI is a thin wrapper over conduit's Python API. Driving that API
-directly from a script or notebook gives you fine-grained control: inspect individual
-nodes, plot intermediate results, override values between runs, or skip writing to disk
-entirely. This guide walks the same steps `run` takes.
+`conduit run` is a thin wrapper over `conduit.run`, and everything the CLI does is
+available from Python with no extra installed. Taking the steps yourself gives you
+finer control: inspect individual nodes, plot intermediate results, override values
+between runs, or skip writing to disk entirely. This guide walks the same steps `run`
+takes; [the whole thing in one call](#the-whole-thing-in-one-call) is at the end.
 
 /// admonition | Import convention
     type: info
@@ -181,8 +182,38 @@ datasets = get_outputs(results, parsed.output_specs)  # 7.
 save_outputs(datasets, parsed.output_specs)
 ```
 
+## The whole thing in one call
+
+Every step above is what `conduit.run` does, so when you want the outputs and nothing
+else, call it directly. It takes a path to a TOML config, or a `ParsedConfig` you have
+already adjusted in Python:
+
+```python
+import conduit
+
+datasets = conduit.run("config.toml")   # writes each [outputs.*] section, returns them
+
+parsed = conduit.load_config("config.toml")
+parsed.driver_config["scaling_factor"] = 2.0
+datasets = conduit.run(parsed)          # same run, with the spec tweaked first
+```
+
+`conduit.dry_run` validates the same pipeline without executing it and returns a
+[`DryRunReport`](../api/conduit.pipeline.md) — the stage list `conduit run --dry-run`
+prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
+`conduit graph` writes to disk, which renders inline in a notebook.
+
+/// admonition | Provenance
+    type: info
+
+A run from a config *path* stamps the config text and its SHA-256 onto every output, so
+a store says how it was made. A run from a `ParsedConfig` has no text to stamp, so it
+stamps nothing.
+///
+
 ## See also
 
 - [Run & visualise](run-and-visualise.md) — the CLI equivalent.
 - [Configuration reference](../reference/configuration.md) — the config schema.
-- [Python API reference](../api/conduit.io.md) — full signatures for these functions.
+- [Python API reference](../api/conduit.pipeline.md) — full signatures for these
+  functions.

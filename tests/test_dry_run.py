@@ -1,4 +1,4 @@
-"""Tests for the ``conduit run --dry-run`` pre-flight and its building blocks.
+"""Tests for the :func:`conduit.dry_run` pre-flight and its building blocks.
 
 Three layers:
 
@@ -6,8 +6,9 @@ Three layers:
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
 - direct tests of :func:`conduit.io.assert_output_paths_writable`;
-- CLI integration tests of the broader pre-flight (config / inputs / DAG plan /
-  output paths) via ``runner.invoke(app, ["run", ..., "--dry-run"])``.
+- tests of the broader pre-flight (config / inputs / DAG plan / output paths) against
+  the :class:`conduit.DryRunReport` that ``dry_run`` returns, plus a thin layer
+  checking that ``conduit run --dry-run`` renders every stage of it.
 """
 
 import pathlib
@@ -20,8 +21,10 @@ import xarray as xr
 from typer.testing import CliRunner
 from xarray_annotated.units import UnitsWarning, policy
 
-from conduit.cli import app
-from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec
+from conduit import dry_run
+from conduit.checks import InputCheckError
+from conduit.cli.app import app
+from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
 from conduit.dag.contract_check import check_input_contracts
 from conduit.dag.driver import build_driver
 from conduit.io import assert_output_paths_writable
@@ -241,7 +244,7 @@ class TestAssertOutputPathsWritable:
 
 
 # ---------------------------------------------------------------------------
-# CLI: conduit run --dry-run
+# dry_run: the report, and the CLI rendering of it
 # ---------------------------------------------------------------------------
 
 
@@ -263,33 +266,89 @@ vars = ["temperature"]
     return str(p)
 
 
+def _stage(report, name: str):
+    """The named stage of a report, so a test names what it asserts on."""
+    return next(stage for stage in report.stages if stage.name == name)
+
+
+class TestDryRunReport:
+    """`dry_run` returns the outcome as data; only the CLI turns it into text."""
+
+    def test_no_outputs_skips_the_output_stages(self, tmp_path, synthetic_data_dir):
+        report = dry_run(_config(tmp_path, synthetic_data_dir))
+        assert _stage(report, "config").status == "ok"
+        assert _stage(report, "plan").status == "skipped"
+        assert _stage(report, "outputs").status == "skipped"
+
+    def test_passes_and_writes_nothing(self, tmp_path, synthetic_data_dir):
+        out = tmp_path / "gpp_daily.nc"
+        outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
+        report = dry_run(_config(tmp_path, synthetic_data_dir, outputs))
+        assert _stage(report, "plan").status == "ok"
+        assert "output node(s) reachable" in _stage(report, "plan").detail
+        assert _stage(report, "outputs").status == "ok"
+        # The dry run must not execute or save anything.
+        assert not out.exists()
+
+    def test_missing_output_dir_raises(self, tmp_path, synthetic_data_dir):
+        out = tmp_path / "missing" / "out.nc"
+        outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
+        cfg = _config(tmp_path, synthetic_data_dir, outputs)
+        with pytest.raises(FileNotFoundError):
+            dry_run(cfg)
+
+    def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
+        out = tmp_path / "out.nc"
+        outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["not_a_real_variable"]\n'
+        cfg = _config(tmp_path, synthetic_data_dir, outputs)
+        with pytest.raises(ValueError, match="Unknown nodes"):
+            dry_run(cfg)
+        assert not out.exists()
+
+    def test_parsed_config_needs_no_file(self, tmp_path, synthetic_data_dir):
+        """A caller may parse, adjust the spec, then validate it in memory."""
+        parsed = load_config(_config(tmp_path, synthetic_data_dir))
+        report = dry_run(parsed)
+        assert report.config_file is None
+        assert _stage(report, "config").status == "ok"
+
+    def test_soft_findings_are_collected_not_scattered(
+        self, tmp_path, synthetic_data_dir
+    ):
+        """An unused input is a warning; the report carries it as a finding."""
+        out = tmp_path / "out.nc"
+        outputs = (
+            f'[inputs.extra]\npath = "{synthetic_data_dir / "daily.nc"}"\n'
+            'vars = ["humidity"]\n\n'
+            f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
+        )
+        report = dry_run(_config(tmp_path, synthetic_data_dir, outputs))
+        findings = _stage(report, "plan").findings
+        assert any("consumed by no node" in f for f in findings)
+
+
 class TestPolicyReport:
-    """The dry run prints the active contract policy grouped by policy object.
+    """The dry run reports the active contract policy grouped by policy object.
 
     The three axes come from three separate ``get_policy()`` calls in
-    ``xarray_annotated``; the report groups them that way so no line is long
-    enough to wrap.  Captured CLI output carries no escape codes, because
-    ``typer.echo`` strips them when stdout is not a terminal.
+    ``xarray_annotated``; the report groups them that way so no line the CLI
+    composes is long enough to wrap.  Captured CLI output carries no escape
+    codes, because ``typer.echo`` strips them when stdout is not a terminal.
     """
 
     def test_all_three_axes_reported(self, tmp_path, synthetic_data_dir):
-        cfg = _config(tmp_path, synthetic_data_dir)
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code == 0, result.output
-        assert "units " in result.output
-        assert "on_inexact=" in result.output
-        assert "schema " in result.output
-        assert "on_mismatch=" in result.output
-        assert "temporal " in result.output
-        assert "on_uninferable=" in result.output
+        report = dry_run(_config(tmp_path, synthetic_data_dir))
+        assert set(report.policy) == {"units", "schema", "temporal"}
+        assert "on_inexact=" in report.policy["units"]
+        assert "on_mismatch=" in report.policy["schema"]
+        assert "on_uninferable=" in report.policy["temporal"]
 
     def test_reports_the_configured_policy(self, tmp_path, synthetic_data_dir):
         cfg = _config(tmp_path, synthetic_data_dir)
         text = pathlib.Path(cfg).read_text()
         pathlib.Path(cfg).write_text(text + '\n[annotations]\non_inexact = "warn"\n')
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code == 0, result.output
-        assert "on_inexact=warn" in result.output
+        report = dry_run(cfg)
+        assert "on_inexact=warn" in report.policy["units"]
 
     def test_no_line_wraps_at_eighty_columns(self, tmp_path, synthetic_data_dir):
         """The old single-line form ran past 110 characters.  Keep it short.
@@ -318,42 +377,27 @@ class TestPolicyReport:
 
 
 class TestDryRunCLI:
-    def test_no_outputs_passes(self, tmp_path, synthetic_data_dir):
+    """The command renders the report; the pipeline decides what is in it."""
+
+    def test_renders_every_stage(self, tmp_path, synthetic_data_dir):
         cfg = _config(tmp_path, synthetic_data_dir)
+        report = dry_run(cfg)
         result = runner.invoke(app, ["run", cfg, "--dry-run"])
         assert result.exit_code == 0, result.output
         assert "Dry run passed." in result.output
-        assert "skipped (no [outputs.*] configured)" in result.output
+        for stage in report.stages:
+            assert stage.detail in result.output
 
-    def test_passes_and_writes_nothing(self, tmp_path, synthetic_data_dir):
-        out = tmp_path / "gpp_daily.nc"
-        outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
-        cfg = _config(tmp_path, synthetic_data_dir, outputs)
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code == 0, result.output
-        assert "Dry run passed." in result.output
-        assert "output node(s) reachable" in result.output
-        # The dry run must not execute or save anything.
-        assert not out.exists()
-
-    def test_missing_output_dir_fails(self, tmp_path, synthetic_data_dir):
+    def test_hard_failure_exits_non_zero(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "missing" / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
         cfg = _config(tmp_path, synthetic_data_dir, outputs)
         result = runner.invoke(app, ["run", cfg, "--dry-run"])
         assert result.exit_code != 0
 
-    def test_unreachable_output_var_fails(self, tmp_path, synthetic_data_dir):
-        out = tmp_path / "out.nc"
-        outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["not_a_real_variable"]\n'
-        cfg = _config(tmp_path, synthetic_data_dir, outputs)
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code != 0
-        assert not out.exists()
-
 
 # ---------------------------------------------------------------------------
-# CLI: [validation] input checks (conduit.checks) through the dry run
+# [validation] input checks (conduit.checks) through the dry run
 # ---------------------------------------------------------------------------
 
 
@@ -388,7 +432,7 @@ checks = [{checks}]
 
 
 class TestDryRunInputChecks:
-    """`[validation].checks` really run through the CLI, not just in unit tests."""
+    """`[validation].checks` really run in the dry run, not just in unit tests."""
 
     def test_passing_check_reported(self, tmp_path, synthetic_data_dir):
         # daily.nc against itself: identical time index, so time_equal passes.
@@ -398,9 +442,8 @@ class TestDryRunInputChecks:
             "daily.nc",
             '{ check = "time_equal", inputs = ["daily", "other"] }',
         )
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code == 0, result.output
-        assert "input checks passed (1)" in result.output
+        report = dry_run(cfg)
+        assert _stage(report, "checks").detail == "input checks passed (1)"
 
     def test_failing_check_aborts(self, tmp_path, synthetic_data_dir):
         # daily.nc vs weekly.nc: genuinely different time indices.
@@ -411,16 +454,13 @@ class TestDryRunInputChecks:
             '{ check = "time_equal", inputs = ["daily", "other"] }',
             second_var="pressure",
         )
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code != 0
-        assert "time_equal" in str(result.exception)
-        assert "input check(s) failed" in str(result.exception)
+        with pytest.raises(InputCheckError, match="time_equal"):
+            dry_run(cfg)
 
     def test_no_checks_configured_reported(self, tmp_path, synthetic_data_dir):
-        cfg = _config(tmp_path, synthetic_data_dir)
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code == 0, result.output
-        assert "input checks: none configured" in result.output
+        report = dry_run(_config(tmp_path, synthetic_data_dir))
+        assert _stage(report, "checks").status == "skipped"
+        assert "none configured" in _stage(report, "checks").detail
 
     def test_wildcard_inputs_expand(self, tmp_path, synthetic_data_dir):
         cfg = _checks_config(
@@ -429,6 +469,5 @@ class TestDryRunInputChecks:
             "daily.nc",
             '{ check = "time_equal", inputs = ["*"] }',
         )
-        result = runner.invoke(app, ["run", cfg, "--dry-run"])
-        assert result.exit_code == 0, result.output
-        assert "input checks passed (1)" in result.output
+        report = dry_run(cfg)
+        assert _stage(report, "checks").detail == "input checks passed (1)"

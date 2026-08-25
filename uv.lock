@@ -317,7 +317,6 @@ dependencies = [
     { name = "numpy" },
     { name = "pyarrow" },
     { name = "tomli-w" },
-    { name = "typer" },
     { name = "xarray" },
     { name = "xarray-annotated", extra = ["cf"] },
     { name = "zarr" },
@@ -328,6 +327,10 @@ all = [
     { name = "apache-hamilton", extra = ["visualization"] },
     { name = "pyproj" },
     { name = "rioxarray" },
+    { name = "typer" },
+]
+cli = [
+    { name = "typer" },
 ]
 geo = [
     { name = "pyproj" },
@@ -339,7 +342,7 @@ viz = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "conduit", extra = ["geo", "viz"] },
+    { name = "conduit", extra = ["cli", "geo", "viz"] },
     { name = "coverage" },
     { name = "marimo" },
     { name = "marimo-md-export" },
@@ -356,7 +359,7 @@ dev = [
     { name = "zensical" },
 ]
 docs = [
-    { name = "conduit", extra = ["viz"] },
+    { name = "conduit", extra = ["cli", "viz"] },
     { name = "marimo" },
     { name = "marimo-md-export" },
     { name = "markdown-exec" },
@@ -369,7 +372,7 @@ examples = [
     { name = "matplotlib" },
 ]
 test = [
-    { name = "conduit", extra = ["geo", "viz"] },
+    { name = "conduit", extra = ["cli", "geo", "viz"] },
     { name = "coverage" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -379,7 +382,7 @@ test = [
 requires-dist = [
     { name = "apache-hamilton", specifier = ">=1.90.0" },
     { name = "apache-hamilton", extras = ["visualization"], marker = "extra == 'viz'", specifier = ">=1.90.0" },
-    { name = "conduit", extras = ["viz", "geo"], marker = "extra == 'all'" },
+    { name = "conduit", extras = ["cli", "viz", "geo"], marker = "extra == 'all'" },
     { name = "dask", specifier = ">=2025.1.0" },
     { name = "netcdf4", specifier = ">=1.7.4" },
     { name = "numpy", specifier = ">=2.4.2" },
@@ -387,17 +390,17 @@ requires-dist = [
     { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.7.2" },
     { name = "rioxarray", marker = "extra == 'geo'", specifier = ">=0.22.0" },
     { name = "tomli-w", specifier = ">=1.2.0" },
-    { name = "typer", specifier = ">=0.24.1" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.24.1" },
     { name = "xarray", specifier = ">=2026.2.0" },
     { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.5.2" },
     { name = "zarr", specifier = ">=3.2.1" },
 ]
-provides-extras = ["viz", "geo", "all"]
+provides-extras = ["cli", "viz", "geo", "all"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "conduit", extras = ["viz"] },
-    { name = "conduit", extras = ["viz", "geo"] },
+    { name = "conduit", extras = ["cli", "viz"] },
+    { name = "conduit", extras = ["cli", "viz", "geo"] },
     { name = "coverage", specifier = ">=7.13.5" },
     { name = "marimo", specifier = ">=0.23.0" },
     { name = "marimo-md-export", specifier = ">=0.5.2" },
@@ -414,7 +417,7 @@ dev = [
     { name = "zensical", specifier = ">=0.0.24" },
 ]
 docs = [
-    { name = "conduit", extras = ["viz"] },
+    { name = "conduit", extras = ["cli", "viz"] },
     { name = "marimo", specifier = ">=0.23.0" },
     { name = "marimo-md-export", specifier = ">=0.5.2" },
     { name = "markdown-exec", specifier = ">=1.11.0" },
@@ -425,7 +428,7 @@ docs = [
 ]
 examples = [{ name = "matplotlib", specifier = ">=3.10.8" }]
 test = [
-    { name = "conduit", extras = ["viz", "geo"] },
+    { name = "conduit", extras = ["cli", "viz", "geo"] },
     { name = "coverage", specifier = ">=7.13.5" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=7.1.0" },

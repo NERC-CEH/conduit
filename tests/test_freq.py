@@ -416,7 +416,7 @@ class TestDryRunEndToEnd:
     def _invoke(self, register, tmp_path, declared: Freq, module: str):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         register(module, _model(declared))
         with policy(enabled=True):

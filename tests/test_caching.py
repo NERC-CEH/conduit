@@ -11,10 +11,10 @@ from hamilton.caching import fingerprinting
 
 import conduit.dag.caching  # noqa: F401  (registers the xarray fingerprint)
 from conduit import CacheSpec
-from conduit.cli.run import _resolve_cache
 from conduit.config import Config, IOSpec, load_config
 from conduit.dag.driver import build_driver
 from conduit.io import get_final_vars
+from conduit.pipeline import _resolve_cache
 
 
 class TestCacheConfig:

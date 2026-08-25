@@ -25,11 +25,13 @@ conduit is currently only available from GitHub.
     uv add git+https://github.com/NERC-CEH/conduit
     ```
 
-This installs the `conduit` package and the `conduit` CLI command into your environment.
+This installs the `conduit` library: the core engine (Hamilton, xarray, contract
+checking, the config parser) and its Python API, `conduit.run`, `conduit.dry_run` and
+`conduit.build_graph`.
 
-The base install is intentionally lightweight — it includes the core engine
-(Hamilton, xarray, contract checking, the config parser and the CLI). Geospatial and
-DAG-visualisation support are optional extras (see below).
+The `conduit` command is an optional wrapper over that API and lives in the `cli`
+extra, along with geospatial and DAG-visualisation support (see below).
+Install it with `conduit[cli]` if you want to drive pipelines from a terminal.
 
 ## Optional features (extras)
 
@@ -37,6 +39,7 @@ conduit groups its optional dependencies into installable extras:
 
 | Extra | Installs | Needed for |
 | --- | --- | --- |
+| `cli` | `typer` | the `conduit` command (`conduit run`, `conduit graph`, `conduit gridded`) |
 | `geo` | `rioxarray`, `pyproj` | CRS-aware gridded inputs (`(y, x)` → `pixel` stacking, computed `latitude`/`longitude`) |
 | `viz` | `apache-hamilton[visualization]` | rendering the DAG with `conduit graph` |
 | `all` | everything above | convenience — installs every optional feature |
@@ -76,6 +79,12 @@ brew install graphviz
 ```
 
 ## Verify installation
+
+```python
+python -c "import conduit; print(conduit.__version__)"
+```
+
+With the `cli` extra:
 
 ```sh
 conduit --version

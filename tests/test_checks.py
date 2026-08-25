@@ -241,14 +241,14 @@ class TestRunInputChecksHook:
         )
 
     def test_no_checks_is_noop(self):
-        from conduit.cli.run import _run_input_checks
         from conduit.config import ParsedConfig
+        from conduit.pipeline import _run_input_checks
 
         parsed = ParsedConfig(modules=[], driver_config={}, checks=[])
         assert _run_input_checks(parsed) == 0
 
     def test_subset_skips_with_warning(self):
-        from conduit.cli.run import _run_input_checks
+        from conduit.pipeline import _run_input_checks
 
         parsed = self._parsed(subset=True)
         with pytest.warns(UserWarning, match="input checks skipped under \\[subset\\]"):

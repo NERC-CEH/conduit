@@ -291,7 +291,7 @@ block_size = 2
     def test_exits_zero(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, _ = blocking_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -300,7 +300,7 @@ block_size = 2
     def test_output_file_written(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, out_path = blocking_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -310,7 +310,7 @@ block_size = 2
         import xarray as xr
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, out_path = blocking_config_toml
         # Run with blocking.
