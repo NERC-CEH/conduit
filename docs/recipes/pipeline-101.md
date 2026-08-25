@@ -58,14 +58,14 @@ Four sections, and between them they describe the whole graph:
 Generate the input first.
 `make_data.py` writes a deterministic file, so everything below is reproducible.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 python recipes/pipeline_101/make_data.py
 ```
 
 Render the graph before running anything.
 Node labels carry the declared units, so a wiring mistake is often visible at this point.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 conduit graph recipes/pipeline_101/config.toml --png \
   --output recipes/pipeline_101/pipeline
 ```
@@ -75,19 +75,19 @@ The rendered graph is on the [notebook walkthrough](pipeline-101-demo.md) of thi
 Then validate.
 `--dry-run` parses the config, opens the input headers, builds the DAG and checks every contract, without executing a node or writing a file.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 conduit run --dry-run recipes/pipeline_101/config.toml
 ```
 
 Only now is it worth spending compute.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 conduit run recipes/pipeline_101/config.toml
 ```
 
 ## What was written
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 python -c "
 import xarray as xr
 

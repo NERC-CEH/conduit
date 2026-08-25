@@ -70,14 +70,14 @@ First generate the synthetic inputs. `make_data.py` writes a year of half-hourly
 eddy-covariance data and weekly satellite GPP, from a fixed seed, so the products
 further down are reproducible.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 python recipes/flux_pipeline/make_data.py
 ```
 
 `conduit graph` renders the DAG. Each node carries its declared unit, and edges are
 coloured by temporal frequency, both taken from the annotations in `nodes.py`.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 conduit graph recipes/flux_pipeline/config.toml --png \
   --output recipes/flux_pipeline/pipeline
 ```
@@ -86,7 +86,7 @@ conduit graph recipes/flux_pipeline/config.toml --png \
 whole-DAG contract check, all before any array is computed. A unit or frequency mismatch
 anywhere in the graph fails here rather than after several minutes of work.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 conduit run --dry-run recipes/flux_pipeline/config.toml
 ```
 
@@ -95,7 +95,7 @@ conduit run --dry-run recipes/flux_pipeline/config.toml
 That `!` line under the contract check is worth reading.
 `data/flux.nc` stores air temperature in kelvin:
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 python -c "
 import xarray as xr
 with xr.open_dataset('recipes/flux_pipeline/data/flux.nc') as ds:
@@ -127,14 +127,14 @@ outright.
 
 Then execute it for real.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 conduit run recipes/flux_pipeline/config.toml
 ls -1 recipes/flux_pipeline/results/
 ```
 
 The products land in a single NetCDF file, one variable per requested output.
 
-```bash exec="true" source="material-block"
+```bash exec="true" source="block" result="text"
 python - <<'EOF'
 import xarray as xr
 
@@ -158,7 +158,7 @@ declared in `umol m-2 s-1`, the units of the molar flux several nodes upstream, 
 than the `g m-2 d-1` that `compare_with_satellite` consumes. Read either declaration on
 its own and nothing looks wrong. They are only inconsistent with each other.
 
-```bash exec="true" source="material-block" returncode="1"
+```bash exec="true" source="block" result="text" returncode="1"
 conduit run --dry-run recipes/flux_pipeline/broken.toml
 ```
 
