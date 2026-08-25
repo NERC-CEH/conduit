@@ -640,11 +640,26 @@ class TestMultipleFrequencies:
 class TestAnnotationsSection:
     """Tests for the [annotations] section."""
 
-    def test_mode_and_exact(self):
-        parsed = Config({"annotations": {"mode": "strict", "exact": True}}).parse()
+    def test_mode_and_on_inexact(self):
+        parsed = Config(
+            {"annotations": {"mode": "strict", "on_inexact": "error"}}
+        ).parse()
         assert parsed.annotations.on_missing == "error"
         assert parsed.annotations.on_inexact == "error"
         assert parsed.annotations.on_mismatch is None
+
+    def test_on_inexact_warn(self):
+        parsed = Config({"annotations": {"on_inexact": "warn"}}).parse()
+        assert parsed.annotations.on_inexact == "warn"
+
+    def test_bad_on_inexact_rejected(self):
+        with pytest.raises(ValueError, match="'on_inexact' must be one of"):
+            Config({"annotations": {"on_inexact": "maybe"}}).parse()
+
+    def test_unrecognised_key_rejected(self):
+        """A silently ignored policy is worse than an absent one."""
+        with pytest.raises(ValueError, match="unrecognised key"):
+            Config({"annotations": {"exact": True}}).parse()
 
     def test_units_section_no_longer_recognised(self):
         # The legacy alias is gone, so [units] falls through to the external-module

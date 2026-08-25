@@ -110,15 +110,19 @@ hard error, or to turn checking off:
 
 ```toml
 [annotations]
-mode = "strict"   # "strict" | "warn" (default) | "off"
-exact = false     # true = reject value-changing conversions (e.g. hPa where Pa is declared)
+mode = "strict"        # "strict" | "warn" (default) | "off"
+on_inexact = "convert" # "convert" (default) | "warn" | "error"
 ```
 
 - `mode = "strict"` raises on any unit problem; `"warn"` reports and continues;
   `"off"` disables contract checking entirely.
-- `exact = true` forbids *implicit conversion*: a dimensionally-compatible but
-  value-changing unit (like `hPa` where `Pa` is declared) is rejected rather than
-  silently converted.
+- `on_inexact` governs *implicit conversion*: what to do when an input is
+  dimensionally compatible with the declaration but a different unit, like `hPa` where
+  `Pa` is declared. `"convert"` scales it silently, `"warn"` scales it and says so,
+  `"error"` rejects it.
+
+    Only a *value-changing* conversion consults this. Two spellings of the same unit,
+    `"pascal"` for `"Pa"`, are relabelled either way.
 
 ## What you learned
 

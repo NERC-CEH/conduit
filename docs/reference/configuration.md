@@ -343,7 +343,7 @@ and temporal: freq) are validated. Omit it to keep the defaults.
 ```toml
 [annotations]
 mode = "strict"           # "strict" | "warn" (default) | "off"
-exact = false             # reject value-changing unit conversions
+on_inexact = "convert"    # "convert" (default) | "warn" | "error"
 on_mismatch = "error"     # "error" | "warn" | "ignore" — dims/coords/dtype/freq
 on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 ```
@@ -351,7 +351,7 @@ on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 | Key | Description |
 |-----|-------------|
 | `mode` | Units strictness. `strict` raises on a unit problem; `warn` reports and continues; `off` disables **all** contract checking (every facet). Default `warn`. |
-| `exact` | When `true`, a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared) is rejected rather than converted. Default `false`. |
+| `on_inexact` | What to do with a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared): `convert` it silently (default), `warn` and convert, or `error`. Two spellings of the same unit (`"pascal"` for `"Pa"`) are relabelled without consulting this. |
 | `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
 | `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
 
@@ -361,8 +361,8 @@ Validation happens at two points:
   when the driver is built, so a mismatch is caught before compute. Contracts propagate
   through passthrough nodes (e.g. resampling), so those edges are covered too.
 - **Run time** — as each node executes, every `DataArray` input is validated against its
-  declaration. With `exact = false` a compatible input is converted; with `exact = true`
-  it must already match. Dimensionally-incompatible inputs always raise. A `units`
+  declaration. Under `on_inexact = "convert"` a compatible input is converted; under
+  `"error"` it must already match. Dimensionally-incompatible inputs always raise. A `units`
   attribute that is missing or unparseable follows `mode`.
 
 Run the run-time input checks against your real data *without* executing the pipeline
@@ -374,7 +374,9 @@ with [`conduit run --dry-run`](../guides/validate-before-running.md).
 Converting between offset units such as `degC` and `K` applies the offset
 (`degC → K` adds 273.15), which is correct for an *absolute* temperature but wrong for a
 *difference* or anomaly. Declare such quantities in the unit they are stored in (no
-conversion), or set `exact = true` to forbid implicit temperature conversions.
+conversion), or set `on_inexact = "error"` to forbid implicit temperature conversions.
+`on_inexact = "warn"` is the middle course: the conversion still happens, but every one
+is reported by name so an unintended conversion cannot pass unnoticed.
 ///
 
 ## See also

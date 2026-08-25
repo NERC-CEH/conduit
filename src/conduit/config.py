@@ -93,6 +93,13 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
 # ---------------------------------------------------------------------------
 
 
+_ON_INEXACT: frozenset[str] = frozenset({"convert", "warn", "error"})
+
+_ANNOTATION_KEYS: frozenset[str] = frozenset(
+    {"mode", "on_inexact", "on_mismatch", "on_uninferable"}
+)
+
+
 class Config:
     """Configuration class with loading, parsing, and serialization.
 
@@ -329,8 +336,11 @@ class Config:
 
         Maps the section's keys to the xarray-annotated policy axes:
 
-        - ``mode`` (``strict`` / ``warn`` / ``off``) and ``exact`` (bool) drive the
-          *units* policy (``enabled`` / ``on_missing`` / ``on_inexact``);
+        - ``mode`` (``strict`` / ``warn`` / ``off``) and ``on_inexact``
+          (``convert`` / ``warn`` / ``error``) drive the *units* policy
+          (``enabled`` / ``on_missing`` / ``on_inexact``). ``on_inexact`` governs a
+          *value-changing* conversion only: differently-spelled but identical units
+          ("pascal" for "Pa") are relabelled without consulting it;
         - ``on_mismatch`` (``error`` / ``warn`` / ``ignore``) drives the *schema*
           (dims/coords/dtype) *and* *temporal* (freq) policies — in both it means
           "the array contradicts the declaration";
@@ -341,6 +351,9 @@ class Config:
         ``mode = "off"`` disables validation for *every* facet via the shared
         master switch. ``None`` axes defer to the process-wide default. All are
         ``None`` if there is no [annotations] section.
+
+        An unrecognised key is an error. A policy that is silently ignored is worse
+        than one that is absent, because the run looks like it honoured it.
         """
         entry = data.pop("annotations", None)
         if entry is None:
@@ -362,14 +375,19 @@ class Config:
                     f"[{label}] 'mode' must be one of 'strict', 'warn', 'off', "
                     f"got {mode!r}."
                 )
-        exact = entry.get("exact")
-        if exact is not None:
-            if not isinstance(exact, bool):
-                raise ConduitValueError(
-                    f"[{label}] 'exact' must be a boolean, got {exact!r}."
-                )
-            if exact:
-                on_inexact = "error"
+        on_inexact = entry.get("on_inexact")
+        if on_inexact is not None and on_inexact not in _ON_INEXACT:
+            raise ConduitValueError(
+                f"[{label}] 'on_inexact' must be one of "
+                f"{', '.join(repr(v) for v in _ON_INEXACT)}, got {on_inexact!r}."
+            )
+        unknown = sorted(set(entry) - _ANNOTATION_KEYS)
+        if unknown:
+            raise ConduitValueError(
+                f"[{label}] has unrecognised key(s) "
+                f"{', '.join(repr(k) for k in unknown)}. Recognised keys are "
+                f"{', '.join(sorted(_ANNOTATION_KEYS))}."
+            )
         return AnnotationPolicySpec(
             enabled=enabled,
             on_missing=on_missing,

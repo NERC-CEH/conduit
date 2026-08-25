@@ -91,10 +91,9 @@ after several minutes of work.
 conduit run --dry-run examples/flux_pipeline/config.toml
 ```
 
-### The conversion in `on_inexact=convert`
+### The conversion the dry run reported
 
-That policy line is doing real work here. `data/flux.nc` stores air temperature in
-kelvin:
+That last line is not decoration. `data/flux.nc` stores air temperature in kelvin:
 
 ```bash exec="true" source="material-block"
 python -c "
@@ -110,10 +109,17 @@ for degrees Celsius. Handed kelvin it would return respiration around $10^8$ rat
 $4$, and nothing downstream would look obviously wrong.
 
 `declare_units` is the outermost decorator on the node precisely so that it can convert
-rather than merely validate. The units are compatible but not equal, so
-`on_inexact=convert` applies the offset and the node receives Celsius. The declaration
-is what makes the conversion happen; a bare `tair` parameter would have silently used
-kelvin.
+rather than merely validate. The units are compatible but not equal, so the offset is
+applied and the node receives Celsius. The declaration is what makes the conversion
+happen; a bare `tair` parameter would have silently used kelvin.
+
+`config.toml` sets `on_inexact = "warn"`, which is why the conversion is named in the
+output above rather than performed in silence. The default, `"convert"`, would have done
+the same arithmetic without saying so. That matters because pint's notion of
+compatibility is dimensional: `g m-2 d-1` and `g m-2 yr-1` are both mass per area per
+time, so a daily rate declared as an annual one converts happily, off by a factor of
+365.25. `"warn"` makes every value-changing conversion visible so the ones you did not
+intend stand out; `"error"` refuses them outright.
 
 Then execute it for real.
 

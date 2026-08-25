@@ -7,20 +7,23 @@
 
 import marimo
 
+__generated_with = "0.23.14"
 app = marimo.App(app_title="conduit: a flux-processing pipeline")
 
 
 @app.cell
 def _():
+    import subprocess
+
     import marimo as mo
     import xarray as xr
     from xarray_annotated.units import use_cf_units
 
     use_cf_units()
-    return mo, xr
+    return mo, subprocess, xr
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     # A flux-processing pipeline with conduit
@@ -37,7 +40,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def _():
     from pathlib import Path
 
     example_dir = Path(__file__).parent
@@ -47,8 +50,13 @@ def _(mo):
     results_dir = example_dir / "results"
     data_dir.mkdir(exist_ok=True)
     results_dir.mkdir(exist_ok=True)
-    mo.md(f"Using configuration: `{config_path}`")
     return config_path, data_dir, example_dir, project_dir, results_dir
+
+
+@app.cell(hide_code=True)
+def _(config_path, mo):
+    mo.md(f"Using configuration: `{config_path}`")
+    return
 
 
 @app.cell
@@ -59,12 +67,12 @@ def _(data_dir, example_dir):
     sys.path.insert(0, str(example_dir))
     from make_data import write_inputs
 
-    flux_path, satellite_path = write_inputs(data_dir)
-    return flux_path, satellite_path
+    write_inputs(data_dir)
+    return
 
 
-@app.cell
-def _(config_path, mo):
+@app.cell(hide_code=True)
+def _(mo):
     mo.md("""
     ## The TOML configuration
 
@@ -72,56 +80,82 @@ def _(config_path, mo):
     are ordinary conduit file sections; the function parameter names provide the
     wiring between them.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(config_path, mo):
     mo.md(f"```toml\n{config_path.read_text()}\n```")
     return
 
 
 @app.cell
-def _(config_path, example_dir, mo, project_dir):
-    import subprocess as graph_subprocess
-
+def _(config_path, example_dir, project_dir, subprocess):
     graph_base = example_dir / "pipeline"
     # cwd is the repository root, which conduit appends to sys.path, so
     # `_import_path = "examples.flux_pipeline.nodes"` resolves.
-    graph_subprocess.run(
+    subprocess.run(
         ["conduit", "graph", str(config_path), "--output", str(graph_base), "--png"],
         check=True,
         cwd=project_dir,
     )
     graph_path = graph_base.with_suffix(".png")
-    mo.md("## The generated DAG")
-    mo.image(
-        graph_path, alt="Graphviz graph of the flux-processing pipeline", width="100%"
-    )
-    return graph_path
+    return (graph_path,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## The generated DAG
+    """)
+    return
 
 
 @app.cell
-def _(config_path, mo, project_dir):
-    import subprocess as run_subprocess
-
-    run_subprocess.run(
-        ["conduit", "run", str(config_path), "--dry-run"],
-        check=True,
-        cwd=project_dir,
-    )
-    run_subprocess.run(
-        ["conduit", "run", str(config_path)],
-        check=True,
-        cwd=project_dir,
-    )
-    mo.md(
-        "## Run the pipeline\n\nThe dry run passed, then conduit executed the DAG and wrote the products."
+def _(graph_path, mo):
+    mo.image(
+        graph_path, alt="Graphviz graph of the flux-processing pipeline", width="100%"
     )
     return
 
 
 @app.cell
-def _(mo, results_dir, xr):
+def _(config_path, project_dir, subprocess):
+    subprocess.run(
+        ["conduit", "run", str(config_path), "--dry-run"],
+        check=True,
+        cwd=project_dir,
+    )
+    subprocess.run(
+        ["conduit", "run", str(config_path)],
+        check=True,
+        cwd=project_dir,
+    )
+    pipeline_complete = True
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Run the pipeline
+
+    The dry run passed, then conduit executed the DAG and wrote the products.
+    """)
+    return
+
+
+@app.cell
+def _(results_dir, xr):
     products = xr.open_dataset(results_dir / "flux_products.nc")
     annual = products[["annual_nee", "annual_gpp", "annual_reco"]]
     weekly = products["gpp_weekly"]
     comparison = products[["bias", "rmse"]]
+    return annual, comparison, weekly
+
+
+@app.cell(hide_code=True)
+def _(annual, comparison, mo, weekly):
     mo.md(f"""
     ## Results
 
@@ -134,7 +168,7 @@ def _(mo, results_dir, xr):
     | Satellite bias | **{float(comparison.bias):+.2f}** g C m^-2 d^-1 |
     | Satellite RMSE | **{float(comparison.rmse):.2f}** g C m^-2 d^-1 |
     """)
-    return products
+    return
 
 
 if __name__ == "__main__":

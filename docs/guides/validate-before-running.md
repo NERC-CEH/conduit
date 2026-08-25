@@ -100,7 +100,7 @@ Contract mismatch on edge 'pressure_climate' -> 'pressure_anomaly_climate':
 
 To fix it, make the declarations agree — correct whichever annotation is wrong, or (if
 the units are merely different but compatible, like `hPa` vs `Pa`) let conduit convert
-by leaving `exact = false`. See [Add unit contracts](../get-started/units-and-contracts.md)
+by leaving `on_inexact = "convert"`. See [Add unit contracts](../get-started/units-and-contracts.md)
 for a worked example and [Contracts before compute](../concepts/contracts.md) for how
 the check generalises across facets.
 

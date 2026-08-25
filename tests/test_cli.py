@@ -69,7 +69,7 @@ def inexact_units_module():
 
     Compatible (both lengths) but *inexact*, so the build-time contract check
     flags it only when the units policy says ``on_inexact="error"`` — which is
-    what ``[annotations] exact = true`` asks for. That makes it a probe for
+    what ``[annotations] on_inexact = "error"`` asks for. That makes it a probe for
     "did this command apply the config's policy?".
     """
     import sys
@@ -99,7 +99,7 @@ def inexact_units_config(tmp_path, inexact_units_module):
     p.write_text(
         f"""\
 [annotations]
-exact = true
+on_inexact = "error"
 
 [probe]
 _import_path = "{inexact_units_module}"
@@ -287,7 +287,7 @@ class TestPolicyAppliedByEveryCommand:
         from xarray_annotated.units import policy
 
         # The test session disables contract checking globally (conftest); re-enable
-        # it so the config's `exact = true` has something to tighten.
+        # it so the config's `on_inexact = "error"` has something to tighten.
         with policy(enabled=True):
             return runner.invoke(app, args)
 

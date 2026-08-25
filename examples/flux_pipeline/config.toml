@@ -10,6 +10,11 @@ path = "data/satellite.nc"
 suffix = ""
 vars = ["sat_gpp"]
 
+[annotations]
+# Report every value-changing unit conversion instead of performing it
+# silently. `tair` is the one this pipeline expects: K -> degC.
+on_inexact = "warn"
+
 [flux_nodes]
 _import_path = "examples.flux_pipeline.nodes"
 

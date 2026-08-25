@@ -60,7 +60,8 @@ runs. conduit's contribution is to check the **whole graph, before any node exec
 
 At build time it walks every internal edge. Where the producer declares an output
 contract *and* the consumer declares an input contract, it proves the two are
-consistent — for units, that they are convertible (and, under `exact`, identical); for
+consistent — for units, that they are convertible (and, under `on_inexact = "error"`,
+identical); for
 dims/coords/dtype, that they match; for freq, that the spacing and phase can describe
 the same axis. If they don't, the build fails with a message naming both nodes and the
 offending facet. No data has moved yet.
@@ -105,7 +106,8 @@ Contracts do more than reject. For units, a *compatible-but-different* input is
 **converted** to what the consumer declares — feed `hPa` where `Pa` is wanted and
 conduit scales it, rather than failing. You choose the strictness with the
 [`[annotations]` policy](../reference/configuration.md#annotations): `warn` (default) vs
-`strict`, and `exact` to forbid value-changing conversions.
+`strict`, and `on_inexact` to report or forbid value-changing conversions rather than
+performing them silently.
 
 ## Why this matters
 
