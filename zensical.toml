@@ -38,6 +38,7 @@ nav = [
       "reference/configuration.md",
       "reference/data-formats.md",
       "reference/troubleshooting.md",
+      "cli.md",
       { "API" = [
           "api/conduit.cli/index.md",
           "api/conduit.cli/cli.md",
@@ -72,11 +73,13 @@ nav = [
 extra_javascript = [
     "_static/js/katex.js",
     "https://unpkg.com/katex@0/dist/katex.min.js",
-    "https://unpkg.com/katex@0/dist/contrib/auto-render.min.js"
+    "https://unpkg.com/katex@0/dist/contrib/auto-render.min.js",
+    "assets/termynal.js",
 ]
 extra_css = [
     "_static/css/marimo-codehilite.css",
-    "https://unpkg.com/katex@0/dist/katex.min.css"
+    "https://unpkg.com/katex@0/dist/katex.min.css",
+    "assets/termynal.css",
 ]
 
 [project.theme]
@@ -181,3 +184,10 @@ show_root_members_full_path = false
 show_source = false
 show_symbol_type_heading = true
 show_symbol_type_toc = true
+
+# mkdocs-typer2
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions."mkdocs_typer2.markdown:makeExtension"]
+pretty = false
+engine = "native"
