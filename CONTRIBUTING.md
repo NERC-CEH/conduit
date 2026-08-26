@@ -61,7 +61,7 @@ The docs are structured under five tabs:
 | Tab | Holds |
 | --- | --- |
 | Home | the pitch and one worked example |
-| How it works | the design, and the limits of the contract check |
+| How it works | the execution model, and the limits of the contract check |
 | Guides | how to do things, split into Authoring / Running / Scaling |
 | Recipes | complete worked pipelines |
 | Reference | config schema, data formats, Python API, CLI, module docstrings |
@@ -88,3 +88,14 @@ Add it to `tests/test_recipes.py` as well.
 - Add tests for new functionality (coverage gate is 90% --- run `just test-cov`).
 - Update documentation as needed.
 - Run `just lint typecheck test` or the pre-commit hooks before submitting.
+
+## Design principles
+
+Please consider the following design principles:
+
+- **Expose Hamilton and xarray rather than wrapping them.** Strongly prefer a thin passthrough to a new abstraction.
+- **The core should remain domain-agnostic.** Don't build in assumptions about data structure or attributes (e.g. requiring a time axis).
+  - The exception to this rule: geospatial and parallel-Zarr code lives in `conduit.gridded` behind lazy imports.
+- **The CLI should stay a thin wrapper.** Don't build functionality _into_ the CLI.
+- **Contract checks should run at build time.** A feature that only works by deferring validation to runtime needs a different design.
+- **Minimise dependency bloat.** Self-explanatory.

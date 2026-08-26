@@ -5,7 +5,7 @@ icon: lucide/lightbulb
 
 # How it works
 
-conduit is built around one choice: keep the graph separate from the functions, and let the functions carry their own contracts.
+Conduit is built around one choice: keep the graph separate from the functions, and let the functions carry their own contracts.
 
 A node is a plain xarray function.
 It names its inputs by parameter name and its output by return type, and says nothing about where its data comes from, what else consumes it, or how it will be executed.
@@ -30,18 +30,6 @@ Checking every edge before the graph runs needs the annotations *and* the graph 
 The check covers units, dimensions, coordinates, dtype and temporal frequency, plus the wiring itself.
 An input nothing produces is an error; an input nothing consumes is a warning.
 See [Declaring contracts](guides/authoring/contracts.md) for the vocabulary and [Validate before running](guides/running/validate-before-running.md) for the pre-flight that uses it.
-
-### What it cannot catch
-
-The check shows the pipeline is *consistent*.
-It says nothing about whether it is *correct*.
-
-A contract is a claim about the shape and units of data on an edge, so anything that leaves those unchanged passes.
-Summing a rate where you meant to average it gives the same units and the same dimensions, and no check will save you.
-[Resampling and units](guides/authoring/resampling-and-units.md) is about that specific trap.
-A sign error, a wrong coefficient, or the right calculation on the wrong variable are all invisible here too.
-
-Contracts narrow the space of mistakes. They do not empty it.
 
 ## Execution is a separate decision
 
@@ -72,28 +60,18 @@ Ask for one variable and unrelated branches never run.
 
 `conduit run` also stamps the config text and its SHA-256 into every output, so a result file records the pipeline that produced it.
 
-## Design principles
+## Caveats & limitations
 
-**DAG-first.**
-The graph is the main abstraction.
-You declare what to compute and the engine works out how.
+The check shows the pipeline is *consistent*.
+It says nothing about whether it is *correct*.
 
-**Config-driven.**
-A pipeline is described in TOML.
-You can run and compose one without writing Python, and the config is easy to version, diff and review.
+A contract is a claim about the shape and units of data on an edge, so anything that leaves those unchanged passes.
+Summing a rate where you meant to average it gives the same units and the same dimensions, and no check will save you.
+[Resampling and units](guides/authoring/resampling-and-units.md) is about that specific trap.
+A sign error, a wrong coefficient, or the right calculation on the wrong variable are all invisible here too.
 
-**Module independence.**
-A node knows its own inputs and output and nothing about its neighbours, so you can add a computation without touching existing code, and test each module on its own.
-Your modules follow the same conventions as the built-ins.
+Contracts narrow the space of mistakes. They do not empty it.
 
-**Expose, don't wrap.**
-The Hamilton driver and the raw xarray objects stay reachable when you want them.
-The aim is that you never *have* to learn Hamilton or pint.
-
-**Domain-agnostic core.**
-Nothing domain-specific is built in.
-Forward models, land-cover classification and analysis pipelines are all expressed the same way.
-Gridded geospatial Zarr is the main target, but it lives in an optional layer (`conduit[geo]`), so importing conduit never pulls in geospatial dependencies.
 
 ## Where next
 
