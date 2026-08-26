@@ -205,6 +205,6 @@ prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
 ## Where next
 
 - [Python API reference](../../reference/python-api.md) — signatures for every function used here.
-- [Run and visualise](run-and-visualise.md) — the CLI equivalent.
-- [Test your pipeline](../authoring/test-your-pipeline.md) — these same calls, from a test.
+- [Run and visualise](run-from-the-cli.md) — the CLI equivalent.
+- [Test your pipeline](../validate/test-your-pipeline.md) — these same calls, from a test.
 - [Configuration reference](../../reference/configuration.md) — the config schema.

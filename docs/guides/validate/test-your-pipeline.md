@@ -68,7 +68,7 @@ A hard failure raises out of `dry_run`, so a report exists only for a pipeline t
 `Stage.findings` holds the soft issues the active `[annotations]` policy let past.
 
 Run this as a CI step and a renamed input, a mistyped section, a unit that stopped matching or an output nothing produces will all fail the build in seconds.
-The [`--dry-run` guide](../running/validate-before-running.md) covers what each stage checks and what the exit codes mean.
+The [`--dry-run` guide](../validate/validate-before-running.md) covers what each stage checks and what the exit codes mean.
 
 If your inputs are large or not present in CI, point the test at a small synthetic file with the same headers.
 The contract check reads metadata, not arrays, so a file of the right shape and units is enough.
@@ -107,6 +107,6 @@ The contract check already covers that, and a test restating it passes for as lo
 
 ## Where next
 
-- [Validate before running](../running/validate-before-running.md) — every stage `--dry-run` performs.
-- [Drive conduit from Python](../running/drive-from-python.md) — the API these tests call.
-- [Declaring contracts](contracts.md) — what the checks cover, so your tests do not have to.
+- [Validate before running](../validate/validate-before-running.md) — every stage `--dry-run` performs.
+- [Drive conduit from Python](../run/drive-from-python.md) — the API these tests call.
+- [Declaring contracts](../nodes/contracts.md) — what the checks cover, so your tests do not have to.

@@ -9,7 +9,7 @@ The CLI is an optional wrapper over the library, so everything `conduit run` doe
 This page lists the public API: what you need in order to write science code on top of conduit, and nothing else.
 
 The internals — the checkers, the specs, the Hamilton module generator — are under [Modules](modules/conduit.pipeline.md), where each module's docstring is the design document for that part of the system.
-For a walkthrough rather than signatures, see [Drive conduit from Python](../guides/running/drive-from-python.md).
+For a walkthrough rather than signatures, see [Drive conduit from Python](../guides/run/drive-from-python.md).
 
 ## Running a pipeline
 
@@ -42,7 +42,7 @@ Use these when you want to inspect the graph, execute a subset of nodes, overrid
 ## Declaring contracts
 
 These are re-exported from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) so that a node module needs one import.
-`declare_units` must be the outermost decorator — see [Declaring contracts](../guides/authoring/contracts.md).
+`declare_units` must be the outermost decorator — see [Declaring contracts](../guides/nodes/contracts.md).
 
 ::: conduit
     options:

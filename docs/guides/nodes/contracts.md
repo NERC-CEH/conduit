@@ -25,8 +25,8 @@ def aridity_index_daily(
 
 conduit checks every such claim across the whole graph before any node runs.
 This page is about writing them.
-For the pre-flight that runs the checks against your real files, see [Validate before running](../running/validate-before-running.md).
-[How it works](../../how-it-works.md) covers why a before-compute check is possible at all.
+For the pre-flight that runs the checks against your real files, see [Validate before running](../validate/validate-before-running.md).
+[Contracts and the whole-graph check](../../concepts/contracts.md) covers why a before-compute check is possible at all.
 
 ## The five facets
 
@@ -147,14 +147,11 @@ Declare `Freq("W-SUN")` downstream and a mistyped `W-WED` offset fails when the 
 
 ## What contracts will not catch
 
-A contract constrains the shape and units of data on an edge, so anything that leaves both unchanged passes.
-
-Summing a rate where you meant to average it gives the same units and the same dimensions, and no check will save you.
-[Resampling and units](resampling-and-units.md) is about that specific trap.
-Sign errors, wrong coefficients and the right calculation on the wrong variable are all invisible here too.
+Anything that leaves the shape and units of an edge unchanged.
+[Contracts and the whole-graph check](../../concepts/contracts.md#what-contracts-cannot-catch) sets out where the line falls, and [Resampling and units](resampling-and-units.md) works through the trap you are most likely to hit.
 
 ## Where next
 
 - [Bring your own module](bring-your-own-module.md) — the rest of the authoring conventions.
-- [Validate before running](../running/validate-before-running.md) — running the checks against real files.
-- [Test your pipeline](test-your-pipeline.md) — for everything contracts cannot cover.
+- [Validate before running](../validate/validate-before-running.md) — running the checks against real files.
+- [Test your pipeline](../validate/test-your-pipeline.md) — for everything contracts cannot cover.

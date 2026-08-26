@@ -5,13 +5,14 @@ icon: lucide/house
 
 # Conduit
 
-An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) and [xarray](https://xarray.dev), serves as a highly flexible and robust substrate for environmental data science applications.
+An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) and [xarray](https://xarray.dev) for building configurable environmental data pipelines.
 
-The process for building on top of Conduit is simple:
+Working with Conduit falls into four stages:
 
-1. You write ordinary Python functions that receive and return `xarray.DataArray`s, and optionally add [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) that declare the expected properties of these arrays (coordinates, physical units etc).
-2. Users can then use these functions to define data pipelines, by simply writing/editing TOML configuration files.
-3. Conduit builds the graph (via Hamilton), checks the annotation contracts _before_ execution (via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/)), and finally runs the pipeline with one of several swappable backend execution models (serial, multiprocessing, dask, jax.vmap...).
+1. **Write the science code.** Ordinary Python functions that take and return `xarray.DataArray`s, with optional [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) declaring what each one requires and produces: units, dimensions, coordinates, dtype, temporal frequency.
+2. **Write the config.** A TOML file names the input files, the nodes and the outputs. Assembling or adapting a pipeline from here needs no Python.
+3. **Validate.** Conduit assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
+4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes. The choice lives in the config, and none of it changes the science code.
 
 !!! warning "Alpha status"
 
@@ -46,10 +47,11 @@ That is [Pipeline 101](recipes/pipeline-101.md), which runs end to end.
 
 ## Getting started
 
-- [How it works](how-it-works.md) — the design, and what the checks can and cannot catch.
 - [Install](guides/install.md) — get it running.
-- [Pipeline 101](recipes/pipeline-101.md) — the whole workflow in miniature.
-- [Bring your own module](guides/authoring/bring-your-own-module.md) — the conventions your science code must follow. Start here if you are adding your own nodes.
+- [Pipeline 101](recipes/pipeline-101.md) — all four stages in miniature.
+- [Overview](concepts/overview.md) — the design, and what the checks can and cannot catch.
+- [Write a config](guides/configs/write-a-config.md) — start here if you are adapting a pipeline someone else wrote.
+- [Bring your own module](guides/nodes/bring-your-own-module.md) — start here if you are adding your own nodes.
 - [Configuration reference](reference/configuration.md) — every TOML section and key.
 
 ## See also

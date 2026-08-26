@@ -38,13 +38,13 @@ A node needs an input that nothing produces. Usually one of:
 3. **Wrong frequency** — the variable may exist at another resolution; add a
    [`[[resample]]`](../reference/configuration.md#resample) step.
 
-Run [`conduit run --dry-run`](running/validate-before-running.md) to surface this
+Run [`conduit run --dry-run`](validate/validate-before-running.md) to surface this
 before executing.
 
 ### A unit / dimension mismatch error
 
 A node's declared contract disagrees with its producer's. See
-[Validate before running › reading a contract failure](running/validate-before-running.md#reading-a-contract-failure).
+[Validate before running › reading a contract failure](validate/validate-before-running.md#reading-a-contract-failure).
 To relax an over-strict check, adjust the [`[annotations]`](../reference/configuration.md#annotations)
 policy.
 
@@ -124,7 +124,7 @@ Check that:
 - Validate on a small [`[subset]`](../reference/configuration.md#subset) first.
 - Bound memory with [`[blocking]`](../reference/configuration.md#blocking).
 - Enable [`[cache]`](../reference/configuration.md#cache) for iterative re-runs.
-- Parallelise across shards — see [Scale up](scaling/scale-up.md).
+- Parallelise across shards — see [Scale up](run/scale-up.md).
 
 ## Visualisation
 

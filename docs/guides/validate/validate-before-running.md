@@ -106,7 +106,7 @@ Where the units are different but compatible, `hPa` against `Pa` say, conduit co
 
 ## Where next
 
-- [Declaring contracts](../authoring/contracts.md) — writing the declarations these checks compare.
-- [Test your pipeline](../authoring/test-your-pipeline.md) — calling `dry_run` from a test.
+- [Declaring contracts](../nodes/contracts.md) — writing the declarations these checks compare.
+- [Test your pipeline](../validate/test-your-pipeline.md) — calling `dry_run` from a test.
 - [`[annotations]` reference](../../reference/configuration.md#annotations) — every policy key.
 - [Troubleshooting](../troubleshooting.md) — specific error messages and their causes.

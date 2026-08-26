@@ -104,7 +104,7 @@ Its attributes also hold the config text that produced it and a SHA-256 of that 
 
 ## Next
 
-- [Bring your own module](../guides/authoring/bring-your-own-module.md) — the conventions your Python must follow.
-- [Declaring contracts](../guides/authoring/contracts.md) — units, dims, coords, dtype and frequency.
-- [Inline nodes and fan-out](../guides/authoring/inline-nodes-and-fan-out.md) — generating many nodes from one spec.
+- [Bring your own module](../guides/nodes/bring-your-own-module.md) — the conventions your Python must follow.
+- [Declaring contracts](../guides/nodes/contracts.md) — units, dims, coords, dtype and frequency.
+- [Inline nodes and fan-out](../guides/configs/inline-nodes-and-fan-out.md) — generating many nodes from one spec.
 - [Configuration reference](../reference/configuration.md) — every section and key.

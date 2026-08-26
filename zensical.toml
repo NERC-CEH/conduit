@@ -14,23 +14,32 @@ copyright = "Copyright &copy; 2026 The authors"
 
 nav = [
   { "Home" = "index.md" },
-  { "How it works" = "how-it-works.md" },
+  { "Concepts" = [
+      "concepts/overview.md",
+      "concepts/pipeline-model.md",
+      "concepts/contracts.md",
+      "concepts/execution.md",
+  ]},
   { "Guides" = [
       "guides/install.md",
-      { "Authoring" = [
-          "guides/authoring/bring-your-own-module.md",
-          "guides/authoring/contracts.md",
-          "guides/authoring/inline-nodes-and-fan-out.md",
-          "guides/authoring/resampling-and-units.md",
-          "guides/authoring/test-your-pipeline.md",
+      { "Write nodes" = [
+          "guides/nodes/bring-your-own-module.md",
+          "guides/nodes/contracts.md",
+          "guides/nodes/resampling-and-units.md",
       ]},
-      { "Running" = [
-          "guides/running/run-and-visualise.md",
-          "guides/running/drive-from-python.md",
-          "guides/running/validate-before-running.md",
+      { "Write configs" = [
+          "guides/configs/write-a-config.md",
+          "guides/configs/inline-nodes-and-fan-out.md",
       ]},
-      { "Scaling" = [
-          "guides/scaling/scale-up.md",
+      { "Validate" = [
+          "guides/validate/visualise-the-graph.md",
+          "guides/validate/validate-before-running.md",
+          "guides/validate/test-your-pipeline.md",
+      ]},
+      { "Run & scale" = [
+          "guides/run/run-from-the-cli.md",
+          "guides/run/drive-from-python.md",
+          "guides/run/scale-up.md",
       ]},
       "guides/troubleshooting.md",
   ]},

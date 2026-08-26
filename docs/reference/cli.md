@@ -34,7 +34,7 @@ Python instead, with no extra installed.
 Parallel-Zarr commands for gridded pipelines, needing the `geo` extra. They bracket a set
 of independent `[subset]` runs: create the shared store once, run the subsets
 concurrently, then stitch the parts back together. See
-[Scale up](../guides/scaling/scale-up.md) for the whole workflow.
+[Scale up](../guides/run/scale-up.md) for the whole workflow.
 
 ### `conduit gridded create-store`
 

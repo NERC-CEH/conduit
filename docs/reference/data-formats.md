@@ -64,7 +64,7 @@ Frequency is validated wherever it is **declared**. Two mechanisms cover it:
 
 - a consumer declaring `Freq("7D")` on its input (or a `[[node]]` with `freq = "7D"` on
   its output) — validated per node by the
-  [contract check](../guides/authoring/contracts.md), at build time and in `--dry-run`;
+  [contract check](../guides/nodes/contracts.md), at build time and in `--dry-run`;
 - the [`time_equal` / `time_subset` checks](configuration.md#validation)
   — validated across whole input datasets.
 
@@ -72,7 +72,7 @@ Frequency is validated wherever it is **declared**. Two mechanisms cover it:
 
 Set a CF-style `units` attribute on your input variables so conduit can validate and
 convert them against the contracts your nodes declare (see
-[Declaring contracts](../guides/authoring/contracts.md)). A missing or unparseable
+[Declaring contracts](../guides/nodes/contracts.md)). A missing or unparseable
 `units` attribute cannot be validated, so it falls to the active
 [`[annotations]` policy](configuration.md#annotations).
 

@@ -47,13 +47,13 @@ The function must accept keyword arguments matching `inputs` and return an
 
     `[[node]]` calling a function is fine for a single derivation. Once you have several
     related functions, shared parameters, or want unit annotations on a signature, write a
-    [proper module](bring-your-own-module.md) instead. It is easier to test and reuse.
+    [proper module](../nodes/bring-your-own-module.md) instead. It is easier to test and reuse.
 
 ## Declaring contracts on a node
 
 A node transforms its inputs, so conduit cannot infer its output contract. Declare any of
 `units`, `dims`, `dtype`, `coords` to make the node a *typed producer*: its output is
-stamped and validated at run time, and the [build-time contract check](contracts.md) can
+stamped and validated at run time, and the [build-time contract check](../nodes/contracts.md) can
 check downstream consumers against it.
 
 ```toml
@@ -122,7 +122,7 @@ aggfunc = "max"
 
 ## Where next
 
-- [Bring your own module](bring-your-own-module.md) — for logic that outgrows an inline node.
-- [Declaring contracts](contracts.md) — the facets a `[[node]]` can declare.
-- [Resampling and units](resampling-and-units.md) — choosing `aggfunc` correctly, which no check can do for you.
+- [Bring your own module](../nodes/bring-your-own-module.md) — for logic that outgrows an inline node.
+- [Declaring contracts](../nodes/contracts.md) — the facets a `[[node]]` can declare.
+- [Resampling and units](../nodes/resampling-and-units.md) — choosing `aggfunc` correctly, which no check can do for you.
 - [Configuration reference](../../reference/configuration.md) — the full `[[node]]` and `[[resample]]` key list.

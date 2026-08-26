@@ -77,4 +77,4 @@ check it against.
 
 - [Configuration › Resample](../../reference/configuration.md#resample) — the `[[resample]]` keys.
 - [Declaring contracts](contracts.md) — what the checks can and cannot catch.
-- [Test your pipeline](test-your-pipeline.md) — how to catch this one, since contracts will not.
+- [Test your pipeline](../validate/test-your-pipeline.md) — how to catch this one, since contracts will not.

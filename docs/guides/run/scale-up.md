@@ -5,15 +5,11 @@ icon: lucide/gauge
 
 # Scale up a pipeline
 
-The same functions that run on a laptop run across a cluster.
+Four knobs, in rough order of the scale they address: result caching, out-of-core dask, memory-bounded blocking, and parallel subset runs over a shared Zarr store.
+They compose, so a blocked, dask-backed run over a subset with caching on is entirely ordinary.
 You change the config, not the code.
 
-There are four knobs, in rough order of the scale they address: result caching, out-of-core dask, memory-bounded blocking, and parallel subset runs over a shared Zarr store.
-They compose, so a blocked, dask-backed run over a subset with caching on is entirely ordinary.
-
-None of them changes the result or the contracts: same graph, same before-compute checks, same outputs, different execution strategy.
-So you can develop against a tiny in-memory run and deploy the identical pipeline at scale.
-[How it works](../../how-it-works.md) explains why that is possible.
+[Execution and scaling](../../concepts/execution.md) is where to start if you are choosing between them rather than configuring one.
 
 ## Caching results
 
@@ -140,6 +136,6 @@ config files.
 
 ## Where next
 
-- [How it works](../../how-it-works.md) — why execution is a separate decision from the science.
+- [Execution and scaling](../../concepts/execution.md) — why execution is a separate decision from the science.
 - [Configuration reference](../../reference/configuration.md) — the `[cache]`, `[blocking]` and `[subset]` keys.
 - [CLI reference](../../reference/cli.md) — every `conduit gridded` flag.

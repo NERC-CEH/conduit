@@ -141,6 +141,6 @@ Whatever it needs has to be installed in the same environment.
 ## Where next
 
 - [Declaring contracts](contracts.md) — units, dims, coords, dtype and frequency.
-- [Test your pipeline](test-your-pipeline.md) — testing node functions and configs.
-- [Inline nodes and fan-out](inline-nodes-and-fan-out.md) — the `[[node]]` form, for glue and for generating many nodes from one spec.
+- [Test your pipeline](../validate/test-your-pipeline.md) — testing node functions and configs.
+- [Inline nodes and fan-out](../configs/inline-nodes-and-fan-out.md) — the `[[node]]` form, for glue and for generating many nodes from one spec.
 - [Configuration reference](../../reference/configuration.md) — every section and key.
