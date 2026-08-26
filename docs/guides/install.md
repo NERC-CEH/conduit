@@ -7,10 +7,9 @@ icon: lucide/download
 
 conduit is installed from GitHub; it is not on PyPI.
 
-!!! warning "Alpha"
+!!! warning "Alpha status"
 
-    conduit has no users outside the core team yet.
-    The config schema, the Python API and the CLI all change without deprecation warnings, so pin a commit if you need a build to keep working.
+    `conduit` is an early-stage project under active development. Things will change without warning.
 
 ## Prerequisites
 

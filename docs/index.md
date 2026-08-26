@@ -3,22 +3,20 @@ title: Home
 icon: lucide/house
 ---
 
-# conduit
+# Conduit
 
-conduit is an opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton), [xarray](https://xarray.dev) and [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), driven by a plain [TOML](https://toml.io) file.
-You write ordinary annotated xarray functions and describe in config how they wire together.
-conduit builds the graph, checks it for consistency, and runs it at whatever scale the config asks for.
+An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) and [xarray](https://xarray.dev), serves as a highly flexible and robust substrate for environmental data science applications.
 
-The idea is to keep the graph separate from the functions, and let the functions carry their own contracts in their type annotations.
-What that buys you:
+The process for building on top of Conduit is simple:
 
-- **The whole graph is checked before any compute runs.** Units, dimensions, coordinates, dtypes, frequency and the wiring all come from the annotations. A hPa-for-Pa slip or a renamed input fails in seconds, not forty minutes into a run.
-- **The config is the pipeline.** One file describes the inputs, the nodes, the fan-out and the outputs, and it is stamped into every result, so an output file records how it was made.
-- **Scaling up means editing config, not code.** The same functions run in memory, cached, blocked, or across parallel processes writing to one Zarr store.
-- **The wiring is written down.** Reading the config tells you what depends on what, without tracing a script.
+1. You write ordinary Python functions that receive and return `xarray.DataArray`s, and optionally add [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) that declare the expected properties of these arrays (coordinates, physical units etc).
+2. Users can then use these functions to define data pipelines, by simply writing/editing TOML configuration files.
+3. Conduit builds the graph (via Hamilton), checks the annotation contracts _before_ execution (via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/)), and finally runs the pipeline with one of several swappable backend execution models (serial, multiprocessing, dask, jax.vmap...).
 
-conduit is alpha, and a work in progress.
-It does what is described here, but the config schema and the APIs still change without warning.
+!!! warning "Alpha status"
+
+    `conduit` is an early-stage project under active development. Things will change without warning.
+
 
 ## A small pipeline
 
