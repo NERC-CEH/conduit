@@ -44,7 +44,7 @@ The process for building on top of Conduit is simple:
 
 That is [Pipeline 101](recipes/pipeline-101.md), which runs end to end.
 
-## Where to go
+## Getting started
 
 - [How it works](how-it-works.md) — the design, and what the checks can and cannot catch.
 - [Install](guides/install.md) — get it running.
@@ -52,17 +52,23 @@ That is [Pipeline 101](recipes/pipeline-101.md), which runs end to end.
 - [Bring your own module](guides/authoring/bring-your-own-module.md) — the conventions your science code must follow. Start here if you are adding your own nodes.
 - [Configuration reference](reference/configuration.md) — every TOML section and key.
 
-## Contributing
+## See also
 
-Development setup, conventions and how to add a recipe are in [`CONTRIBUTING.md`](https://github.com/NERC-CEH/conduit/blob/main/CONTRIBUTING.md).
-
-## Acknowledgements
-
-conduit builds on:
+Conduit offloads most of the hard work to several excellent libraries:
 
 - [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — the DAG engine
 - [xarray](https://docs.xarray.dev/) — labelled N-D arrays
-- [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) — per-function unit, dim, dtype, coord and frequency contracts
-- [pint](https://pint.readthedocs.io) and [cf-xarray](https://cf-xarray.readthedocs.io) — units
+- [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) — per-function unit, dim, dtype, coord and frequency contracts using `typing.Annotated`
+- [pint](https://pint.readthedocs.io) and [cf-xarray](https://cf-xarray.readthedocs.io) — units validation machinery
 - [dask](https://www.dask.org/) — parallel and out-of-core computation
 - [Typer](https://typer.tiangolo.com/) — the CLI
+
+The following projects are using Conduit:
+
+- [SatTerC](https://satterc.github.io/satterc/) — terrestrial carbon modelling
+
+## Acknowledgements
+
+This work has been supported by:
+
+- NC-International

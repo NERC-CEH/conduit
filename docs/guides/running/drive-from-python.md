@@ -10,16 +10,14 @@ icon: lucide/code-2
 Taking the steps yourself lets you inspect individual nodes, plot intermediate results, override values between runs, or skip writing to disk entirely.
 This guide walks through the same steps `run` takes; [the whole thing in one call](#the-whole-thing-in-one-call) is at the end.
 
-/// admonition | Import convention
-    type: info
+!!! info "Import convention"
 
-All examples below assume:
+    All examples below assume:
 
-```python
-from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
-from conduit.config import Config
-```
-///
+    ```python
+    from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
+    from conduit.config import Config
+    ```
 
 ## 1. Build a config
 
@@ -45,14 +43,12 @@ config_data = {
 }
 ```
 
-/// admonition | Loading from a file
-    type: note
+!!! note "Loading from a file"
 
-Already have a file? Use `Config.load("config.toml")` (paths resolve relative to the
-file) or `Config.loads(toml_string)`. The convenience function
-`conduit.load_config("config.toml")` does load-and-parse in one call, returning the
-`ParsedConfig` from the next step.
-///
+    Already have a file? Use `Config.load("config.toml")` (paths resolve relative to the
+    file) or `Config.loads(toml_string)`. The convenience function
+    `conduit.load_config("config.toml")` does load-and-parse in one call, returning the
+    `ParsedConfig` from the next step.
 
 ## 2. Parse it
 
@@ -155,12 +151,10 @@ Write them with `save_outputs()`:
 save_outputs(datasets, parsed.output_specs)
 ```
 
-/// admonition | Skipping disk writes
-    type: tip
+!!! tip "Skipping disk writes"
 
-In a notebook you can skip `save_outputs()` — the Datasets from `get_outputs()` are
-ready for xarray's plotting methods, matplotlib, or any other library.
-///
+    In a notebook you can skip `save_outputs()` — the Datasets from `get_outputs()` are
+    ready for xarray's plotting methods, matplotlib, or any other library.
 
 ## Putting it together
 
@@ -202,13 +196,11 @@ datasets = conduit.run(parsed)          # same run, with the spec tweaked first
 prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
 `conduit graph` writes to disk, which renders inline in a notebook.
 
-/// admonition | Provenance
-    type: info
+!!! info "Provenance"
 
-A run from a config *path* stamps the config text and its SHA-256 onto every output, so
-the store says how it was made. A run from a `ParsedConfig` has no text to stamp, so it
-stamps nothing.
-///
+    A run from a config *path* stamps the config text and its SHA-256 onto every output, so
+    the store says how it was made. A run from a `ParsedConfig` has no text to stamp, so it
+    stamps nothing.
 
 ## Where next
 

@@ -64,13 +64,11 @@ block_size = 500     # rows of the partition dim processed at a time
 dim = "pixel"        # default; set to any dim (e.g. "location") for non-gridded data
 ```
 
-/// admonition | Outputs must vary over the partition dim
-    type: warning
+!!! warning "Outputs must vary over the partition dim"
 
-Blocking concatenates results along `dim`. If an `[outputs]` variable has no such
-dimension — e.g. a grid-mean aggregate — it cannot be recombined and conduit raises a
-`ValueError`. Drop such variables from `[outputs]` when blocking.
-///
+    Blocking concatenates results along `dim`. If an `[outputs]` variable has no such
+    dimension — e.g. a grid-mean aggregate — it cannot be recombined and conduit raises a
+    `ValueError`. Drop such variables from `[outputs]` when blocking.
 
 ## Parallel subset runs
 
@@ -119,27 +117,23 @@ conduit gridded merge config.toml                  # unstack into a sibling *_gr
 `*_gridded.zarr`; pass `--out <path>` (single-output configs only) to choose a
 destination.
 
-/// admonition | What `create-store` computes
-    type: note
+!!! note "What `create-store` computes"
 
-`create-store` derives each output's non-`pixel` axes by running the pipeline over a
-single pixel and reading the coordinates, dims and dtype off the result, so the layout
-matches what the shards will write. A derived axis — a `[[resample]]`'s weekly time axis,
-say — works without any input file already having it.
+    `create-store` derives each output's non-`pixel` axes by running the pipeline over a
+    single pixel and reading the coordinates, dims and dtype off the result, so the layout
+    matches what the shards will write. A derived axis — a `[[resample]]`'s weekly time axis,
+    say — works without any input file already having it.
 
-The store therefore belongs to the config that created it. Change the config in a way
-that moves an output's time axis and the next `run` refuses to write into the stale
-store. Re-create it with `--overwrite`.
-///
+    The store therefore belongs to the config that created it. Change the config in a way
+    that moves an output's time axis and the next `run` refuses to write into the stale
+    store. Re-create it with `--overwrite`.
 
-/// admonition | Chunk alignment for Zarr
-    type: note
+!!! note "Chunk alignment for Zarr"
 
-Concurrent Zarr region writes are only safe when each subset's boundaries fall on the
-store's pixel-chunk boundaries. `conduit gridded create-store` sets that chunk from
-`--pixel-chunk` (default: `[blocking].block_size`); a `run` whose `[subset]` is
-misaligned raises a `ValueError`. Keep subset ranges as multiples of the chunk size.
-///
+    Concurrent Zarr region writes are only safe when each subset's boundaries fall on the
+    store's pixel-chunk boundaries. `conduit gridded create-store` sets that chunk from
+    `--pixel-chunk` (default: `[blocking].block_size`); a `run` whose `[subset]` is
+    misaligned raises a `ValueError`. Keep subset ranges as multiples of the chunk size.
 
 With a SLURM array job, vary `start`/`stop` via environment variables or per-task
 config files.

@@ -43,13 +43,11 @@ The function must accept keyword arguments matching `inputs` and return an
 `xarray.DataArray`. Each entry uses **either** `expression` **or**
 (`_import_path` + `function`) — never both.
 
-/// admonition | When to reach for a module instead
-    type: tip
+!!! tip "When to reach for a module instead"
 
-`[[node]]` calling a function is fine for a single derivation. Once you have several
-related functions, shared parameters, or want unit annotations on a signature, write a
-[proper module](bring-your-own-module.md) instead. It is easier to test and reuse.
-///
+    `[[node]]` calling a function is fine for a single derivation. Once you have several
+    related functions, shared parameters, or want unit annotations on a signature, write a
+    [proper module](bring-your-own-module.md) instead. It is easier to test and reuse.
 
 ## Declaring contracts on a node
 

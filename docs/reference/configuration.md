@@ -13,12 +13,10 @@ as your own module** and must carry an `_import_path` key (see [Modules](#module
 mistyped section name is an error rather than a silently ignored one. Gridding comes from
 the inputs' CRS, and graph styling from a `conduit graph --style` file.
 
-/// admonition | Paths are resolved relative to the config file
-    type: note
+!!! note "Paths are resolved relative to the config file"
 
-Relative `path` values in `[inputs.*]`, `[outputs.*]` and `[cache]` are resolved
-against the directory containing the config file, not the current working directory.
-///
+    Relative `path` values in `[inputs.*]`, `[outputs.*]` and `[cache]` are resolved
+    against the directory containing the config file, not the current working directory.
 
 ## Inputs
 
@@ -93,24 +91,22 @@ The section header (`aridity`) is a free-form label; only `_import_path` is sema
 See [Bring your own module](../guides/authoring/bring-your-own-module.md) for the authoring
 conventions.
 
-/// admonition | Parameter namespacing
-    type: note
+!!! note "Parameter namespacing"
 
-Module parameters from **every** section are merged into a single flat dictionary, the
-Hamilton driver config. A parameter's config key and the function's argument name are
-therefore the same string.
+    Module parameters from **every** section are merged into a single flat dictionary, the
+    Hamilton driver config. A parameter's config key and the function's argument name are
+    therefore the same string.
 
-Parameter names must be unique across active sections. Two sections defining `threshold`
-is a parse-time error naming both:
+    Parameter names must be unique across active sections. Two sections defining `threshold`
+    is a parse-time error naming both:
 
-```
-Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
-share one flat namespace, so give the two parameters distinct names ...
-```
+    ```
+    Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
+    share one flat namespace, so give the two parameters distinct names ...
+    ```
 
-To fix it, rename the parameter in the config *and* the keyword argument in the module
-that reads it (e.g. `aridity_floor`). Sections that are not both active never collide.
-///
+    To fix it, rename the parameter in the config *and* the keyword argument in the module
+    that reads it (e.g. `aridity_floor`). Sections that are not both active never collide.
 
 ## Nodes
 
@@ -170,13 +166,11 @@ aggfunc = "mean"
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 
-/// admonition | `from` and `to` are node-name suffixes
-    type: note
+!!! note "`from` and `to` are node-name suffixes"
 
-`from = "daily"` reads `{var}_daily` and `to = "weekly"` writes `{var}_weekly`. They are
-free-form, so `from = "raw"`, `to = "smoothed"` works just as well. `freq` is what sets
-the time axis.
-///
+    `from = "daily"` reads `{var}_daily` and `to = "weekly"` writes `{var}_weekly`. They are
+    free-form, so `from = "raw"`, `to = "smoothed"` works just as well. `freq` is what sets
+    the time axis.
 
 `freq` also becomes the generated node's **declared output frequency**, so every
 resample carries a checkable frequency contract: a downstream consumer declaring
@@ -184,14 +178,12 @@ resample carries a checkable frequency contract: a downstream consumer declaring
 
 The time axis is detected from the data, so it need not be called `time`.
 
-/// admonition | Choosing `aggfunc` is not something the checks can help with
-    type: warning
+!!! warning "Choosing `aggfunc` is not something the checks can help with"
 
-Resampling preserves units, so `mean` and `sum` are equally valid *dimensionally*, and a
-wrong choice gives a meaningless number that no contract check will flag. Use `mean` for
-a rate and `sum` for an amount-per-period; see
-[Resampling & units](../guides/authoring/resampling-and-units.md).
-///
+    Resampling preserves units, so `mean` and `sum` are equally valid *dimensionally*, and a
+    wrong choice gives a meaningless number that no contract check will flag. Use `mean` for
+    a rate and `sum` for an amount-per-period; see
+    [Resampling & units](../guides/authoring/resampling-and-units.md).
 
 ## Cache
 
@@ -272,15 +264,13 @@ processes concurrently (`[subset]`). A non-gridded pipeline can subset over `loc
 `site` just as it can block over it, and each part is written to its own suffixed file
 (`out_location0-500.nc`).
 
-/// admonition | Zarr stores are pixel-only
-    type: warning
+!!! warning "Zarr stores are pixel-only"
 
-The one place `pixel` is still special is the shared Zarr store built by
-`conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
-`merge` unstacks back to `(y, x)`. Configuring `dim` — or `point_dim` — as anything else
-alongside a Zarr output is an error. Use a NetCDF output instead — its subset parts are
-separate files and need no pre-created store.
-///
+    The one place `pixel` is still special is the shared Zarr store built by
+    `conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
+    `merge` unstacks back to `(y, x)`. Configuring `dim` — or `point_dim` — as anything else
+    alongside a Zarr output is an error. Use a NetCDF output instead — its subset parts are
+    separate files and need no pre-created store.
 
 ## Validation
 
@@ -357,16 +347,14 @@ Validation happens at two points:
 Run the run-time input checks against your real data *without* executing the pipeline
 with [`conduit run --dry-run`](../guides/running/validate-before-running.md).
 
-/// admonition | Affine units (temperature)
-    type: warning
+!!! warning "Affine units (temperature)"
 
-Converting between offset units such as `degC` and `K` applies the offset
-(`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a
-*difference* or anomaly. Declare such quantities in the unit they are stored in, so no
-conversion happens, or set `on_inexact = "error"` to forbid implicit temperature
-conversions. `on_inexact = "warn"` is the middle course: the conversion still happens,
-but each one is reported by name, so an unintended one cannot pass unnoticed.
-///
+    Converting between offset units such as `degC` and `K` applies the offset
+    (`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a
+    *difference* or anomaly. Declare such quantities in the unit they are stored in, so no
+    conversion happens, or set `on_inexact = "error"` to forbid implicit temperature
+    conversions. `on_inexact = "warn"` is the middle course: the conversion still happens,
+    but each one is reported by name, so an unintended one cannot pass unnoticed.
 
 ## See also
 

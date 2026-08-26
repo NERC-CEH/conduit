@@ -35,12 +35,10 @@ their neighbours agree, and are otherwise left ungrouped.
 Pass `--png` for PNG instead, and `-o/--output` to change the base filename (default
 `pipeline`). The `.dot` source is always written.
 
-/// admonition | Requires Graphviz
-    type: note
+!!! note "Requires Graphviz"
 
-`conduit graph` needs the `viz` extra **and** the Graphviz system binary — see
-[Installation](../install.md).
-///
+    `conduit graph` needs the `viz` extra **and** the Graphviz system binary — see
+    [Installation](../install.md).
 
 ### Customising the styling
 

@@ -12,13 +12,11 @@ also does not multiply by the timestep on a sum.
 
 Which means:
 
-/// admonition | Unit validation cannot catch a wrong `aggfunc`
-    type: warning
+!!! warning "Unit validation cannot catch a wrong `aggfunc`"
 
-The units are the same either way, so **no contract check will save you here**. A wrong
-`aggfunc` gives a result that is dimensionally consistent and physically meaningless.
-Choosing it correctly is on you.
-///
+    The units are the same either way, so **no contract check will save you here**. A wrong
+    `aggfunc` gives a result that is dimensionally consistent and physically meaningless.
+    Choosing it correctly is on you.
 
 ## Match `aggfunc` to the *kind* of quantity
 
