@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from hamilton import graph_types
+from hamilton.driver import Driver
 from xarray_annotated import declarations_from_signature
 
 from .build import build_driver
@@ -33,8 +34,10 @@ from .io import get_final_vars
 from .pipeline import ConfigSource, prepare_config
 
 if TYPE_CHECKING:
+    # graphviz ships in the optional `viz` extra, and `conduit.build_graph` is
+    # re-exported from the package root, so importing it here would make
+    # `import conduit` fail for anyone who did not install that extra.
     import graphviz
-    from hamilton.driver import Driver
 
 __all__ = ["build_graph"]
 
@@ -87,7 +90,7 @@ def _import_style_function(path: str) -> StyleFunction:
     return getattr(module, attr)
 
 
-def _node_maps(dr: "Driver") -> tuple[dict[str, str], dict[str, str]]:
+def _node_maps(dr: Driver) -> tuple[dict[str, str], dict[str, str]]:
     """Return ``(name -> unit, name -> frequency)`` maps for the DAG's nodes.
 
     Both are read off node *signatures* via

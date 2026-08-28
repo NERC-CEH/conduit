@@ -12,8 +12,6 @@ code it reuses is ``unstack_if_gridded`` from the IO layer, so the on-disk
 grid/CRS layout matches exactly what ``conduit.io.load_inputs`` reads back.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 import xarray as xr

@@ -7,14 +7,11 @@ content-based fingerprint for ``xarray.DataArray`` instead, so cache keys are st
 across runs and processes and sensitive to changes in the underlying data.
 """
 
-from typing import TYPE_CHECKING
-
 import xarray as xr
 from hamilton import driver
 from hamilton.caching import fingerprinting
 
-if TYPE_CHECKING:
-    from conduit.specs import CacheSpec
+from .specs import CacheSpec
 
 
 @fingerprinting.hash_value.register(xr.DataArray)
@@ -39,7 +36,7 @@ def _hash_dataarray(obj: xr.DataArray, *args, depth: int = 0, **kwargs) -> str:
     return fingerprinting.hash_value(parts, depth=depth)
 
 
-def apply_cache(builder: "driver.Builder", cache: "CacheSpec") -> "driver.Builder":
+def apply_cache(builder: driver.Builder, cache: CacheSpec) -> driver.Builder:
     """Enable Hamilton caching on a Builder according to a CacheSpec."""
     kwargs: dict = {"path": cache.path}
     if cache.recompute:

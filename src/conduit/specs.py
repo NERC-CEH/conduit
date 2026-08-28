@@ -9,7 +9,7 @@ time with a message naming the section, never later inside a DAG node.
 
 import keyword
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, Self, cast
 
 from .errors import ConduitValueError
 
@@ -52,7 +52,7 @@ class ResampleSpec:
     aggfunc: str = "mean"
 
     @classmethod
-    def from_config(cls, entry: dict) -> "ResampleSpec":
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [[resample]] TOML entry."""
         aggfunc = entry.get("aggfunc", "mean")
         if aggfunc not in _VALID_AGGFUNCS:
@@ -130,7 +130,7 @@ class NodeSpec:
     passthrough: bool = False
 
     @classmethod
-    def from_config(cls, entry: dict) -> "NodeSpec":
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw (expanded) [[node]] TOML entry."""
         name = entry.get("name")
         _assert_node_identifier(name, "name", name)
@@ -204,7 +204,7 @@ class CacheSpec:
     disable: bool | list[str] = field(default_factory=list)
 
     @classmethod
-    def from_config(cls, entry: dict) -> "CacheSpec":
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [cache] TOML entry."""
 
         def _coerce(key: str) -> bool | list[str]:
@@ -250,7 +250,7 @@ class BlockingSpec:
     dim: str = "pixel"
 
     @classmethod
-    def from_config(cls, entry: dict, default_dim: str = "pixel") -> "BlockingSpec":
+    def from_config(cls, entry: dict, default_dim: str = "pixel") -> Self:
         """Construct and validate from a raw [blocking] TOML entry."""
         block_size = entry.get("block_size")
         if not isinstance(block_size, int) or block_size < 1:
@@ -284,7 +284,7 @@ class SubsetSpec:
     dim: str = "pixel"
 
     @classmethod
-    def from_config(cls, entry: dict, default_dim: str = "pixel") -> "SubsetSpec":
+    def from_config(cls, entry: dict, default_dim: str = "pixel") -> Self:
         """Construct and validate from a raw [subset] TOML entry."""
 
         def _index(key: str) -> int:

@@ -102,3 +102,24 @@ class TestTyperIsConfinedToTheCli:
             "assert conduit.run and conduit.dry_run and conduit.build_graph"
         )
         assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+class TestOptionalExtrasStayUnimported:
+    """`import conduit` must not pull in a package from an optional extra.
+
+    `build_graph` is re-exported from the package root, so `conduit.graph` is
+    imported on every `import conduit`. Its graphviz import is therefore confined
+    to a ``TYPE_CHECKING`` block, and this is what keeps it there.
+    """
+
+    @pytest.mark.parametrize("package", ["graphviz", "rioxarray", "pyproj"])
+    def test_importing_conduit_does_not_load(self, package):
+        code = (
+            "import sys, conduit; "
+            f"loaded = [m for m in sys.modules if m.split('.')[0] == {package!r}]; "
+            "assert not loaded, loaded"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr

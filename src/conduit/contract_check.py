@@ -43,11 +43,11 @@ its own output frequency instead, making it an ordinary producer for that one fa
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import combinations
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import xarray as xr
-from hamilton import graph_types
-from xarray_annotated import declarations_from_signature
+from hamilton import driver, graph_types
+from xarray_annotated import Declared, declarations_from_signature
 from xarray_annotated.schema import check_schema, dims_compatible, dtype_compatible
 from xarray_annotated.schema import get_policy as schema_get_policy
 from xarray_annotated.temporal import check_freq, freq_compatible
@@ -56,10 +56,6 @@ from xarray_annotated.units import check_units, units_compatible, units_equal
 from xarray_annotated.units import get_policy as units_get_policy
 
 from .errors import ConduitValueError
-
-if TYPE_CHECKING:
-    from hamilton import driver
-    from xarray_annotated import Declared
 
 # Facet map keys, in a stable order (units first so its messages/behaviour match
 # the original units-only checker).
@@ -192,7 +188,7 @@ _Maps = dict[str, tuple[_Produced, _Consumed]]
 # ---------------------------------------------------------------------------
 
 
-def _originating_functions(hg: "graph_types.HamiltonGraph") -> list[Any]:
+def _originating_functions(hg: graph_types.HamiltonGraph) -> list[Any]:
     """Return the unique originating functions across all nodes, first-seen order."""
     seen: set[int] = set()
     funcs: list[Any] = []
@@ -204,7 +200,7 @@ def _originating_functions(hg: "graph_types.HamiltonGraph") -> list[Any]:
     return funcs
 
 
-def _passthrough_edges(hg: "graph_types.HamiltonGraph") -> dict[str, str]:
+def _passthrough_edges(hg: graph_types.HamiltonGraph) -> dict[str, str]:
     """Passthrough node name -> its single source name.
 
     A passthrough node (tagged ``conduit_passthrough``, e.g. a ``[[resample]]``
@@ -237,7 +233,7 @@ def _record(
             cons_map.setdefault(name, []).append((value, label))
 
 
-def _collect_contract_maps(dr: "driver.Driver") -> tuple[_Maps, dict[str, str]]:
+def _collect_contract_maps(dr: driver.Driver) -> tuple[_Maps, dict[str, str]]:
     """Read declared contracts off the built DAG's node signatures, per facet.
 
     Returns ``(maps, passthrough_edges)`` where ``maps[facet]`` is
@@ -301,7 +297,7 @@ def _propagate_backward(
 # ---------------------------------------------------------------------------
 
 
-def _check_dag(dr: "driver.Driver", facets: tuple[_Facet, ...]) -> None:
+def _check_dag(dr: driver.Driver, facets: tuple[_Facet, ...]) -> None:
     maps, passthrough_edges = _collect_contract_maps(dr)
     findings: list[str] = []
     for facet in facets:
@@ -341,7 +337,7 @@ def _check_dag(dr: "driver.Driver", facets: tuple[_Facet, ...]) -> None:
 
 
 def _check_inputs(
-    dr: "driver.Driver", inputs: dict[str, Any], facets: tuple[_Facet, ...]
+    dr: driver.Driver, inputs: dict[str, Any], facets: tuple[_Facet, ...]
 ) -> None:
     maps, passthrough_edges = _collect_contract_maps(dr)
     for facet in facets:
@@ -363,7 +359,7 @@ def _check_inputs(
             facet.runtime_check(value, decls, name)
 
 
-def check_dag_contracts(dr: "driver.Driver") -> None:
+def check_dag_contracts(dr: driver.Driver) -> None:
     """Verify declared contracts are consistent across every built-DAG edge.
 
     Runs the build-time edge check for all facets (units, dims, dtype, freq; coords
@@ -375,7 +371,7 @@ def check_dag_contracts(dr: "driver.Driver") -> None:
     _check_dag(dr, _FACETS)
 
 
-def check_input_contracts(dr: "driver.Driver", inputs: dict[str, Any]) -> None:
+def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     """Validate loaded inputs' metadata against the contracts declared for them.
 
     The runtime leg that cannot be done statically, run for every facet: an input's

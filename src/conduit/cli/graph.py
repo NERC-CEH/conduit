@@ -13,6 +13,9 @@ import typer
 from ..graph import build_graph
 
 if TYPE_CHECKING:
+    # graphviz ships in the optional `viz` extra, and `conduit.build_graph` is
+    # re-exported from the package root, so importing it here would make
+    # `import conduit` fail for anyone who did not install that extra.
     import graphviz
 
 app = typer.Typer(help="Visualise a pipeline defined in a configuration file.")

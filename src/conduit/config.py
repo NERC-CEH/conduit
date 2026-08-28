@@ -222,7 +222,7 @@ class Config:
             specs.append(spec)
         return specs
 
-    def _parse_cache(self, data: dict) -> "CacheSpec | None":
+    def _parse_cache(self, data: dict) -> CacheSpec | None:
         """Handle the [cache] section.
 
         Returns None if there is no [cache] section, or if it sets
@@ -246,7 +246,7 @@ class Config:
         """
         return assert_dim_name(data.pop("point_dim", DEFAULT_POINT_DIM), "'point_dim'")
 
-    def _parse_blocking(self, data: dict, point_dim: str) -> "BlockingSpec | None":
+    def _parse_blocking(self, data: dict, point_dim: str) -> BlockingSpec | None:
         """Handle the [blocking] section.
 
         Returns None if there is no [blocking] section.
@@ -256,7 +256,7 @@ class Config:
             return None
         return BlockingSpec.from_config(entry, default_dim=point_dim)
 
-    def _parse_subset(self, data: dict, point_dim: str) -> "SubsetSpec | None":
+    def _parse_subset(self, data: dict, point_dim: str) -> SubsetSpec | None:
         """Handle the [subset] section.
 
         Returns None if there is no [subset] section.
@@ -329,7 +329,7 @@ class Config:
             specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
         return specs
 
-    def _parse_annotations(self, data: dict) -> "AnnotationPolicySpec":
+    def _parse_annotations(self, data: dict) -> AnnotationPolicySpec:
         """Handle the [annotations] section.
 
         Maps the section's keys to the xarray-annotated policy axes:

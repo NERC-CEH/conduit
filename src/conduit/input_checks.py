@@ -13,7 +13,7 @@ contract instead, not a check.
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -21,9 +21,7 @@ import xarray as xr
 
 from .errors import ConduitValueError
 from .io import time_dims
-
-if TYPE_CHECKING:
-    from .specs import CheckSpec
+from .specs import CheckSpec
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +199,7 @@ CHECKS: dict[str, Check] = {
 
 
 def run_input_checks(
-    raw_datasets: dict[str, xr.Dataset], checks: "list[CheckSpec]"
+    raw_datasets: dict[str, xr.Dataset], checks: list[CheckSpec]
 ) -> None:
     """Apply each `CheckSpec` to the loaded raw Datasets, aggregating failures.
 

@@ -16,14 +16,11 @@ It reads the graph structure only, so it needs no compute.
 """
 
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from hamilton import graph_types
+from hamilton import driver, graph_types
 
 from .errors import ConduitValueError
-
-if TYPE_CHECKING:
-    from hamilton import driver
 
 
 class WiringWarning(UserWarning):
@@ -31,7 +28,7 @@ class WiringWarning(UserWarning):
 
 
 def _required_external_inputs(
-    dr: "driver.Driver", final_vars: list[str]
+    dr: driver.Driver, final_vars: list[str]
 ) -> tuple[set[str], set[str]]:
     """Return ``(required_external, all_external)`` names upstream of ``final_vars``.
 
@@ -53,7 +50,7 @@ def _required_external_inputs(
 
 
 def check_wiring(
-    dr: "driver.Driver",
+    dr: driver.Driver,
     final_vars: list[str],
     inputs: dict[str, Any],
     *,

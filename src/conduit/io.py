@@ -376,7 +376,7 @@ def save_outputs(
     return written
 
 
-def _subset_format(path: str, label: str) -> "Format":
+def _subset_format(path: str, label: str) -> Format:
     """Return the `Format` for a ``[subset]`` output, or raise if it cannot be one."""
     fmt = format_for(path, writable=True)
     if not fmt.supports_subset:

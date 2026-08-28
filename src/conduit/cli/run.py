@@ -8,15 +8,13 @@ a handler that prints the library's progress logging as a run reaches it.
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import typer
 
+from ..pipeline import DryRunReport, RunReport
 from ..pipeline import dry_run as _dry_run
 from ..pipeline import run as _run
-
-if TYPE_CHECKING:
-    from ..pipeline import DryRunReport, RunReport
 
 app = typer.Typer(help="Execute a pipeline defined in a configuration file.")
 
@@ -94,7 +92,7 @@ def _echo_progress_as_it_happens() -> None:
     logger.setLevel(logging.INFO)
 
 
-def _echo_run(report: "RunReport") -> None:
+def _echo_run(report: RunReport) -> None:
     """Print what a run wrote, then how long the whole thing took."""
     if not report.outputs:
         # A config with no outputs is a legitimate checks-only invocation (it still
@@ -137,7 +135,7 @@ def _format_size(size_bytes: int) -> str:
     raise AssertionError("unreachable")
 
 
-def _echo_report(report: "DryRunReport") -> None:
+def _echo_report(report: DryRunReport) -> None:
     """Print a `DryRunReport` as the per-stage summary, with findings indented under.
 
     ``typer.echo`` strips the escape codes when stdout is not a terminal, so piped

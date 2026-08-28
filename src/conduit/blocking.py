@@ -6,19 +6,14 @@ that dimension. Peak memory is bounded to a small multiple of one block's
 footprint.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import xarray as xr
+from hamilton import driver
 
 from .errors import ConduitValueError
-
-if TYPE_CHECKING:
-    from hamilton import driver
-
-    from conduit.specs import BlockingSpec
+from .specs import BlockingSpec
 
 
 def _block_input_names(inputs: dict[str, Any], dim: str = "pixel") -> list[str]:

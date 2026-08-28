@@ -3,15 +3,13 @@
 import sys
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
 from .errors import ConduitValueError
-
-if TYPE_CHECKING:
-    from conduit.specs import CacheSpec, NodeSpec
+from .specs import CacheSpec, NodeSpec
 
 # Built-in DAG module addressable by a short name in config. Every other section
 # is loaded by its dotted `_import_path`, so user-defined modules are first-class
@@ -26,8 +24,8 @@ def build_driver(
     modules: list[str],
     config: dict[str, Any],
     allow_module_overrides: bool = False,
-    cache: "CacheSpec | None" = None,
-    node_specs: "list[NodeSpec] | None" = None,
+    cache: CacheSpec | None = None,
+    node_specs: list[NodeSpec] | None = None,
 ) -> driver.Driver:
     """Build a Hamilton driver from a list of module names and config.
 
