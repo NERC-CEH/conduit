@@ -1,10 +1,10 @@
-"""Tests for conduit.dag.driver — build_driver wiring."""
+"""Tests for conduit.build — build_driver wiring."""
 
 import pytest
 from hamilton import driver
 
+from conduit.build import build_driver
 from conduit.config import Config, NodeSpec
-from conduit.dag.driver import build_driver
 
 
 class TestBuildDriverReturnType:

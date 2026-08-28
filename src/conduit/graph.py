@@ -26,11 +26,11 @@ from typing import TYPE_CHECKING
 from hamilton import graph_types
 from xarray_annotated import declarations_from_signature
 
-from .dag.driver import build_driver
+from .build import build_driver
 from .errors import ConduitValueError
 from .graph_style import FREQ_COLOR_CYCLE, GraphvizSpec, load_graphviz_spec
 from .io import get_final_vars
-from .pipeline import ConfigSource, _prepare
+from .pipeline import ConfigSource, prepare_config
 
 if TYPE_CHECKING:
     import graphviz
@@ -374,7 +374,7 @@ def build_graph(
     ---------
     This requires the ``viz`` extra (``pip install conduit[viz]``).
     """
-    parsed, _ = _prepare(config)
+    parsed, _ = prepare_config(config)
     spec = load_graphviz_spec(Path(style) if style is not None else None)
 
     dr = build_driver(

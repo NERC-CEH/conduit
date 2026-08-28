@@ -222,7 +222,7 @@ class TestValidation:
         config = Config({"mymodel": {"_import_path": "no_such_pkg.mod"}})
 
         def _build():
-            from conduit.dag.driver import build_driver
+            from conduit.build import build_driver
 
             parsed = config.parse()
             build_driver(

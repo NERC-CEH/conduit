@@ -75,13 +75,13 @@ class ResampleSpec:
 def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
     """Reject a node name / input that is unsafe to interpolate into node source.
 
-    `conduit.dag.node` builds each node's ``def`` line by string formatting, so a
+    `conduit.nodegen` builds each node's ``def`` line by string formatting, so a
     name that is not a plain Python identifier fails as an opaque ``SyntaxError``
     deep in module generation (or, worse, injects statements). The generated
     module's own namespace names are reserved too: a node called ``xr`` would
     shadow the helper for every later node's expression.
     """
-    from .dag.node import RESERVED_NODE_NAMES
+    from .nodegen import RESERVED_NODE_NAMES
 
     where = f"[[node]] '{node_name}' {field_}"
     if not isinstance(value, str) or not value.isidentifier():
@@ -107,7 +107,7 @@ class NodeSpec:
     contract: validated and stamped at runtime, and read by the build-time check.
     ``passthrough`` instead declares no fixed contract and tags the node so the check
     propagates its input's declaration across it — per facet, so ``freq`` may still be
-    declared. See `conduit.dag.contract_check` for what propagation means.
+    declared. See `conduit.contract_check` for what propagation means.
     """
 
     name: str

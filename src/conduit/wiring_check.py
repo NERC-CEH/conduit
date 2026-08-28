@@ -1,6 +1,6 @@
 """Before-compute validation of the file<->node wiring.
 
-The contract check (`conduit.dag.contract_check`) covers the *declared* contracts;
+The contract check (`conduit.contract_check`) covers the *declared* contracts;
 this covers the *wiring*. It compares the external inputs the built DAG requires (to
 produce the requested ``final_vars``) against the inputs actually loaded from the
 config, and reports the two failure modes that otherwise only surface part way
@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from hamilton import graph_types
 
-from ..errors import ConduitValueError
+from .errors import ConduitValueError
 
 if TYPE_CHECKING:
     from hamilton import driver

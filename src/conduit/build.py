@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from ..errors import ConduitValueError
+from .errors import ConduitValueError
 
 if TYPE_CHECKING:
     from conduit.specs import CacheSpec, NodeSpec
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 # and treated no differently. ("node" is handled specially in build_driver, which
 # generates it from the config's node_specs; [[resample]] desugars to node specs.)
 MODULES: dict[str, str] = {
-    "node": "conduit.dag.node",
+    "node": "conduit.nodegen",
 }
 
 
@@ -55,7 +55,7 @@ def build_driver(
     config = dict(config)
     config[ENABLE_POWER_USER_MODE] = True
 
-    from conduit.dag.node import make_node_module
+    from .nodegen import make_node_module
 
     if "node" in modules and not node_specs:
         raise ConduitValueError(
@@ -97,7 +97,7 @@ def build_driver(
         dr = dr.allow_module_overrides()
 
     if cache is not None:
-        from conduit.dag.caching import apply_cache
+        from .caching import apply_cache
 
         dr = apply_cache(dr, cache)
 
@@ -106,7 +106,7 @@ def build_driver(
     # The flagship guarantee: every declared contract on the whole DAG is checked
     # here, before any compute. A no-op when the policy is "off", so pipelines that
     # opt out of contract handling are unaffected.
-    from conduit.dag.contract_check import check_dag_contracts
+    from .contract_check import check_dag_contracts
 
     check_dag_contracts(built)
 

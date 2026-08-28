@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import xarray as xr
 
-from ..errors import ConduitValueError
+from .errors import ConduitValueError
 
 if TYPE_CHECKING:
     from hamilton import driver

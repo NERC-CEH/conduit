@@ -438,7 +438,7 @@ def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
 
     The geospatial ``latitude`` / ``longitude`` arrays are computed from the input
     files' CRS, so a pipeline may legitimately ignore them. The wiring check
-    (`conduit.dag.wiring_check.check_wiring`) excludes them from its "unused
+    (`conduit.wiring_check.check_wiring`) excludes them from its "unused
     input" diagnostic.
     """
     return {"latitude", "longitude"} & set(inputs)

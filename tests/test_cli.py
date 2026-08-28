@@ -5,7 +5,6 @@ behaviour itself is tested in ``test_pipeline.py`` and ``test_graph.py``. What i
 left here is the part only the command can get wrong.
 """
 
-import pathlib
 import shutil
 import sys
 from types import SimpleNamespace
@@ -65,44 +64,13 @@ class TestGriddedGeoExtraGuard:
         assert "rioxarray" in result.output
 
 
-class TestTyperIsConfinedToTheCli:
-    """No conduit module outside ``conduit.cli`` may import typer.
+class TestMissingTyperExtra:
+    """Without the extra, `conduit` must explain itself, not traceback.
 
-    typer ships in the optional ``cli`` extra, so a library import that reached
-    for it would break every install that did not ask for the CLI — and would
-    quietly re-establish the CLI as the place logic lives.
+    The import boundary itself is checked in ``test_layout.py``.
     """
 
-    def test_no_library_module_imports_typer(self):
-        import importlib.util
-        import pkgutil
-
-        import conduit
-
-        offenders = []
-        for mod in pkgutil.walk_packages(conduit.__path__, "conduit."):
-            if mod.name.startswith("conduit.cli") or mod.name.endswith(".cli"):
-                continue
-            source = importlib.util.find_spec(mod.name)
-            assert source is not None
-            assert source.origin is not None
-            text = pathlib.Path(source.origin).read_text()
-            if "import typer" in text:
-                offenders.append(mod.name)
-        assert not offenders, offenders
-
-    def test_import_conduit_needs_no_typer(self):
-        import subprocess
-
-        code = (
-            "import sys; sys.modules['typer'] = None; "
-            "import conduit; "
-            "assert conduit.run and conduit.dry_run and conduit.build_graph"
-        )
-        assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
-
     def test_entry_point_hints_at_the_extra(self, monkeypatch, capsys):
-        """Without the extra, `conduit` must explain itself, not traceback."""
         import builtins
 
         real_import = builtins.__import__

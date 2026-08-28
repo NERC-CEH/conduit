@@ -25,9 +25,9 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 from xarray_annotated.temporal import Freq, FreqError, FreqWarning
 from xarray_annotated.units import policy
 
+from conduit.build import build_driver
 from conduit.config import Config, NodeSpec, ResampleSpec, resample_to_node_entry
-from conduit.dag.contract_check import check_dag_contracts, check_input_contracts
-from conduit.dag.driver import build_driver
+from conduit.contract_check import check_dag_contracts, check_input_contracts
 
 
 def _series(freq: str, periods: int = 10, start: str = "2020-01-01") -> xr.DataArray:

@@ -1,4 +1,4 @@
-"""Tests for conduit.dag.node — runtime-generated Hamilton modules."""
+"""Tests for conduit.nodegen — runtime-generated Hamilton modules."""
 
 import sys
 import types
@@ -7,7 +7,7 @@ import xarray as xr
 from xarray_annotated.units import policy, units_from_signature
 
 from conduit.config import NodeSpec
-from conduit.dag.node import (
+from conduit.nodegen import (
     RESERVED_NODE_NAMES,
     _build_fn_code,
     _node_namespace,

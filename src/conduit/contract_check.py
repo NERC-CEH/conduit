@@ -28,7 +28,7 @@ Two distinctions fall out of that table:
   adopt the check without a wave of false positives.
 
 **Passthrough propagation.** A node with no declared producer contract breaks the
-edge chain. A node tagged *passthrough* (`conduit.dag.node.PASSTHROUGH_TAG`)
+edge chain. A node tagged *passthrough* (`conduit.nodegen.PASSTHROUGH_TAG`)
 preserves its input's contract, so a declaration is propagated across it — forward
 for the DAG check, backward for the input check. A non-passthrough ``[[node]]`` may
 transform its input arbitrarily, so nothing is propagated and it falls back to the
@@ -55,7 +55,7 @@ from xarray_annotated.temporal import get_policy as temporal_get_policy
 from xarray_annotated.units import check_units, units_compatible, units_equal
 from xarray_annotated.units import get_policy as units_get_policy
 
-from ..errors import ConduitValueError
+from .errors import ConduitValueError
 
 if TYPE_CHECKING:
     from hamilton import driver
@@ -212,7 +212,7 @@ def _passthrough_edges(hg: "graph_types.HamiltonGraph") -> dict[str, str]:
     propagated across it. Any node so tagged with exactly one dependency qualifies —
     no module is special-cased.
     """
-    from conduit.dag.node import PASSTHROUGH_TAG
+    from .nodegen import PASSTHROUGH_TAG
 
     return {
         node.name: next(iter(node.required_dependencies))

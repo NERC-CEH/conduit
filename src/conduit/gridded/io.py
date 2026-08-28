@@ -345,7 +345,7 @@ def create_output_store(
     """
     import dask.array as da
 
-    from ..dag.driver import build_driver
+    from ..build import build_driver
     from ..io import get_final_vars, load_inputs, subset_inputs, var_mapping
 
     zarr_specs = {

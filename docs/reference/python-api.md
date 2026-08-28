@@ -25,7 +25,7 @@ Taking the steps yourself lets you inspect individual nodes, override values bet
 | [`Config`](modules/conduit.config.md#conduit.config.Config) | A config as a Python dict, or loaded from a file. `.parse()` validates it. |
 | [`load_config`](modules/conduit.config.md#conduit.config.load_config) | Load and parse a TOML file in one call. |
 | [`ParsedConfig`](modules/conduit.specs.md#conduit.specs.ParsedConfig) | What you get back: one spec per config section. |
-| [`build_driver`](modules/conduit.dag.driver.md#conduit.dag.driver.build_driver) | Build the Hamilton driver, and run the contract check. |
+| [`build_driver`](modules/conduit.build.md#conduit.build.build_driver) | Build the Hamilton driver, and run the contract check. |
 | [`load_inputs`](modules/conduit.io.md#conduit.io.load_inputs) | Open the input files, keyed by node name. |
 | [`get_final_vars`](modules/conduit.io.md#conduit.io.get_final_vars) | The node names to ask `dr.execute` for. |
 | [`get_outputs`](modules/conduit.io.md#conduit.io.get_outputs) | Merge the executed nodes into per-section datasets. |
@@ -42,35 +42,42 @@ See [its API reference](https://jmarshrossney.github.io/xarray-annotated/api/pac
 Each module's docstring, rendered in full, along with the signatures of everything public in it.
 Read here when you are building on conduit rather than with it — writing a check, driving Hamilton yourself, adding a file format, or working out what a spec holds.
 
-### Core
+### Config and data
 
 | Module | Contents |
 | --- | --- |
-| [`conduit.pipeline`](modules/conduit.pipeline.md) | `run` and `dry_run`, and the reports they return. |
 | [`conduit.config`](modules/conduit.config.md) | TOML file to `ParsedConfig`: section dispatch, fan-out expansion, path resolution. |
 | [`conduit.specs`](modules/conduit.specs.md) | One dataclass per config section, each validating itself. |
 | [`conduit.io`](modules/conduit.io.md) | Loading inputs and saving outputs, outside the DAG. |
 | [`conduit.formats`](modules/conduit.formats.md) | The file-format registry: which reader, which writer, what a format supports. |
-| [`conduit.checks`](modules/conduit.checks.md) | Input-compatibility predicates, the `CHECKS` registry, and the runner. |
-| [`conduit.transforms`](modules/conduit.transforms.md) | Functions that `[[node]]` and preset config can apply to a node's inputs. |
 
-### Graph
+### The DAG
+
+Everything that touches a Hamilton `Driver` or graph object.
 
 | Module | Contents |
 | --- | --- |
+| [`conduit.build`](modules/conduit.build.md) | Building Hamilton drivers from configured module lists. |
+| [`conduit.nodegen`](modules/conduit.nodegen.md) | Generating Hamilton modules from `[[node]]` entries. |
+| [`conduit.transforms`](modules/conduit.transforms.md) | Functions that `[[node]]` and preset config can apply to a node's inputs. |
+| [`conduit.caching`](modules/conduit.caching.md) | Content-based cache keys for `xarray` objects. |
+| [`conduit.blocking`](modules/conduit.blocking.md) | Executing the driver one block of a dimension at a time. |
+
+### Validation
+
+| Module | Contents |
+| --- | --- |
+| [`conduit.contract_check`](modules/conduit.contract_check.md) | The whole-DAG, before-compute contract check. |
+| [`conduit.wiring_check`](modules/conduit.wiring_check.md) | Checking the required inputs against the ones the config loads. |
+| [`conduit.checks`](modules/conduit.checks.md) | Input-compatibility predicates, the `CHECKS` registry, and the runner. |
+
+### Running and visualising
+
+| Module | Contents |
+| --- | --- |
+| [`conduit.pipeline`](modules/conduit.pipeline.md) | `run` and `dry_run`, and the reports they return. |
 | [`conduit.graph`](modules/conduit.graph.md) | `build_graph`, and the frequency clustering and colouring it applies. |
 | [`conduit.graph_style`](modules/conduit.graph_style.md) | The `GraphvizSpec` defaults, and the TOML override `conduit graph --style` reads. |
-
-### DAG
-
-| Module | Contents |
-| --- | --- |
-| [`conduit.dag.driver`](modules/conduit.dag.driver.md) | Building Hamilton drivers from configured module lists. |
-| [`conduit.dag.node`](modules/conduit.dag/node.md) | Generating Hamilton modules from `[[node]]` entries. |
-| [`conduit.dag.contract_check`](modules/conduit.dag/contract_check.md) | The whole-DAG, before-compute contract check. |
-| [`conduit.dag.wiring_check`](modules/conduit.dag/wiring_check.md) | Checking the required inputs against the ones the config loads. |
-| [`conduit.dag.caching`](modules/conduit.dag/caching.md) | Content-based cache keys for `xarray` objects. |
-| [`conduit.dag.blocking`](modules/conduit.dag/blocking.md) | Executing the driver one block of a dimension at a time. |
 
 ### Gridded
 

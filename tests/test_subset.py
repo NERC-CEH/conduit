@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from conduit.build import build_driver
 from conduit.config import Config, IOSpec, SubsetSpec
-from conduit.dag.driver import build_driver
 from conduit.io import get_final_vars, load_inputs
 
 _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})

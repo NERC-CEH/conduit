@@ -69,7 +69,7 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
     `conduit.transforms.resample` to ``{v}_{source}``. The node is a **passthrough**
     but declares its own ``freq`` — the one facet a resample does not preserve — so
     every resample carries a checkable output-frequency contract, anchor included (a
-    fat-fingered ``W-WED`` is caught at build time). See `conduit.dag.contract_check`.
+    fat-fingered ``W-WED`` is caught at build time). See `conduit.contract_check`.
     """
     src = f"{{var}}_{spec.source}"
     return {

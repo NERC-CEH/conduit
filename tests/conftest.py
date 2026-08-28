@@ -6,8 +6,8 @@ import xarray as xr
 from synthetic_data import write_synthetic_inputs
 from xarray_annotated.units import set_policy
 
+from conduit.build import build_driver
 from conduit.config import load_config
-from conduit.dag.driver import build_driver
 from conduit.io import load_inputs
 
 multiprocessing.set_start_method("spawn", force=True)

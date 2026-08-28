@@ -14,12 +14,12 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 from xarray_annotated.schema import Coords, Dims, Dtype, SchemaError
 from xarray_annotated.units import declare_units, policy
 
+from conduit.build import build_driver
 from conduit.config import NodeSpec, ResampleSpec
-from conduit.dag.contract_check import (
+from conduit.contract_check import (
     check_dag_contracts,
     check_input_contracts,
 )
-from conduit.dag.driver import build_driver
 
 
 def _da():

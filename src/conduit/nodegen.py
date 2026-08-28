@@ -19,14 +19,14 @@ if TYPE_CHECKING:
 
 #: Hamilton tag marking a node whose output preserves its input's declared contract.
 #: The contract check reads it to propagate that declaration across the node — see
-#: `conduit.dag.contract_check` for the semantics (notably that it is per facet).
+#: `conduit.contract_check` for the semantics (notably that it is per facet).
 PASSTHROUGH_TAG = "conduit_passthrough"
 
 #: Names bound in every generated module's namespace, and therefore unusable as a
 #: node name or node input: a node called ``xr`` would shadow the helper for every
 #: later node's expression. `conduit.specs.NodeSpec.from_config` rejects them at
 #: parse time. Kept in step with `_node_namespace` by
-#: ``test_dag_node.py::test_reserved_names_match_generated_namespace``.
+#: ``test_nodegen.py::test_reserved_names_match_generated_namespace``.
 RESERVED_NODE_NAMES: frozenset[str] = frozenset(
     {"xr", "Any", "import_module", "__transforms"}
 )

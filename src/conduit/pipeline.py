@@ -19,10 +19,9 @@ from typing import Literal
 
 import xarray as xr
 
+from .blocking import execute_blocked
+from .build import build_driver
 from .config import load_config
-from .dag.blocking import execute_blocked
-from .dag.driver import build_driver
-from .dag.wiring_check import check_wiring
 from .io import (
     assert_output_paths_writable,
     auxiliary_input_names,
@@ -32,6 +31,7 @@ from .io import (
     save_outputs,
 )
 from .specs import CacheSpec, ParsedConfig
+from .wiring_check import check_wiring
 
 __all__ = ["DryRunReport", "RunReport", "Stage", "WrittenOutput", "dry_run", "run"]
 
@@ -41,12 +41,13 @@ logger = logging.getLogger(__name__)
 ConfigSource = str | Path | ParsedConfig
 
 
-def _prepare(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
+def prepare_config(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
     """Resolve a config source to a parsed config and its source path, if any.
 
-    The annotation policy is applied here rather than by each caller: it is global
-    state that every downstream contract check reads, so it must be in place before
-    inputs are loaded or a driver is built.
+    Accepts a path to a TOML file or an already-parsed `ParsedConfig`. Applies the
+    config's ``[annotations]`` policy before returning, so every contract check
+    downstream reads the policy the config asked for. The returned path is ``None``
+    for a `ParsedConfig`, which has no file to stamp provenance from.
     """
     if isinstance(config, ParsedConfig):
         parsed, config_file = config, None
@@ -125,7 +126,7 @@ def run(
     prints it.
     """
     started = time.perf_counter()
-    parsed, config_file = _prepare(config)
+    parsed, config_file = prepare_config(config)
     cache_spec = _resolve_cache(parsed.cache_spec, cache, cache_dir)
     if cache_spec is not None:
         logger.info("caching enabled: %s", cache_spec.path)
@@ -252,9 +253,9 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     Hard failures raise; soft issues follow the active policy and are collected
     into `Stage.findings`. No model runs and nothing is written.
     """
-    from .dag.contract_check import check_input_contracts
+    from .contract_check import check_input_contracts
 
-    parsed, config_file = _prepare(config)
+    parsed, config_file = prepare_config(config)
     stages: list[Stage] = [Stage("config", "ok", "config parsed")]
 
     inputs = load_inputs(

@@ -2,7 +2,7 @@
 
 Three layers:
 
-- direct tests of :func:`conduit.dag.contract_check.check_input_contracts` (the runtime,
+- direct tests of :func:`conduit.contract_check.check_input_contracts` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
 - direct tests of :func:`conduit.io.assert_output_paths_writable`;
@@ -22,11 +22,11 @@ from typer.testing import CliRunner
 from xarray_annotated.units import UnitsWarning, policy
 
 from conduit import dry_run
+from conduit.build import build_driver
 from conduit.checks import InputCheckError
 from conduit.cli.app import app
 from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
-from conduit.dag.contract_check import check_input_contracts
-from conduit.dag.driver import build_driver
+from conduit.contract_check import check_input_contracts
 from conduit.io import assert_output_paths_writable
 
 runner = CliRunner()
