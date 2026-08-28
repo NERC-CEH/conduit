@@ -58,7 +58,7 @@ from typing import Annotated
 
 import xarray as xr
 
-from conduit import declare_units
+from xarray_annotated.units import declare_units
 
 
 @declare_units

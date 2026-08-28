@@ -194,7 +194,7 @@ parsed.driver_config["scaling_factor"] = 2.0
 report = conduit.run(parsed)            # same run, with the spec tweaked first
 ```
 
-A [`RunReport`](../../reference/modules/conduit.pipeline.md) holds the datasets, one
+A [`RunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.RunReport) holds the datasets, one
 `WrittenOutput` per destination, and the elapsed time. Take the paths from `written`
 rather than from the config: a `[subset]` run suffixes them, so the file on disk is not
 always the one the config asked for.
@@ -209,7 +209,7 @@ logging.basicConfig(level=logging.INFO)
 ```
 
 `conduit.dry_run` validates the same pipeline without executing it and returns a
-[`DryRunReport`](../../reference/modules/conduit.pipeline.md) — the stage list `conduit run --dry-run`
+[`DryRunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.DryRunReport) — the stage list `conduit run --dry-run`
 prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
 `conduit graph` writes to disk, which renders inline in a notebook.
 
@@ -221,7 +221,7 @@ prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
 
 ## Where next
 
-- [Python API reference](../../reference/python-api.md) — signatures for every function used here.
+- [Python API](../../reference/python-api.md) — an index of every name used here, linking to its signature.
 - [Run and visualise](run-from-the-cli.md) — the CLI equivalent.
 - [Test your pipeline](../validate/test-your-pipeline.md) — these same calls, from a test.
 - [Configuration reference](../../reference/configuration.md) — the config schema.

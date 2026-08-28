@@ -12,7 +12,7 @@ from typing import Annotated
 
 import xarray as xr
 
-from conduit import declare_units
+from xarray_annotated.units import declare_units
 
 
 @declare_units
@@ -23,7 +23,8 @@ def aridity_index_daily(
     ...
 ```
 
-conduit checks every such claim across the whole graph before any node runs.
+The decorators and the markers below are [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated)'s, and its [API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) documents them in full.
+What conduit adds is checking every such claim across the whole graph before any node runs.
 This page is about writing them.
 For the pre-flight that runs the checks against your real files, see [Validate before running](../validate/validate-before-running.md).
 [Contracts and the whole-graph check](../../concepts/contracts.md) covers why a before-compute check is possible at all.
@@ -45,7 +46,8 @@ Every other facet uses a marker, so nothing needs disambiguating:
 from typing import Annotated
 
 import xarray as xr
-from conduit import Freq, declare_freq, declare_units
+from xarray_annotated.temporal import Freq, declare_freq
+from xarray_annotated.units import declare_units
 
 
 @declare_units
