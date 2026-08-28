@@ -7,12 +7,8 @@ import xarray as xr
 from xarray_annotated.units import policy, units_from_signature
 
 from conduit.config import NodeSpec
-from conduit.nodegen import (
-    RESERVED_NODE_NAMES,
-    _build_fn_code,
-    _node_namespace,
-    make_node_module,
-)
+from conduit.nodegen import _build_fn_code, _node_namespace, make_node_module
+from conduit.specs import RESERVED_NODE_NAMES
 
 
 def test_reserved_names_match_generated_namespace():

@@ -69,7 +69,7 @@ They are **opt-in.** Different time axes across inputs are perfectly normal — 
 forcing and a monthly boundary condition — so the `[validation]` block is where you state
 which relationships must hold. (The full check list and keyword arguments are in the
 [configuration reference](../../reference/configuration.md#validation); the predicates
-themselves are documented in [`conduit.checks`](../../reference/modules/conduit.checks.md).)
+themselves are documented in [`conduit.input_checks`](../../reference/modules/conduit.input_checks.md).)
 
 ## The wiring check
 

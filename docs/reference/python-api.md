@@ -69,7 +69,7 @@ Everything that touches a Hamilton `Driver` or graph object.
 | --- | --- |
 | [`conduit.contract_check`](modules/conduit.contract_check.md) | The whole-DAG, before-compute contract check. |
 | [`conduit.wiring_check`](modules/conduit.wiring_check.md) | Checking the required inputs against the ones the config loads. |
-| [`conduit.checks`](modules/conduit.checks.md) | Input-compatibility predicates, the `CHECKS` registry, and the runner. |
+| [`conduit.input_checks`](modules/conduit.input_checks.md) | Input-compatibility predicates, the `CHECKS` registry, and the runner. |
 
 ### Running and visualising
 

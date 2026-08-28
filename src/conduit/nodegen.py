@@ -5,7 +5,7 @@ import sys
 import types
 from dataclasses import astuple
 from importlib import import_module
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import xarray as xr
 from hamilton.function_modifiers import tag
@@ -14,22 +14,12 @@ from xarray_annotated.schema import declare_schema
 from xarray_annotated.temporal import declare_freq
 from xarray_annotated.units import declare_units
 
-if TYPE_CHECKING:
-    from conduit.specs import NodeSpec
+from .specs import NodeSpec
 
 #: Hamilton tag marking a node whose output preserves its input's declared contract.
 #: The contract check reads it to propagate that declaration across the node — see
 #: `conduit.contract_check` for the semantics (notably that it is per facet).
 PASSTHROUGH_TAG = "conduit_passthrough"
-
-#: Names bound in every generated module's namespace, and therefore unusable as a
-#: node name or node input: a node called ``xr`` would shadow the helper for every
-#: later node's expression. `conduit.specs.NodeSpec.from_config` rejects them at
-#: parse time. Kept in step with `_node_namespace` by
-#: ``test_nodegen.py::test_reserved_names_match_generated_namespace``.
-RESERVED_NODE_NAMES: frozenset[str] = frozenset(
-    {"xr", "Any", "import_module", "__transforms"}
-)
 
 
 def _node_namespace() -> dict[str, Any]:
@@ -44,7 +34,7 @@ def _node_namespace() -> dict[str, Any]:
     }
 
 
-def _module_name(node_specs: list["NodeSpec"]) -> str:
+def _module_name(node_specs: list[NodeSpec]) -> str:
     """Return a stable module name, keyed on the specs it is generated from.
 
     Hamilton requires the generated module to live in ``sys.modules`` (it resolves a
@@ -59,7 +49,7 @@ def _module_name(node_specs: list["NodeSpec"]) -> str:
     return f"conduit_node_generated_{hashlib.sha256(payload).hexdigest()[:12]}"
 
 
-def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
+def make_node_module(node_specs: list[NodeSpec]) -> types.ModuleType:
     """Generate a Hamilton-compatible module with one function per node spec.
 
     The node's *body* is built by ``exec`` (a ``[[node]]`` expression is arbitrary
@@ -83,7 +73,7 @@ def make_node_module(node_specs: list["NodeSpec"]) -> types.ModuleType:
     return mod
 
 
-def _decorate(fn: Any, spec: "NodeSpec") -> Any:
+def _decorate(fn: Any, spec: NodeSpec) -> Any:
     """Attach the node's declared output contract to the bare ``exec``'d function."""
     # A passthrough declares no contract of its own except its frequency (the one
     # facet it does not preserve), and is tagged for the check to propagate the rest.
@@ -115,7 +105,7 @@ def _decorate(fn: Any, spec: "NodeSpec") -> Any:
     return fn
 
 
-def _build_fn_code(spec: "NodeSpec") -> str:
+def _build_fn_code(spec: NodeSpec) -> str:
     """Return source for the bare node function (params + body, no decorators)."""
     params = ", ".join(f"{inp}: Any" for inp in spec.inputs)
     if spec.expression is not None:

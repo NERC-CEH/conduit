@@ -17,6 +17,15 @@ _VALID_AGGFUNCS: frozenset[str] = frozenset(
     {"mean", "sum", "max", "min", "first", "last"}
 )
 
+#: Node names and node inputs a config may not use. Each one names a helper bound
+#: in every generated node module's namespace, so a node called ``xr`` would shadow
+#: that helper for every later node's expression. `conduit.nodegen` binds them and
+#: `NodeSpec.from_config` rejects them at parse time; the two are kept in step by
+#: ``test_nodegen.py::test_reserved_names_match_generated_namespace``.
+RESERVED_NODE_NAMES: frozenset[str] = frozenset(
+    {"xr", "Any", "import_module", "__transforms"}
+)
+
 
 # ---------------------------------------------------------------------------
 # Spec dataclasses (the parsed data model)
@@ -81,8 +90,6 @@ def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
     module's own namespace names are reserved too: a node called ``xr`` would
     shadow the helper for every later node's expression.
     """
-    from .nodegen import RESERVED_NODE_NAMES
-
     where = f"[[node]] '{node_name}' {field_}"
     if not isinstance(value, str) or not value.isidentifier():
         raise ConduitValueError(
@@ -431,7 +438,7 @@ class AnnotationPolicySpec:
 class CheckSpec:
     """One entry of ``[validation].checks``: a named input-compatibility check.
 
-    ``check`` is a key in `conduit.checks.CHECKS`; ``inputs`` are the resolved
+    ``check`` is a key in `conduit.input_checks.CHECKS`; ``inputs`` are the resolved
     ``[inputs.*]`` section labels to pass (``["*"]`` already expanded at parse
     time); ``kwargs`` are the remaining inline-table keys forwarded verbatim.
     """

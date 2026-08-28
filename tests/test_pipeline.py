@@ -9,8 +9,8 @@ import pytest
 import xarray as xr
 
 from conduit import run
-from conduit.checks import InputCheckError
 from conduit.config import load_config
+from conduit.input_checks import InputCheckError
 
 
 def _config(tmp_path, synthetic_data_dir, out, extra=""):

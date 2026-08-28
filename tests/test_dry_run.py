@@ -23,10 +23,10 @@ from xarray_annotated.units import UnitsWarning, policy
 
 from conduit import dry_run
 from conduit.build import build_driver
-from conduit.checks import InputCheckError
 from conduit.cli.app import app
 from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
 from conduit.contract_check import check_input_contracts
+from conduit.input_checks import InputCheckError
 from conduit.io import assert_output_paths_writable
 
 runner = CliRunner()
@@ -397,7 +397,7 @@ class TestDryRunCLI:
 
 
 # ---------------------------------------------------------------------------
-# [validation] input checks (conduit.checks) through the dry run
+# [validation] input checks (conduit.input_checks) through the dry run
 # ---------------------------------------------------------------------------
 
 

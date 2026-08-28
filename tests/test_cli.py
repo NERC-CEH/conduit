@@ -13,7 +13,6 @@ import pytest
 from typer.testing import CliRunner
 
 from conduit._version import __version__
-from conduit.checks import InputCheckError
 from conduit.cli import main
 from conduit.cli.app import _prepare_import_path, app
 from conduit.errors import (
@@ -22,6 +21,7 @@ from conduit.errors import (
     ConduitPermissionError,
     ConduitValueError,
 )
+from conduit.input_checks import InputCheckError
 
 runner = CliRunner()
 

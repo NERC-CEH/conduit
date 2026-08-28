@@ -101,7 +101,7 @@ def time_subset(*datasets: xr.Dataset) -> None:
 #
 # Every conduit.gridded import below sits inside a function body so that importing
 # this module stays free of the optional geo extra. Keep them there: hoisting one
-# to the top would make `import conduit.checks` require rioxarray/pyproj.
+# to the top would make `import conduit.input_checks` require rioxarray/pyproj.
 # ---------------------------------------------------------------------------
 
 

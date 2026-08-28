@@ -13,9 +13,9 @@ from typing import Any, Self
 
 import tomli_w
 
-from .checks import CHECKS
 from .errors import ConduitValueError
 from .formats import DEFAULT_POINT_DIM
+from .input_checks import CHECKS
 from .specs import (
     AnnotationPolicySpec,
     BlockingSpec,
@@ -434,7 +434,8 @@ class Config:
                             table/scalar inputs (see conduit.formats)
         - [inputs.*]      — I/O specs; freq derived from subsection key
         - [validation]    — declared expectations to validate; `checks` holds the
-                            input-Dataset compatibility checks (see conduit.checks)
+                            input-Dataset compatibility checks
+                            (see conduit.input_checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
         - [[resample]]    — preset desugaring to fan-out passthrough nodes

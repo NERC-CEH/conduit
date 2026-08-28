@@ -386,7 +386,7 @@ def _run_input_checks(parsed: ParsedConfig) -> int:
     Returns the number of checks run (0 if none configured). Under ``[subset]``
     the checks operate on a pixel slice rather than the full domain, so they are
     skipped with a warning recommending a full-domain dry run. A failure raises
-    `conduit.checks.InputCheckError`.
+    `conduit.input_checks.InputCheckError`.
     """
     if not parsed.checks:
         return 0
@@ -397,7 +397,7 @@ def _run_input_checks(parsed: ParsedConfig) -> int:
             stacklevel=2,
         )
         return 0
-    from .checks import run_input_checks
+    from .input_checks import run_input_checks
     from .io import load_raw_datasets
 
     run_input_checks(

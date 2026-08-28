@@ -308,7 +308,7 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks are an importable library ([`conduit.checks`](modules/conduit.checks.md)), so
+The checks are an importable library ([`conduit.input_checks`](modules/conduit.input_checks.md)), so
 the [notebook-driven path](../guides/run/drive-from-python.md) can call them directly.
 They are **opt-in**: conduit cannot know which inputs are *meant* to align, so declare the
 ones that must. Under [`[subset]`](#subset) they are skipped with a warning, since they

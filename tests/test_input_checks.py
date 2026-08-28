@@ -1,11 +1,12 @@
-"""Tests for the input-Dataset compatibility suite (`conduit.checks`)."""
+"""Tests for the input-Dataset compatibility suite (`conduit.input_checks`)."""
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-from conduit.checks import (
+from conduit.config import CheckSpec
+from conduit.input_checks import (
     CHECKS,
     InputCheckError,
     coords_equal,
@@ -15,7 +16,6 @@ from conduit.checks import (
     time_equal,
     time_subset,
 )
-from conduit.config import CheckSpec
 
 
 def _ts_ds(times, name="v"):
