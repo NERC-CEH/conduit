@@ -322,8 +322,8 @@ def save_outputs(
     subset_spec: SubsetSpec | None = None,
     provenance: dict[str, str] | None = None,
     point_dim: str = DEFAULT_POINT_DIM,
-) -> None:
-    """Write each output section's Dataset to disk.
+) -> dict[str, Path]:
+    """Write each output section's Dataset to disk, returning where each went.
 
     Parameters
     ----------
@@ -345,13 +345,22 @@ def save_outputs(
     point_dim:
         Name of the size-1 point axis to squeeze out when writing a CSV/Parquet
         output. Typically ``parsed_config.point_dim``.
+
+    Returns
+    -------
+    dict
+        The path actually written for each section label. Under ``[subset]`` a
+        NetCDF path carries the subset's suffix, so this is not always the path
+        the config asked for.
     """
+    written: dict[str, Path] = {}
     for label, ds in output_datasets.items():
         path = output_specs[label].path
         if provenance:
             ds = ds.assign_attrs(provenance)
         if subset_spec is None:
             _save(ds, path, point_dim)
+            written[label] = Path(path)
             continue
 
         from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
@@ -359,8 +368,12 @@ def save_outputs(
         fmt = _subset_format(path, label)
         if fmt.needs_store:
             save_zarr_region(ds, path, subset_spec)
+            written[label] = Path(path)
         else:
-            write_in_group(ds, subset_path(path, subset_spec), "dataset")
+            part = subset_path(path, subset_spec)
+            write_in_group(ds, part, "dataset")
+            written[label] = Path(part)
+    return written
 
 
 def _subset_format(path: str, label: str) -> "Format":

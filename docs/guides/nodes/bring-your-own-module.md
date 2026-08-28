@@ -114,6 +114,10 @@ floor = 1e-4          # overrides the function's default
 
 conduit recognises a fixed set of section names and treats every other section as one of your modules, which is why an unrecognised section without `_import_path` is an error rather than something quietly skipped.
 
+`_import_path` is resolved as an ordinary Python import.
+A module you have not installed resolves against the working directory, which conduit appends to `sys.path`, so `_import_path = "mypackage.indices"` works from the directory above `mypackage/`.
+An installed package of the same name wins, and `PYTHONSAFEPATH=1` turns the working directory off entirely.
+
 Everything else is wired by name.
 `aridity_index_daily`'s `precipitation_daily` parameter finds the `precipitation_daily` node on its own.
 

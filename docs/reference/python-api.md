@@ -21,6 +21,8 @@ Passing a path stamps the config text and its SHA-256 into the outputs. Passing 
       members:
         - run
         - dry_run
+        - RunReport
+        - WrittenOutput
         - DryRunReport
         - Stage
 

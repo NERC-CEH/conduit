@@ -46,9 +46,7 @@ nav = [
   { "Recipes" = [
       "recipes/index.md",
       "recipes/pipeline-101.md",
-      "recipes/pipeline-101-demo.md",
       "recipes/flux-pipeline.md",
-      "recipes/flux-pipeline-demo.md",
   ]},
   { "Reference" = [
       "reference/configuration.md",

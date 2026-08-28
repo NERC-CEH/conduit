@@ -20,4 +20,4 @@ __marimo__/
 .claude/
 
 docs/examples
-docs/recipes/flux-pipeline-demo.md
+docs/recipes/flux-pipeline.md

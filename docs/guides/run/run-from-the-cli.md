@@ -24,6 +24,10 @@ conduit reads the config, builds the DAG, executes the nodes needed for your
 `[outputs.*]` sections in dependency order, and writes the output files. Each output is
 stamped with the config used to produce it, so the file records how it was made.
 
+It reports each stage as it reaches it — inputs loaded, checks passed, nodes to execute —
+then one line per file written, with the number of variables in it and its size on disk,
+and the elapsed time. A run that writes nothing says so rather than exiting quietly.
+
 Only the nodes your requested outputs depend on ever run. Trim `[outputs.*]` to one
 variable and unrelated branches are never touched.
 

@@ -7,19 +7,20 @@ icon: lucide/house
 
 An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) and [xarray](https://xarray.dev) for building configurable environmental data pipelines.
 
-Working with Conduit falls into four stages:
-
 1. **Write the science code.** Ordinary Python functions that take and return `xarray.DataArray`s, with optional [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) declaring what each one requires and produces: units, dimensions, coordinates, dtype, temporal frequency.
 2. **Write the config.** A TOML file names the input files, the nodes and the outputs. Assembling or adapting a pipeline from here needs no Python.
 3. **Validate.** Conduit assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
-4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes. The choice lives in the config, and none of it changes the science code.
+4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes, without changing the science code.
 
 !!! warning "Alpha status"
 
     `conduit` is an early-stage project under active development. Things will change without warning.
 
 
-## A small pipeline
+## A very simple demo
+
+[Pipeline 101](recipes/pipeline-101.md) is one input file, one node function imported from a Python module, one node declared inline in the config, one output file.
+It derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces that anomaly to a per-site range.
 
 === "Python"
 
@@ -33,37 +34,74 @@ Working with Conduit falls into four stages:
     --8<-- "recipes/pipeline_101/config.toml"
     ```
 
-=== "Graph"
+<!-- The input file comes from `recipes/pipeline_101/make_data.py`. -->
 
-    ```mermaid
-    graph LR
-        I["temperature_climate<br/><small>degC</small>"] --> A["temperature_anomaly_climate<br/><small>degC</small>"]
-        A --> R["anomaly_range_climate<br/><small>degC</small>"]
-        R --> O[("results/anomaly.nc")]
-        A --> O
+```bash exec="true"
+python recipes/pipeline_101/make_data.py > /dev/null
+```
+
+=== "Visualise"
+
+    Node labels carry the declared units and requested outputs are highlighted, so a wiring mistake is often visible before anything runs.
+
+    ```bash exec="true" source="block" result="text"
+    conduit graph recipes/pipeline_101/config.toml --png \
+      --output recipes/pipeline_101/pipeline
     ```
 
-That is [Pipeline 101](recipes/pipeline-101.md), which runs end to end.
+    ```bash exec="true"
+    python - <<'EOF'
+    import base64
+    from pathlib import Path
 
-## Getting started
+    png = base64.b64encode(Path("recipes/pipeline_101/pipeline.png").read_bytes()).decode()
+    print(f'<img src="data:image/png;base64,{png}" alt="The Pipeline 101 DAG" style="max-width:100%">')
+    EOF
+    ```
 
-- [Install](guides/install.md) — get it running.
-- [Pipeline 101](recipes/pipeline-101.md) — all four stages in miniature.
-- [Overview](concepts/overview.md) — the design, and what the checks can and cannot catch.
-- [Write a config](guides/configs/write-a-config.md) — start here if you are adapting a pipeline someone else wrote.
-- [Bring your own module](guides/nodes/bring-your-own-module.md) — start here if you are adding your own nodes.
-- [Configuration reference](reference/configuration.md) — every TOML section and key.
+=== "Dry-run"
+
+    `--dry-run` parses the config, opens the input headers, builds the DAG and checks every contract, without loading any data.
+
+    ```bash exec="true" source="block" result="text"
+    conduit run --dry-run recipes/pipeline_101/config.toml
+    ```
+
+=== "Run"
+
+    Finally, execute the pipeline.
+
+    ```bash exec="true" source="block" result="text"
+    conduit run recipes/pipeline_101/config.toml
+    ```
+
+The [101 notebook walkthrough](recipes/pipeline-101.md) covers the same pipeline through the Python API instead.
+
+## Navigating these docs
+
+<div class="grid cards" markdown>
+
+- **[Concepts](concepts/overview.md)** — how conduit works and why it is built this way: the [pipeline model](concepts/pipeline-model.md), [contracts and the whole-graph check](concepts/contracts.md), and [execution and scaling](concepts/execution.md).
+- **[Guides](guides/install.md)** — How-to guides for common tasks. Start with [install](guides/install.md), then [write a config](guides/configs/write-a-config.md) if you are adapting someone else's pipeline, or [bring your own module](guides/nodes/bring-your-own-module.md) if you are adding nodes. [Troubleshooting](guides/troubleshooting.md) is at the end.
+- **[Recipes](recipes/index.md)** — complete pipelines as executable [marimo](https://marimo.io) notebooks. [Pipeline 101](recipes/pipeline-101.md) is the one above; [flux processing](recipes/flux-pipeline.md) is a real eddy-covariance workflow with unit conversion and resampling.
+- **[Reference](reference/configuration.md)** — Authoritative reference for every [TOML section and key](reference/configuration.md), the [supported file formats](reference/data-formats.md), the [Python API](reference/python-api.md), the [CLI](reference/cli.md), and the module docs.
+
+</div>
 
 ## See also
+
+**Upstream**
 
 Conduit offloads most of the hard work to several excellent libraries:
 
 - [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — the DAG engine
 - [xarray](https://docs.xarray.dev/) — labelled N-D arrays
 - [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) — per-function unit, dim, dtype, coord and frequency contracts using `typing.Annotated`
-- [pint](https://pint.readthedocs.io) and [cf-xarray](https://cf-xarray.readthedocs.io) — units validation machinery
+- [pint](https://pint.readthedocs.io), [pint-xarray](https://pint-xarray.readthedocs.io/en/stable/), and [cf-xarray](https://cf-xarray.readthedocs.io) — units validation machinery
 - [dask](https://www.dask.org/) — parallel and out-of-core computation
 - [Typer](https://typer.tiangolo.com/) — the CLI
+
+**Downstream** 
 
 The following projects are using Conduit:
 

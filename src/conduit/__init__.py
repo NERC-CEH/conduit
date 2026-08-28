@@ -24,7 +24,7 @@ from .io import (
     load_inputs,
     save_outputs,
 )
-from .pipeline import DryRunReport, Stage, dry_run, run
+from .pipeline import DryRunReport, RunReport, Stage, WrittenOutput, dry_run, run
 from .specs import (
     AnnotationPolicySpec,
     BlockingSpec,
@@ -53,10 +53,12 @@ __all__ = [
     "NodeSpec",
     "ParsedConfig",
     "ResampleSpec",
+    "RunReport",
     "SchemaWarning",
     "Stage",
     "SubsetSpec",
     "UnitsWarning",
+    "WrittenOutput",
     "__version__",
     "build_driver",
     "build_graph",

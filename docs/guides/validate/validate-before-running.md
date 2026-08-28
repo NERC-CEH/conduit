@@ -90,19 +90,40 @@ stage under `--dry-run`.
 ## Reading a contract failure
 
 When the build-time check rejects an edge, the message names the two nodes, the facet
-(units / dims / coords / dtype), and the conflicting declarations. For example, a node
-declaring it needs pressure in `Pa` fed by a producer declaring `m`:
+(units / dims / coords / dtype), and the conflicting declarations.
 
+The [flux recipe](../../recipes/flux-pipeline.md) keeps a `broken.toml` alongside its
+working config, to produce that failure on demand. It is the same pipeline with one
+mistake in it:
+
+```toml
+--8<-- "recipes/flux_pipeline/broken.toml"
 ```
-Error: contract declaration mismatch(es) in DAG:
-  'sat_gpp': output of sat_gpp declares 'umol m-2 s-1' but input of
-  compare_with_satellite declares 'g m-2 d-1' (dimensionally incompatible)
+
+A stand-in for the satellite retrieval is built from the modelled weekly GPP, but
+declared in `umol m-2 s-1`, the units of the molar flux several nodes upstream, rather
+than the `g m-2 d-1` that `compare_with_satellite` consumes. Read either declaration on
+its own and nothing looks wrong. They are only inconsistent with each other.
+
+```bash exec="true"
+python recipes/flux_pipeline/make_data.py > /dev/null
 ```
 
-That is the [flux recipe's `broken.toml`](../../recipes/flux-pipeline.md), which is there to produce this failure on demand.
+```bash exec="true" source="block" result="text" returncode="1"
+conduit run --dry-run recipes/flux_pipeline/broken.toml
+```
 
-To fix one, correct whichever annotation is wrong so the two agree.
-Where the units are different but compatible, `hPa` against `Pa` say, conduit converts them for you and there is nothing to fix; leave `on_inexact = "convert"`.
+The message names both ends of the edge and why they cannot be reconciled: knowing that
+`sat_gpp` is wrong is not much use without knowing what disagreed with it. The failure
+comes during DAG construction, before the inputs are read and long before an array is
+computed, so the mistake costs a second rather than however long the pipeline takes.
+
+To fix one, correct whichever annotation is wrong so the two agree. Had the units been
+*inexact* rather than incompatible, `umol m-2 s-1` against `nmol m-2 s-1` say, conduit
+would have converted them for you and there would be nothing to fix; leave
+`on_inexact = "convert"`. The check flags an edge only when the two declarations are
+provably irreconcilable, which is what lets a partly-annotated pipeline adopt it without
+a wave of false positives.
 
 ## Where next
 

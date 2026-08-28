@@ -19,8 +19,8 @@ uvx marimo edit --sandbox recipes/pipeline_101/demo.py
 
 ## Available
 
-- **[Pipeline 101](pipeline-101.md)** — the smallest pipeline with every moving part: one input, one imported node, one inline node, one output. Start here. There is also a [notebook walkthrough](pipeline-101-demo.md) of the same pipeline through the Python API.
-- **[Flux processing](flux-pipeline.md)** — an annotated eddy-covariance pipeline with unit conversion, temporal resampling, and a deliberately broken config that fails the contract check. The [notebook version](flux-pipeline-demo.md) adds plots.
+- **[Pipeline 101](pipeline-101.md)** — the smallest pipeline with every moving part: one input, one imported node, one inline node, one output. Start here.
+- **[Flux processing](flux-pipeline.md)** — an annotated eddy-covariance pipeline with unit conversion, temporal resampling, and plots of the products.
 
 ## Planned
 

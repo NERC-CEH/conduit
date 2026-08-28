@@ -11,7 +11,7 @@
 import marimo
 
 __generated_with = "0.23.14"
-app = marimo.App(app_title="conduit: pipeline 101")
+app = marimo.App(app_title="Pipeline 101")
 
 
 @app.cell

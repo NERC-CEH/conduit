@@ -28,5 +28,5 @@ docs: docs-recipes
 
 # Export the executable recipe notebooks with their rendered outputs.
 docs-recipes:
-  uv run marimo-md-export recipes/pipeline_101/demo.py docs/recipes/pipeline-101-demo.md --timeout 120
-  uv run marimo-md-export recipes/flux_pipeline/demo.py docs/recipes/flux-pipeline-demo.md --timeout 120
+  uv run marimo-md-export recipes/pipeline_101/demo.py docs/recipes/pipeline-101.md --timeout 120
+  uv run marimo-md-export recipes/flux_pipeline/demo.py docs/recipes/flux-pipeline.md --timeout 120

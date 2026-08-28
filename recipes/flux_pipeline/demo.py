@@ -11,7 +11,7 @@
 import marimo
 
 __generated_with = "0.23.14"
-app = marimo.App(app_title="conduit: a flux-processing pipeline")
+app = marimo.App(app_title="Flux processing")
 
 
 @app.cell

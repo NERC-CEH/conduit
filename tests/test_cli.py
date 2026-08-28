@@ -149,6 +149,46 @@ vars = ["temperature"]
         assert result.exit_code == 0, result.output
         assert "nothing to execute" in result.output
 
+    @pytest.fixture
+    def writing_config(self, tmp_path, synthetic_data_dir):
+        """A config that actually writes a file, so the run has something to report."""
+        cfg = tmp_path / "writes.toml"
+        cfg.write_text(
+            f"""\
+[[node]]
+name = "warmth_daily"
+inputs = ["temperature_daily"]
+expression = "temperature_daily * 2"
+
+[inputs.daily]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+
+[outputs.daily]
+path = "{tmp_path / "out.nc"}"
+vars = ["warmth"]
+"""
+        )
+        return cfg
+
+    def test_reports_what_it_wrote(self, writing_config):
+        """A run that writes files says so: silence looked the same as doing nothing."""
+        result = runner.invoke(app, ["run", str(writing_config)])
+        assert result.exit_code == 0, result.output
+        assert "inputs loaded:" in result.output
+        assert "wrote" in result.output
+        assert "1 variable(s)" in result.output
+        assert "Run completed in" in result.output
+
+    def test_written_paths_are_relative_to_the_working_directory(
+        self, writing_config, monkeypatch
+    ):
+        """Output paths resolve against the config's directory, so they arrive absolute."""
+        monkeypatch.chdir(writing_config.parent)
+        result = runner.invoke(app, ["run", str(writing_config)])
+        assert result.exit_code == 0, result.output
+        assert "wrote out.nc" in result.output
+
     def test_failing_pipeline_exits_non_zero(self, tmp_path, synthetic_data_dir):
         """A hard failure from the library must reach the shell as an exit code."""
         cfg = tmp_path / "config.toml"

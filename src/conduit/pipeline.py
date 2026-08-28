@@ -10,6 +10,8 @@ form stamps output provenance, which needs the config text.
 """
 
 import hashlib
+import logging
+import time
 import warnings
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -31,7 +33,9 @@ from .io import (
 )
 from .specs import CacheSpec, ParsedConfig
 
-__all__ = ["DryRunReport", "Stage", "dry_run", "run"]
+__all__ = ["DryRunReport", "RunReport", "Stage", "WrittenOutput", "dry_run", "run"]
+
+logger = logging.getLogger(__name__)
 
 #: Either a path to a TOML config file or an already-parsed config.
 ConfigSource = str | Path | ParsedConfig
@@ -53,13 +57,46 @@ def _prepare(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
     return parsed, config_file
 
 
+@dataclass(frozen=True)
+class WrittenOutput:
+    """One destination a run wrote, and what went into it."""
+
+    #: The ``[outputs.<label>]`` section this came from.
+    label: str
+    #: Where it was actually written. Under ``[subset]`` this carries the
+    #: subset's suffix, so it is not always the path the config asked for.
+    path: Path
+    variables: tuple[str, ...]
+    #: Size on disk, summed over a directory store. ``None`` if it could not be
+    #: measured.
+    size_bytes: int | None = None
+
+
+@dataclass(frozen=True)
+class RunReport:
+    """What a run computed, where it went, and how long it took.
+
+    A hard failure raises out of `run`, so a report exists only for a pipeline
+    that ran to completion.
+    """
+
+    #: The config's path, or ``None`` when `run` was given a `ParsedConfig`.
+    config_file: Path | None
+    #: The dataset written for each ``[outputs.*]`` section, keyed by section
+    #: name. Empty for a config that declares no outputs.
+    outputs: dict[str, xr.Dataset] = field(default_factory=dict)
+    written: tuple[WrittenOutput, ...] = ()
+    #: Wall-clock seconds, config parse to last byte written.
+    elapsed: float = 0.0
+
+
 def run(
     config: ConfigSource,
     *,
     allow_overrides: bool = False,
     cache: bool | None = None,
     cache_dir: Path | None = None,
-) -> dict[str, xr.Dataset]:
+) -> RunReport:
     """Execute a pipeline and write its outputs.
 
     Parameters
@@ -76,21 +113,36 @@ def run(
 
     Returns
     -------
-    dict
-        The dataset written for each ``[outputs.*]`` section, keyed by section
-        name. Empty when the config declares no outputs, which still parses,
-        loads inputs, runs the input checks and builds the DAG.
+    RunReport
+        The datasets written, where each one went, and how long it took. A
+        config declaring no outputs still parses, loads inputs, runs the input
+        checks and builds the DAG, and comes back with nothing written.
+
+    Notes
+    -----
+    Progress is logged to the ``conduit.pipeline`` logger at ``INFO`` as each
+    stage completes, so a caller can route it wherever it wants. ``conduit run``
+    prints it.
     """
+    started = time.perf_counter()
     parsed, config_file = _prepare(config)
     cache_spec = _resolve_cache(parsed.cache_spec, cache, cache_dir)
+    if cache_spec is not None:
+        logger.info("caching enabled: %s", cache_spec.path)
 
     inputs = load_inputs(
         parsed.input_specs,
         subset_spec=parsed.subset_spec,
         point_dim=parsed.point_dim,
     )
+    logger.info(
+        "inputs loaded: %d variable(s) from %d source(s)",
+        len(inputs),
+        len(parsed.input_specs),
+    )
 
-    _run_input_checks(parsed)
+    if n_checks := _run_input_checks(parsed):
+        logger.info("input checks passed (%d)", n_checks)
 
     dr = build_driver(
         modules=parsed.modules,
@@ -101,9 +153,11 @@ def run(
     )
 
     if not parsed.output_specs:
-        return {}
+        logger.info("DAG built; no [outputs.*] configured, so nothing to execute")
+        return RunReport(config_file, elapsed=time.perf_counter() - started)
 
     target_vars = get_final_vars(parsed.output_specs)
+    logger.info("DAG built: executing %d output node(s)", len(target_vars))
     # Before compute, not after: an unwritable destination discovered inside
     # save_outputs would cost the whole run. Same check `dry_run` performs.
     assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
@@ -114,14 +168,42 @@ def run(
         results = dr.execute(target_vars, inputs=inputs)  # type: ignore[reportArgumentType]
     stacked = parsed.subset_spec is not None
     output_datasets = get_outputs(results, parsed.output_specs, stacked=stacked)
-    save_outputs(
+    paths = save_outputs(
         output_datasets,
         parsed.output_specs,
         subset_spec=parsed.subset_spec,
         provenance=_config_provenance(config_file),
         point_dim=parsed.point_dim,
     )
-    return output_datasets
+    written = tuple(
+        WrittenOutput(
+            label=label,
+            path=path,
+            variables=tuple(str(name) for name in output_datasets[label].data_vars),
+            size_bytes=_size_on_disk(path),
+        )
+        for label, path in paths.items()
+    )
+    return RunReport(
+        config_file=config_file,
+        outputs=output_datasets,
+        written=written,
+        elapsed=time.perf_counter() - started,
+    )
+
+
+def _size_on_disk(path: Path) -> int | None:
+    """Bytes ``path`` occupies, summed over a directory store, or None if unreadable.
+
+    A Zarr output is a directory, and a subset run region-writes into a shared
+    store whose size is not this run's doing, so the number is best-effort.
+    """
+    try:
+        if path.is_dir():
+            return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+        return path.stat().st_size
+    except OSError:
+        return None
 
 
 @dataclass(frozen=True)

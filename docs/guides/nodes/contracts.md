@@ -129,6 +129,9 @@ on_inexact = "convert"  # "convert" (default) | "warn" | "error"
 `"convert"` scales silently, `"warn"` scales and tells you, `"error"` refuses.
 Set it to `"warn"` when you want every conversion in the run to be visible.
 The flux recipe does this, on the grounds that a kelvin-to-Celsius conversion is worth seeing.
+Its `flux.nc` stores air temperature in kelvin, while `partition_fluxes` declares `tair` in `degC` because its respiration term is a $Q_{10}$ relation written for Celsius.
+Handed kelvin, that term returns respiration around $10^8$ rather than $4$, and nothing downstream would look obviously wrong.
+The declaration is what makes the conversion happen; a bare `tair` parameter would have quietly used kelvin.
 
 Every policy key, `on_uninferable` included, is in the [`[annotations]` reference](../../reference/configuration.md#annotations).
 

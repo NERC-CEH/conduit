@@ -145,10 +145,11 @@ datasets = get_outputs(results, parsed.output_specs)
 # datasets["climate"] -> xr.Dataset
 ```
 
-Write them with `save_outputs()`:
+Write them with `save_outputs()`, which returns the path it wrote for each section:
 
 ```python
-save_outputs(datasets, parsed.output_specs)
+paths = save_outputs(datasets, parsed.output_specs)
+# paths["climate"] -> PosixPath('results/climate.nc')
 ```
 
 !!! tip "Skipping disk writes"
@@ -184,11 +185,27 @@ adjusted in Python:
 ```python
 import conduit
 
-datasets = conduit.run("config.toml")   # writes each [outputs.*] section, returns them
+report = conduit.run("config.toml")     # writes each [outputs.*] section
+report.outputs["climate"]               # the Dataset that went into that section
+report.written                          # where each one landed, and how big it is
 
 parsed = conduit.load_config("config.toml")
 parsed.driver_config["scaling_factor"] = 2.0
-datasets = conduit.run(parsed)          # same run, with the spec tweaked first
+report = conduit.run(parsed)            # same run, with the spec tweaked first
+```
+
+A [`RunReport`](../../reference/modules/conduit.pipeline.md) holds the datasets, one
+`WrittenOutput` per destination, and the elapsed time. Take the paths from `written`
+rather than from the config: a `[subset]` run suffixes them, so the file on disk is not
+always the one the config asked for.
+
+Progress is logged to the `conduit.pipeline` logger at `INFO` as each stage completes.
+The library installs no handler, so nothing is printed until you ask for it:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.INFO)
 ```
 
 `conduit.dry_run` validates the same pipeline without executing it and returns a

@@ -39,12 +39,23 @@ vars = ["warmth"]
 class TestRun:
     def test_writes_the_output_and_returns_it(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "out.nc"
-        outputs = run(_config(tmp_path, synthetic_data_dir, out))
+        report = run(_config(tmp_path, synthetic_data_dir, out))
         assert out.exists()
-        assert set(outputs) == {"daily"}
-        assert isinstance(outputs["daily"], xr.Dataset)
+        assert set(report.outputs) == {"daily"}
+        assert isinstance(report.outputs["daily"], xr.Dataset)
 
-    def test_no_outputs_returns_an_empty_dict(self, tmp_path, synthetic_data_dir):
+    def test_reports_where_each_output_went(self, tmp_path, synthetic_data_dir):
+        """The report names the path actually written, not the one configured."""
+        out = tmp_path / "out.nc"
+        report = run(_config(tmp_path, synthetic_data_dir, out))
+        (written,) = report.written
+        assert written.label == "daily"
+        assert written.path == out
+        assert written.variables == tuple(report.outputs["daily"].data_vars)
+        assert written.size_bytes == out.stat().st_size
+        assert report.elapsed > 0
+
+    def test_no_outputs_reports_nothing_written(self, tmp_path, synthetic_data_dir):
         """A checks-only config is legitimate: it still parses, loads and builds."""
         cfg = tmp_path / "no_outputs.toml"
         cfg.write_text(
@@ -54,14 +65,16 @@ path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]
 """
         )
-        assert run(cfg) == {}
+        report = run(cfg)
+        assert report.outputs == {}
+        assert report.written == ()
 
     def test_accepts_a_parsed_config(self, tmp_path, synthetic_data_dir):
         """A caller may parse, adjust the spec in Python, then run the result."""
         out = tmp_path / "out.nc"
         parsed = load_config(_config(tmp_path, synthetic_data_dir, out))
-        outputs = run(parsed)
-        assert set(outputs) == {"daily"}
+        report = run(parsed)
+        assert set(report.outputs) == {"daily"}
         assert out.exists()
 
     def test_provenance_is_stamped_for_a_config_path(
