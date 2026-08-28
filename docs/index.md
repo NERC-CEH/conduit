@@ -92,7 +92,7 @@ The [101 notebook walkthrough](recipes/pipeline-101.md) covers the same pipeline
 - **[Concepts](concepts/overview.md)** — how conduit works and why it is built this way: the [pipeline model](concepts/pipeline-model.md), [contracts and the whole-graph check](concepts/contracts.md), and [execution and scaling](concepts/execution.md).
 - **[Guides](guides/install.md)** — How-to guides for common tasks. Start with [install](guides/install.md), then [write a config](guides/configs/write-a-config.md) if you are adapting someone else's pipeline, or [bring your own module](guides/nodes/bring-your-own-module.md) if you are adding nodes. [Troubleshooting](guides/troubleshooting.md) is at the end.
 - **[Recipes](recipes/index.md)** — complete pipelines as executable [marimo](https://marimo.io) notebooks. [Pipeline 101](recipes/pipeline-101.md) is the one above; [flux processing](recipes/flux-pipeline.md) is a real eddy-covariance workflow with unit conversion and resampling.
-- **[Reference](reference/configuration.md)** — Authoritative reference for every [TOML section and key](reference/configuration.md), the [supported file formats](reference/data-formats.md), the [Python API](reference/python-api.md), the [CLI](reference/cli.md), and the [module reference](reference/modules/index.md).
+- **[Reference](reference/configuration.md)** — Authoritative reference for every [TOML section and key](reference/configuration.md), the [supported file formats](reference/data-formats.md), the [Python API](reference/python-api.md) and the modules behind it, and the [CLI](reference/cli.md).
 
 </div>
 

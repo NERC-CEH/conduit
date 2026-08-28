@@ -51,10 +51,9 @@ nav = [
   { "Reference" = [
       "reference/configuration.md",
       "reference/data-formats.md",
-      "reference/python-api.md",
       "reference/cli.md",
-      { "Module reference" = [
-          "reference/modules/index.md",
+      "reference/python-api.md",
+      { "Modules" = [
           "reference/modules/conduit.pipeline.md",
           "reference/modules/conduit.config.md",
           "reference/modules/conduit.specs.md",
