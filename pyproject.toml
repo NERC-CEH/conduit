@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "conduit"
-version = "0.2.0"
+version = "0.3.0"
 description = "A unit-safe, scalable foundation for building configurable xarray data pipelines and forward models."
 authors = [
     { name = "jmarshrossney", email = "17361029+jmarshrossney@users.noreply.github.com" }
