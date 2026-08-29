@@ -19,4 +19,5 @@ __marimo__/
 
 .claude/
 
-docs/examples
+docs/recipes/*
+! docs/recipes/index.md

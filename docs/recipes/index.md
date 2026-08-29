@@ -5,28 +5,26 @@ icon: lucide/book-open
 
 # Recipes
 
-/// admonition | Coming soon
-    type: note
+A recipe is a complete pipeline you can read end to end: the data, the node module, the config, and the run.
+The [guides](../guides/nodes/bring-your-own-module.md) answer "how do I do X?" one piece at a time; a recipe shows a whole task at once.
 
-Recipes are in progress. This page describes what they will be; the individual recipes
-land here as they are written.
-///
+Each one lives in its own directory under [`recipes/`](https://github.com/NERC-CEH/conduit/tree/main/recipes) and holds a node module, a `config.toml`, a generator for synthetic inputs, and a marimo notebook that runs the pipeline.
+The test suite executes every recipe, and so does the documentation build, so nothing here can drift away from the library without something failing.
 
-**Recipes** are self-contained, worked examples of conduit applied to realistic — though
-not full-complexity — problems. Where the [tutorials](../get-started/first-pipeline.md)
-teach the mechanics on a toy pipeline and the [guides](../guides/bring-your-own-module.md)
-answer "how do I do X?", a recipe shows the *whole shape* of a real task end to end:
-the data, the config, the modules, and the run.
+To run one without cloning the repository:
 
-Each recipe is designed to be read on its own and to cross-link into the
-[guides](../guides/bring-your-own-module.md) and
-[reference](../reference/configuration.md) rather than re-explain them.
+```sh
+uvx marimo edit --sandbox recipes/pipeline_101/demo.py
+```
 
-## Planned recipes
+## Available
 
-- **Land-cover classification** — a simple gridded classification pipeline over
-  multi-band inputs.
-- **Nowcasting** — a short-horizon forecast pipeline with temporal resampling.
+- **[Pipeline 101](pipeline-101.md)** — the smallest pipeline with every moving part: one input, one imported node, one inline node, one output. Start here.
+- **[Flux processing](flux-pipeline.md)** — an annotated eddy-covariance pipeline with unit conversion, temporal resampling, and plots of the products.
 
-More will follow. If there is a pattern you would like to see worked through,
-[open an issue](https://github.com/NERC-CEH/conduit/issues).
+## Planned
+
+- **Land-cover classification** — a gridded classification pipeline over multi-band inputs.
+- **Nowcasting** — a short-horizon forecast with temporal resampling.
+
+If there is a pattern you would like to see worked through, [open an issue](https://github.com/NERC-CEH/conduit/issues).

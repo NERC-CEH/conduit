@@ -14,55 +14,71 @@ copyright = "Copyright &copy; 2026 The authors"
 
 nav = [
   { "Home" = "index.md" },
-  { "Get started" = [
-      "get-started/install.md",
-      "get-started/first-pipeline.md",
-      "get-started/units-and-contracts.md",
-  ]},
   { "Concepts" = [
-      "concepts/why-conduit.md",
-      "concepts/dag-model.md",
+      "concepts/overview.md",
+      "concepts/pipeline-model.md",
       "concepts/contracts.md",
-      "concepts/scaling.md",
+      "concepts/execution.md",
   ]},
   { "Guides" = [
-      "guides/bring-your-own-module.md",
-      "guides/inline-nodes-and-fan-out.md",
-      "guides/drive-from-python.md",
-      "guides/run-and-visualise.md",
-      "guides/resampling-and-units.md",
-      "guides/validate-before-running.md",
-      "guides/scale-up.md",
+      "guides/install.md",
+      { "Write nodes" = [
+          "guides/nodes/bring-your-own-module.md",
+          "guides/nodes/contracts.md",
+          "guides/nodes/resampling-and-units.md",
+      ]},
+      { "Write configs" = [
+          "guides/configs/write-a-config.md",
+          "guides/configs/inline-nodes-and-fan-out.md",
+      ]},
+      { "Validate" = [
+          "guides/validate/visualise-the-graph.md",
+          "guides/validate/validate-before-running.md",
+          "guides/validate/test-your-pipeline.md",
+      ]},
+      { "Run & scale" = [
+          "guides/run/run-from-the-cli.md",
+          "guides/run/drive-from-python.md",
+          "guides/run/scale-up.md",
+      ]},
+      "guides/troubleshooting.md",
+  ]},
+  { "Recipes" = [
+      "recipes/index.md",
+      "recipes/pipeline-101.md",
+      "recipes/flux-pipeline.md",
+  ]},
+  { "Extending" = [
+      "extending/index.md",
+      "extending/register-modules.md",
   ]},
   { "Reference" = [
       "reference/configuration.md",
       "reference/data-formats.md",
-      "reference/troubleshooting.md",
-      { "API" = [
-          "api/conduit.cli/index.md",
-          "api/conduit.cli/cli.md",
-          "api/conduit.cli/graph.md",
-          "api/conduit.cli/run.md",
-          "api/conduit.cli/version.md",
-          "api/conduit.config.md",
-          "api/conduit.specs.md",
-          "api/conduit.io.md",
-          "api/conduit.formats.md",
-          "api/conduit.checks.md",
-          "api/conduit.transforms.md",
-          "api/conduit.dag.driver.md",
-          "api/conduit.dag/node.md",
-          "api/conduit.dag/contract_check.md",
-          "api/conduit.dag/wiring_check.md",
-          "api/conduit.dag/caching.md",
-          "api/conduit.dag/blocking.md",
-          "api/conduit.gridded/spatial.md",
-          "api/conduit.gridded/io.md",
-          "api/conduit.gridded/cli.md",
+      "reference/cli.md",
+      "reference/python-api.md",
+      { "Modules" = [
+          "reference/modules/conduit.errors.md",
+          "reference/modules/conduit.config.md",
+          "reference/modules/conduit.specs.md",
+          "reference/modules/conduit.importing.md",
+          "reference/modules/conduit.io.md",
+          "reference/modules/conduit.formats.md",
+          "reference/modules/conduit.build.md",
+          "reference/modules/conduit.nodegen.md",
+          "reference/modules/conduit.transforms.md",
+          "reference/modules/conduit.caching.md",
+          "reference/modules/conduit.blocking.md",
+          "reference/modules/conduit.contract_check.md",
+          "reference/modules/conduit.wiring_check.md",
+          "reference/modules/conduit.input_checks.md",
+          "reference/modules/conduit.pipeline.md",
+          "reference/modules/conduit.graph.md",
+          "reference/modules/conduit.graph_style.md",
+          "reference/modules/conduit.gridded/io.md",
+          "reference/modules/conduit.gridded/spatial.md",
+          "reference/modules/conduit.gridded/cli.md",
       ]},
-  ]},
-  { "Recipes" = [
-      "recipes/index.md",
   ]},
 ]
 
@@ -70,14 +86,18 @@ nav = [
 extra_javascript = [
     "_static/js/katex.js",
     "https://unpkg.com/katex@0/dist/katex.min.js",
-    "https://unpkg.com/katex@0/dist/contrib/auto-render.min.js"
+    "https://unpkg.com/katex@0/dist/contrib/auto-render.min.js",
+    "assets/termynal.js",
 ]
 extra_css = [
-    "https://unpkg.com/katex@0/dist/katex.min.css"
+    "_static/css/marimo-codehilite.css",
+    "https://unpkg.com/katex@0/dist/katex.min.css",
+    "assets/termynal.css",
 ]
 
 [project.theme]
 language = "en"
+custom_dir = "overrides"
 features = [
     "announce.dismiss",
     "content.code.annotate",
@@ -91,6 +111,7 @@ features = [
     "navigation.instant",
     "navigation.instant.prefetch",
     "navigation.path",
+    "navigation.sections",
     "navigation.tabs",
     "navigation.top",
     "navigation.tracking",
@@ -138,9 +159,13 @@ pygments_lang_class = true
 [project.markdown_extensions.pymdownx.magiclink]
 [project.markdown_extensions.pymdownx.mark]
 [project.markdown_extensions.pymdownx.smartsymbols]
+[project.markdown_extensions.pymdownx.snippets]
+base_path = ["."]
+check_paths = true
 [project.markdown_extensions.pymdownx.superfences]
 custom_fences = [
-  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+  { name = "bash", class = "bash", format = "markdown_exec.formatter", validator = "markdown_exec.validator" },
 ]
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true
@@ -154,7 +179,7 @@ custom_checkbox = true
 
 [project.plugins.mkdocstrings.handlers.python]
 inventories = ["https://docs.python.org/3/objects.inv"]
-paths = ["src"]
+paths = ["src", "recipes"]
 
 [project.plugins.mkdocstrings.handlers.python.options]
 annotations_path = "brief"
@@ -175,3 +200,9 @@ show_source = false
 show_symbol_type_heading = true
 show_symbol_type_toc = true
 
+# mkdocs-typer2
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions."mkdocs_typer2.markdown:makeExtension"]
+pretty = false
+engine = "native"

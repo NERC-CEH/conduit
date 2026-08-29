@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from conduit.build import build_driver
 from conduit.config import Config
-from conduit.dag.driver import build_driver
 from conduit.transforms import resample
 
 

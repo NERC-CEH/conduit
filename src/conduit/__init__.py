@@ -4,25 +4,19 @@ Integrates Apache Hamilton (DAG execution), xarray (+ dask) and xarray-annotated
 (units / dims / coords / dtype / frequency contracts), driven by a TOML spec.
 """
 
-from xarray_annotated.schema import (
-    Coords,
-    Dims,
-    Dtype,
-    SchemaWarning,
-    declare_schema,
-)
-from xarray_annotated.temporal import Freq, declare_freq
-from xarray_annotated.units import UnitsWarning, declare_units, use_cf_units
+from xarray_annotated.units import use_cf_units
 
 from ._version import __version__
+from .build import build_driver
 from .config import load_config
-from .dag.driver import build_driver
+from .graph import build_graph
 from .io import (
     get_final_vars,
     get_outputs,
     load_inputs,
     save_outputs,
 )
+from .pipeline import DryRunReport, RunReport, Stage, WrittenOutput, dry_run, run
 from .specs import (
     AnnotationPolicySpec,
     BlockingSpec,
@@ -42,25 +36,23 @@ __all__ = [
     "BlockingSpec",
     "CacheSpec",
     "CheckSpec",
-    "Coords",
-    "Dims",
-    "Dtype",
-    "Freq",
+    "DryRunReport",
     "IOSpec",
     "NodeSpec",
     "ParsedConfig",
     "ResampleSpec",
-    "SchemaWarning",
+    "RunReport",
+    "Stage",
     "SubsetSpec",
-    "UnitsWarning",
+    "WrittenOutput",
     "__version__",
     "build_driver",
-    "declare_freq",
-    "declare_schema",
-    "declare_units",
+    "build_graph",
+    "dry_run",
     "get_final_vars",
     "get_outputs",
     "load_config",
     "load_inputs",
+    "run",
     "save_outputs",
 ]

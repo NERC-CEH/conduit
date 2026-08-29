@@ -3,97 +3,123 @@ title: Home
 icon: lucide/house
 ---
 
-# conduit
+# Conduit
 
-**Turn a working research script into a contract-checked, reproducible, scalable pipeline —
-without a rewrite.**
+An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) and [xarray](https://xarray.dev) for building configurable environmental data pipelines.
 
-You keep writing plain, typed [xarray](https://xarray.dev) functions. conduit adds
-three things that are hard to get any other way:
+1. **Write the science code.** Ordinary Python functions that take and return `xarray.DataArray`s, with optional [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) declaring what each one requires and produces: units, dimensions, coordinates, dtype, temporal frequency.
+2. **Write the config.** A TOML file names the input files, the nodes and the outputs. Assembling or adapting a pipeline from here needs no Python.
+3. **Validate.** Conduit assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
+4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes, without changing the science code.
 
-- **Look before you leap.** The *entire* DAG is proven consistent *before any compute runs*,
-  straight from your type annotations — not just units, but dimensions, coordinates, dtypes,
-  **and the wiring itself**. A hPa-vs-Pa slip, a transposed axis, or a renamed input is caught
-  at build time, not part-way through a run. `--dry-run` validates your files' headers against
-  what each node declares without executing a single node; runtime unit conversion comes along
-  for free.
-- **Config *is* the DAG.** Describe — and compose, parameterise and fan out — a whole pipeline
-  in a plain [TOML](https://toml.io) file. The config doubles as a complete, reproducible
-  provenance record of the run.
-- **Scale-up as a config knob, not a rewrite.** The *same* functions run in-memory, blocked,
-  or across parallel processes writing to a shared Zarr store — driven by config, not by
-  rewriting your code — and stream lazily out-of-core ([dask](https://www.dask.org/)) when you
-  feed them dask-backed inputs.
+!!! warning "Alpha status"
 
-Under the hood conduit composes [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton)
-(the DAG engine), xarray (labelled N-D arrays), and
-[xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) /
-[pint](https://pint.readthedocs.io) / [cf-xarray](https://cf-xarray.readthedocs.io) (the
-contract layer). The value is not the parts but where they *compose*: whole-graph contract
-checking is only possible when the annotations and the graph are both present, and scale is
-only free when the graph is separate from the functions. The aim is to let you get that value
-**without** having to learn Hamilton or pint — you write ordinary annotated functions and
-describe how they wire together. When you *do* want the underlying machinery, conduit
-exposes the Hamilton driver and xarray objects rather than hiding them.
+    `conduit` is an early-stage project under active development. Things will change without warning.
 
-The core is fully domain-agnostic: forward models, land-cover classification, and analysis
-pipelines are all expressed the same way — nothing carbon-specific is baked in. Gridded,
-geospatial Zarr — the primary target data type — is a first-class **optional** layer
-(`conduit[geo]`) rather than a core assumption.
 
-## Installation
+## A very simple demo
 
-See the [Installation guide](get-started/install.md).
+[Pipeline 101](recipes/pipeline-101.md) is one input file, one node function imported from a Python module, one node declared inline in the config, one output file.
+It derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces that anomaly to a per-site range.
 
-## Quick start
+<!-- The input file comes from `recipes/pipeline_101/make_data.py`. -->
 
-Get a pipeline running in a few minutes — see [Your first pipeline](get-started/first-pipeline.md).
+```bash exec="true"
+python recipes/pipeline_101/make_data.py > /dev/null
+```
 
-## Key features
+Click through the tabs below.
 
-- **Whole-DAG contract checking before compute** — declare a node's expectations with a
-  simple `Annotated[DataArray, ...]` convention and conduit proves the *entire graph*
-  consistent **before** any compute runs. Generic over every facet: units (convert
-  compatible inputs, reject incompatible), dimensions, coordinates and dtypes. This is the
-  flagship feature.
-- **Wiring validation** — the same before-compute guarantee for the plumbing: unbound inputs
-  (a file/config/signature rename drift) raise, unused inputs warn, so typos surface at build
-  time rather than mid-run.
-- **`--dry-run`** — validate loaded files' headers against every declared consumer contract
-  *and* the wiring, without executing a single node.
-- **Config-as-DAG** — describe how your functions wire together in a plain
-  [TOML](https://toml.io) file: import your own modules (`_import_path`) or define glue nodes
-  inline (`[[node]]`), with `for_each` fan-out and `{var}` templating to generate many nodes
-  from one spec. Explicit, aliasable file↔node mapping (`{node_name: file_var}`) with
-  collision detection; the config is stamped into outputs as a reproducible provenance record.
-- **Scale without a rewrite** — the same functions run in-memory, with content-addressed
-  result caching, memory-bounded blocked execution, or parallel subset runs over a shared Zarr
-  store — all driven by config, not code changes — and stream lazily out-of-core (dask) when
-  fed dask-backed inputs.
-- **Reusable transforms & presets** — annotation-preserving transforms (e.g. `resample`)
-  wired in as passthrough nodes; `[[resample]]` is a thin preset over the general fan-out
-  engine.
-- **Domain-agnostic core, optional gridded layer** — works with whatever dimensions your data
-  has; CRS-aware `(y,x)`↔`pixel` stacking, reprojection and parallel Zarr I/O live in the
-  optional `conduit.gridded` subpackage (`conduit[geo]`) behind a nested `conduit gridded` CLI.
-- **CLI and Python API** — run from the terminal (`conduit run`) or embed in a notebook;
-  conduit exposes the Hamilton driver and xarray objects rather than hiding them.
+=== "Python module"
 
-## Learn more
+    Science code is written in ordinary Python functions that accept and return `xarray.DataArray`s,
+    with optional (but recommended) annotations declaring required properties such as units.
 
-- [Your first pipeline](get-started/first-pipeline.md) — run a pipeline end to end
-- [Add unit contracts](get-started/units-and-contracts.md) — the flagship feature, hands-on
-- [The DAG model](concepts/dag-model.md) — how the DAG and config fit together
-- [Configuration reference](reference/configuration.md) — every TOML section
-- [Bring your own module](guides/bring-your-own-module.md) — plug in your own nodes
+    <!-- fmt:off -->
+    ```python
+    --8<-- "recipes/pipeline_101/nodes.py"
+    ```
+    <!-- fmt:on -->
+
+=== "TOML config"
+
+    A pipeline (DAG) is assembled based on a *configuration* written in the common TOML format.
+    (In Python sessions the config can also be passed as a plain Python dict.)
+
+    ```toml
+    --8<-- "recipes/pipeline_101/config.toml"
+    ```
+
+=== "Graph visualisation"
+
+    Node labels carry the declared units and requested outputs are highlighted, so a wiring mistake is often visible before anything runs.
+
+    ```bash exec="true" source="block" result="text"
+    conduit graph recipes/pipeline_101/config.toml --png \
+      --output recipes/pipeline_101/pipeline
+    ```
+
+    ```bash exec="true"
+    python - <<'EOF'
+    import base64
+    from pathlib import Path
+
+    png = base64.b64encode(Path("recipes/pipeline_101/pipeline.png").read_bytes()).decode()
+    print(f'<img src="data:image/png;base64,{png}" alt="The Pipeline 101 DAG" style="max-width:100%">')
+    EOF
+    ```
+
+=== "Dry-run"
+
+    `--dry-run` parses the config, opens the input headers, builds the DAG and checks every contract, without loading any data.
+
+    ```bash exec="true" source="block" result="text"
+    conduit run --dry-run recipes/pipeline_101/config.toml
+    ```
+
+=== "Run"
+
+    Finally, the pipeline can be executed from the command line.
+
+    ```bash exec="true" source="block" result="text"
+    conduit run recipes/pipeline_101/config.toml
+    ```
+
+The [101 notebook walkthrough](recipes/pipeline-101.md) covers the same pipeline through the Python API instead.
+
+## Navigating these docs
+
+<div class="grid cards" markdown>
+
+- **[Concepts](concepts/overview.md)** — how conduit works and why it is built this way: the [pipeline model](concepts/pipeline-model.md), [contracts and the whole-graph check](concepts/contracts.md), and [execution and scaling](concepts/execution.md).
+- **[Guides](guides/install.md)** — How-to guides for common tasks. Start with [install](guides/install.md), then [write a config](guides/configs/write-a-config.md) if you are adapting someone else's pipeline, or [bring your own module](guides/nodes/bring-your-own-module.md) if you are adding nodes. [Troubleshooting](guides/troubleshooting.md) is at the end.
+- **[Recipes](recipes/index.md)** — complete pipelines as executable [marimo](https://marimo.io) notebooks. [Pipeline 101](recipes/pipeline-101.md) is the one above; [flux processing](recipes/flux-pipeline.md) is a real eddy-covariance workflow with unit conversion and resampling.
+- **[Extending](extending/index.md)** — for building a package *on* conduit: [registering modules](extending/register-modules.md) so configs name them without an `_import_path`, and what to build against.
+- **[Reference](reference/configuration.md)** — Authoritative reference for every [TOML section and key](reference/configuration.md), the [supported file formats](reference/data-formats.md), the [Python API](reference/python-api.md) and the modules behind it, and the [CLI](reference/cli.md).
+
+</div>
+
+## See also
+
+**Upstream**
+
+Conduit offloads most of the hard work to several excellent libraries:
+
+- [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — the DAG engine.
+- [xarray](https://docs.xarray.dev/) — labelled N-D arrays.
+- [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) — per-function unit, dim, dtype, coord and frequency contracts using `typing.Annotated`.
+- [pint](https://pint.readthedocs.io), [pint-xarray](https://pint-xarray.readthedocs.io/en/stable/), and [cf-xarray](https://cf-xarray.readthedocs.io) — units validation machinery.
+- [dask](https://www.dask.org/) — parallel and out-of-core computation.
+- [Typer](https://typer.tiangolo.com/) — the CLI.
+
+**Downstream** 
+
+The following projects are using Conduit:
+
+- [SatTerC](https://satterc.github.io/satterc/) — terrestrial carbon modelling.
 
 ## Acknowledgements
 
-conduit builds on the following open-source projects:
+This work has been supported by:
 
-- [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — DAG-based dataflow framework
-- [xarray](https://docs.xarray.dev/) — N-D labelled arrays and datasets
-- [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) — per-function unit/dim/dtype/coord contracts
-- [pint](https://pint.readthedocs.io) & [cf-xarray](https://cf-xarray.readthedocs.io) — units
-- [dask](https://www.dask.org/) — parallel and out-of-core computation
-- [Typer](https://typer.tiangolo.com/) — CLI framework
+- NC-International

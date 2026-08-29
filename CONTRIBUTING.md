@@ -1,12 +1,11 @@
 # Contributing to conduit
 
-Thanks for your interest in conduit! This guide covers setting up a development checkout and the conventions we follow.
+This guide covers setting up a development checkout and the conventions we follow.
 
 ## Prerequisites
 
-- **Python 3.13**
-- **[uv](https://docs.astral.sh/uv/)** for dependency management and packaging
-  (see the [install guide](https://docs.astral.sh/uv/getting-started/installation/))
+- Python 3.13
+- [uv](https://docs.astral.sh/uv/)
 
 ## Set up for development
 
@@ -14,62 +13,89 @@ Thanks for your interest in conduit! This guide covers setting up a development 
 git clone https://github.com/NERC-CEH/conduit.git
 cd conduit
 uv sync
-source .venv/bin/activate    # on Windows: .venv\Scripts\activate
 ```
 
-`uv sync` installs every optional extra (`geo`, `viz`) along with the development tooling, so you don't need to request them explicitly. (Or prefix all commands with `uv run` instead of activating the environment.)
+either `source .venv/bin/activate` or prefix all commands with `uv run`.
+(Or use `direnv`!)
+
 
 ## Pre-commit hooks
 
 ```bash
-uv run pre-commit install
+pre-commit install
 ```
 
-Pre-commit runs `uv-lock`, `pyright`, and `ruff` on every commit — not the full test suite. If a hook fails, the commit is aborted; fix the issues and try again. 
+Pre-commit runs `uv-lock`, `pyright`, and `ruff` on every commit.
+If a hook fails, the commit is aborted; fix the issues and try again. 
 
 To run the hooks manually:
 
 ```bash
-uv run pre-commit run --all-files
+pre-commit run --all-files
 ```
 
 ## Common tasks
 
-You can use [`just`](https://github.com/casey/just) (installed by `uv sync`) for common tasks:
+You can use [`just`](https://github.com/casey/just) (installed by `uv sync`) for common tasks, e.g.
 
 ```bash
 just lint          # ruff format + check (modifies files)
-just lint-check    # read-only variant (used in CI)
 just typecheck     # pyright static type check
 just test          # pytest
-just test-cov      # pytest with coverage (fails under 90%)
 just docs          # build the docs with zensical
 ```
 
-Run a single test file:
-
-```bash
-uv run pytest tests/test_config.py -v
-```
+Run `just -l` to list all available commands.
 
 
 ## Documentation
 
-The docs are built with [zensical](https://zensical.org/) and organised around the [Diátaxis](https://diataxis.fr/) framework (Get started / Guides / Reference / Concepts):
+The docs are built with [zensical](https://zensical.org/).
 
-```bash
-just docs      # then open site/index.html
-```
+`just docs` depends on `just docs-recipes`, which runs each recipe's marimo notebook through `marimo-md-export`.
+That executes the pipelines, so a docs build is also a check that the recipes still work.
+It takes a while though.
 
-When adding or changing documentation:
+The docs are structured under five tabs:
 
-- Put each page in the quadrant that fits its purpose (a tutorial teaches, a guide solves a task, a reference describes, a concept explains).
-- Follow the existing page structure; use admonitions (`/// admonition | Title\n    type: note`) for callouts.
-- Link between pages with relative paths. Run `just docs` and confirm the build succeeds with no warnings.
+| Tab | Holds |
+| --- | --- |
+| Home | the pitch and one worked example |
+| How it works | the execution model, and the limits of the contract check |
+| Guides | how to do things, split into Authoring / Running / Scaling |
+| Recipes | complete worked pipelines |
+| Reference | config schema, data formats, Python API, CLI, module docstrings |
+
+
+House style is **one sentence per line in Markdown files.**
+It keeps diffs readable; rendering is unaffected.
+
+### Adding a recipe
+
+A recipe is a complete worked pipeline in `recipes/<name>/`, containing:
+
+- `nodes.py` — the node functions
+- `config.toml` — the pipeline
+- `make_data.py` — a deterministic generator for synthetic inputs, exposing `write_inputs(data_dir)`
+- `demo.py` — a marimo notebook that runs it, with a PEP 723 header so `uvx marimo edit --sandbox` works without a checkout
+- a page in `docs/recipes/`, plus a `docs-recipes` line in the `justfile` exporting the notebook
+
+Add it to `tests/test_recipes.py` as well.
 
 ## Pull requests
 
 - Keep changes focused — one feature or fix per PR.
-- Add tests for new functionality (coverage gate is 90%).
+- Add tests for new functionality (coverage gate is 90% --- run `just test-cov`).
 - Update documentation as needed.
-- Run `just lint typecheck test` before submitting.
+- Run `just lint typecheck test` or the pre-commit hooks before submitting.
+
+## Design principles
+
+Please consider the following design principles:
+
+- **Expose Hamilton and xarray rather than wrapping them.** Strongly prefer a thin passthrough to a new abstraction.
+- **The core should remain domain-agnostic.** Don't build in assumptions about data structure or attributes (e.g. requiring a time axis).
+  - The exception to this rule: geospatial and parallel-Zarr code lives in `conduit.gridded` behind lazy imports.
+- **The CLI should stay a thin wrapper.** Don't build functionality _into_ the CLI.
+- **Contract checks should run at build time.** A feature that only works by deferring validation to runtime needs a different design.
+- **Minimise dependency bloat.** Self-explanatory.

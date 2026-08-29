@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from conduit.build import build_driver
 from conduit.config import Config, IOSpec, SubsetSpec
-from conduit.dag.driver import build_driver
 from conduit.io import get_final_vars, load_inputs
 
 _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})
@@ -183,7 +183,7 @@ stop = 2
     def test_exits_zero(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, _ = subset_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -193,7 +193,7 @@ stop = 2
         """A subset run writes a uniquely-suffixed, stacked (pixel) file."""
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -206,7 +206,7 @@ stop = 2
     def test_output_values_match_full_run(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
         from conduit.config import load_config
         from conduit.io import get_outputs
 

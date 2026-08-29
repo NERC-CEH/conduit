@@ -1,4 +1,4 @@
-"""Tests for the before-compute wiring check (`conduit.dag.wiring_check`)."""
+"""Tests for the before-compute wiring check (`conduit.wiring_check`)."""
 
 import sys
 import types
@@ -8,7 +8,7 @@ import xarray as xr
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from conduit.dag.wiring_check import WiringWarning, check_wiring
+from conduit.wiring_check import WiringWarning, check_wiring
 
 
 def _da():

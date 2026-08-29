@@ -1,7 +1,7 @@
 """Configuration management: parse a TOML file into a `ParsedConfig`.
 
-The data model itself lives in `conduit.specs` (a leaf module); this module owns
-the TOML -> spec translation: section dispatch, the `[[node]]` fan-out expansion,
+The data model itself lives in `conduit.specs`; this module owns the
+TOML -> spec translation: section dispatch, the `[[node]]` fan-out expansion,
 the `[[resample]]` preset desugaring, and path resolution.
 """
 
@@ -13,8 +13,15 @@ from typing import Any, Self
 
 import tomli_w
 
-from .checks import CHECKS
+from .errors import ConduitValueError
 from .formats import DEFAULT_POINT_DIM
+from .importing import (
+    discover_registered_modules,
+    is_file_form,
+    is_valid_module_path,
+    registered_module,
+)
+from .input_checks import CHECKS
 from .specs import (
     AnnotationPolicySpec,
     BlockingSpec,
@@ -23,6 +30,7 @@ from .specs import (
     IOSpec,
     NodeSpec,
     ParsedConfig,
+    RegisteredModule,
     ResampleSpec,
     SubsetSpec,
     _severity,
@@ -68,10 +76,7 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
     `conduit.transforms.resample` to ``{v}_{source}``. The node is a **passthrough**
     but declares its own ``freq`` — the one facet a resample does not preserve — so
     every resample carries a checkable output-frequency contract, anchor included (a
-    fat-fingered ``W-WED`` is caught at build time). See `conduit.dag.contract_check`.
-
-    This preset is why ``[[resample]]`` needs no special-cased DAG module: it is an
-    ordinary generated node.
+    fat-fingered ``W-WED`` is caught at build time). See `conduit.contract_check`.
     """
     src = f"{{var}}_{spec.source}"
     return {
@@ -92,18 +97,26 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
 # ---------------------------------------------------------------------------
 
 
+_ON_INEXACT: frozenset[str] = frozenset({"convert", "warn", "error"})
+
+_ANNOTATION_KEYS: frozenset[str] = frozenset(
+    {"mode", "on_inexact", "on_mismatch", "on_uninferable"}
+)
+
+
 class Config:
     """Configuration class with loading, parsing, and serialization.
 
-    The raw TOML data is held **exactly as written**: relative paths are resolved
-    against ``base`` (the config file's directory) as the specs are built in `parse`,
-    not by rewriting ``_data``. That keeps `dumps` round-trip faithful — it emits the
-    relative paths the user wrote, not absolutised ones — and keeps `load` and `loads`
-    behaving the same way apart from the base they resolve against.
+    The raw TOML data is held exactly as written. Relative paths are resolved
+    against ``base`` (the config file's directory) as the specs are built in
+    `parse`, so `dumps` round-trips: it emits the relative paths you wrote.
     """
 
     def __init__(self, data: dict[str, Any], base: Path | None = None) -> None:
         """Initialize with a config dict, and the base its paths resolve against."""
+        # ``_data`` is never rewritten: paths are resolved against ``_base`` by
+        # ``_resolve`` as the specs are built in ``parse``. Absolutising them here
+        # instead would make ``dumps`` emit absolute paths and break round-tripping.
         self._data = data
         self._base = base
 
@@ -120,9 +133,14 @@ class Config:
         return cls(data, base=path.parent)
 
     @classmethod
-    def loads(cls, toml_str: str) -> Self:
-        """Load config from a TOML string; relative paths resolve against the CWD."""
-        return cls(tomllib.loads(toml_str))
+    def loads(cls, toml_str: str, base: str | os.PathLike | None = None) -> Self:
+        """Load config from a TOML string.
+
+        A string has no file to anchor relative paths against, so pass ``base`` to
+        say what they resolve against. Without it, every path in the config must be
+        absolute and every ``_import_path`` must be a dotted module name.
+        """
+        return cls(tomllib.loads(toml_str), base=Path(base).resolve() if base else None)
 
     def _resolve(self, path: str) -> str:
         """Resolve one config path against the config file's directory."""
@@ -154,13 +172,13 @@ class Config:
         """
         for label, params in data.pop("inputs", {}).items():
             if "path" not in params:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[inputs.{label}] is missing a 'path' key. "
                     f"Input sections must specify a file path."
                 )
             vars_ = params.get("vars")
             if vars_ is not None and len(vars_) == 0:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[inputs.{label}] has an empty 'vars'. Either list the "
                     f"variables to load, or omit 'vars' entirely to load every "
                     f"variable in the file."
@@ -178,13 +196,13 @@ class Config:
         for label, params in data.pop("outputs", {}).items():
             vars_ = params.get("vars") or []
             if not vars_:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[outputs.{label}] has no 'vars'. "
                     f"Output sections must list at least one variable, "
                     f"or be removed from the config."
                 )
             if "path" not in params:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[outputs.{label}] is missing a 'path' key. "
                     f"Output sections must specify a file path."
                 )
@@ -211,12 +229,12 @@ class Config:
         for concrete in expand_node_entries(entries):
             spec = NodeSpec.from_config(concrete)
             if spec.name in seen_names:
-                raise ValueError(f"Duplicate node name '{spec.name}'")
+                raise ConduitValueError(f"Duplicate node name '{spec.name}'")
             seen_names.add(spec.name)
             specs.append(spec)
         return specs
 
-    def _parse_cache(self, data: dict) -> "CacheSpec | None":
+    def _parse_cache(self, data: dict) -> CacheSpec | None:
         """Handle the [cache] section.
 
         Returns None if there is no [cache] section, or if it sets
@@ -240,7 +258,7 @@ class Config:
         """
         return assert_dim_name(data.pop("point_dim", DEFAULT_POINT_DIM), "'point_dim'")
 
-    def _parse_blocking(self, data: dict, point_dim: str) -> "BlockingSpec | None":
+    def _parse_blocking(self, data: dict, point_dim: str) -> BlockingSpec | None:
         """Handle the [blocking] section.
 
         Returns None if there is no [blocking] section.
@@ -250,7 +268,7 @@ class Config:
             return None
         return BlockingSpec.from_config(entry, default_dim=point_dim)
 
-    def _parse_subset(self, data: dict, point_dim: str) -> "SubsetSpec | None":
+    def _parse_subset(self, data: dict, point_dim: str) -> SubsetSpec | None:
         """Handle the [subset] section.
 
         Returns None if there is no [subset] section.
@@ -274,7 +292,7 @@ class Config:
         section = data.pop("validation", {})
         unknown_keys = set(section) - {"checks"}
         if unknown_keys:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[validation] has unknown key(s) {sorted(unknown_keys)}; "
                 f"only 'checks' is supported"
             )
@@ -283,19 +301,23 @@ class Config:
         for entry in entries:
             entry = dict(entry)
             if "check" not in entry:
-                raise ValueError(f"checks entry {entry!r} is missing a 'check' key")
+                raise ConduitValueError(
+                    f"checks entry {entry!r} is missing a 'check' key"
+                )
             name = entry.pop("check")
             if name not in CHECKS:
-                raise ValueError(
+                raise ConduitValueError(
                     f"unknown check {name!r}; known checks: {sorted(CHECKS)}"
                 )
             raw_inputs = entry.pop("inputs", None)
             if not raw_inputs:
-                raise ValueError(f"check {name!r} is missing a non-empty 'inputs' list")
+                raise ConduitValueError(
+                    f"check {name!r} is missing a non-empty 'inputs' list"
+                )
 
             if "*" in raw_inputs:
                 if raw_inputs != ["*"]:
-                    raise ValueError(
+                    raise ConduitValueError(
                         f"check {name!r}: '*' must be the sole element of 'inputs', "
                         f"got {raw_inputs!r}"
                     )
@@ -304,14 +326,14 @@ class Config:
                 inputs = list(raw_inputs)
                 unknown = [s for s in inputs if s not in input_specs]
                 if unknown:
-                    raise ValueError(
+                    raise ConduitValueError(
                         f"check {name!r} references unknown input section(s) "
                         f"{unknown}; known: {sorted(input_specs)}"
                     )
 
             arity = CHECKS[name].arity
             if arity != "variadic" and len(inputs) != arity:
-                raise ValueError(
+                raise ConduitValueError(
                     f"check {name!r} takes exactly {arity} input(s), "
                     f"got {len(inputs)}: {inputs}"
                 )
@@ -319,13 +341,16 @@ class Config:
             specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
         return specs
 
-    def _parse_annotations(self, data: dict) -> "AnnotationPolicySpec":
+    def _parse_annotations(self, data: dict) -> AnnotationPolicySpec:
         """Handle the [annotations] section.
 
         Maps the section's keys to the xarray-annotated policy axes:
 
-        - ``mode`` (``strict`` / ``warn`` / ``off``) and ``exact`` (bool) drive the
-          *units* policy (``enabled`` / ``on_missing`` / ``on_inexact``);
+        - ``mode`` (``strict`` / ``warn`` / ``off``) and ``on_inexact``
+          (``convert`` / ``warn`` / ``error``) drive the *units* policy
+          (``enabled`` / ``on_missing`` / ``on_inexact``). ``on_inexact`` governs a
+          *value-changing* conversion only: differently-spelled but identical units
+          ("pascal" for "Pa") are relabelled without consulting it;
         - ``on_mismatch`` (``error`` / ``warn`` / ``ignore``) drives the *schema*
           (dims/coords/dtype) *and* *temporal* (freq) policies — in both it means
           "the array contradicts the declaration";
@@ -336,6 +361,9 @@ class Config:
         ``mode = "off"`` disables validation for *every* facet via the shared
         master switch. ``None`` axes defer to the process-wide default. All are
         ``None`` if there is no [annotations] section.
+
+        An unrecognised key is an error. A policy that is silently ignored is worse
+        than one that is absent, because the run looks like it honoured it.
         """
         entry = data.pop("annotations", None)
         if entry is None:
@@ -353,16 +381,23 @@ class Config:
             elif mode == "warn":
                 on_missing = "warn"
             else:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[{label}] 'mode' must be one of 'strict', 'warn', 'off', "
                     f"got {mode!r}."
                 )
-        exact = entry.get("exact")
-        if exact is not None:
-            if not isinstance(exact, bool):
-                raise ValueError(f"[{label}] 'exact' must be a boolean, got {exact!r}.")
-            if exact:
-                on_inexact = "error"
+        on_inexact = entry.get("on_inexact")
+        if on_inexact is not None and on_inexact not in _ON_INEXACT:
+            raise ConduitValueError(
+                f"[{label}] 'on_inexact' must be one of "
+                f"{', '.join(repr(v) for v in _ON_INEXACT)}, got {on_inexact!r}."
+            )
+        unknown = sorted(set(entry) - _ANNOTATION_KEYS)
+        if unknown:
+            raise ConduitValueError(
+                f"[{label}] has unrecognised key(s) "
+                f"{', '.join(repr(k) for k in unknown)}. Recognised keys are "
+                f"{', '.join(sorted(_ANNOTATION_KEYS))}."
+            )
         return AnnotationPolicySpec(
             enabled=enabled,
             on_missing=on_missing,
@@ -373,8 +408,18 @@ class Config:
             ),
         )
 
-    def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
+    def _parse_external_modules(
+        self,
+        data: dict,
+        driver_config: dict,
+        registered: list[RegisteredModule],
+    ) -> list[str]:
         """Handle remaining sections as external modules.
+
+        A section names its module with an ``_import_path``, or is itself the name
+        of a module an installed package registered (`conduit.importing`). An
+        explicit ``_import_path`` always wins, so a config can never be silently
+        redirected by something in the environment.
 
         Module params share one flat `driver_config` namespace (that is how Hamilton
         resolves a node's keyword-only config arguments), so ``defined_by`` tracks
@@ -384,18 +429,28 @@ class Config:
         modules: list[str] = []
         defined_by: dict[str, str] = {}
         for section_label, params in data.items():
+            if not isinstance(params, dict):
+                raise ConduitValueError(
+                    f"Top-level key {section_label!r} is not a recognised conduit "
+                    f"setting, and its value ({params!r}) is not a section. Every "
+                    f"unrecognised section is treated as one of your modules, so "
+                    f"this must either be removed or written as a table naming a "
+                    f"module."
+                )
             params = dict(params)
             import_path = params.pop("_import_path", None)
             if import_path is None:
-                raise ValueError(
-                    f"Section [{section_label!r}] is missing '_import_path'. "
-                    f"All non-built-in sections must include "
-                    f"'_import_path = \"pkg.module\"'."
-                )
-            if not _is_valid_module_path(import_path):
-                raise ValueError(
-                    f"'_import_path = {import_path!r}' in [{section_label!r}] "
-                    f"is not a valid dotted module path."
+                if (found := registered_module(section_label)) is not None:
+                    registered.append(found)
+                    import_path = found.import_path
+                else:
+                    raise ConduitValueError(_no_module_for(section_label))
+            elif not is_file_form(import_path) and not is_valid_module_path(
+                import_path
+            ):
+                raise ConduitValueError(
+                    f"'_import_path = {import_path!r}' in [{section_label}] is "
+                    f"neither a dotted module path nor a path to a .py file."
                 )
             _merge_params(section_label, params, driver_config, defined_by)
             modules.append(import_path)
@@ -411,7 +466,8 @@ class Config:
                             table/scalar inputs (see conduit.formats)
         - [inputs.*]      — I/O specs; freq derived from subsection key
         - [validation]    — declared expectations to validate; `checks` holds the
-                            input-Dataset compatibility checks (see conduit.checks)
+                            input-Dataset compatibility checks
+                            (see conduit.input_checks)
         - [outputs.*]     — I/O specs; freq derived from subsection key
         - [[node]]        — config-driven custom nodes (supports for_each fan-out)
         - [[resample]]    — preset desugaring to fan-out passthrough nodes
@@ -441,7 +497,8 @@ class Config:
         blocking_spec = self._parse_blocking(data, point_dim)
         subset_spec = self._parse_subset(data, point_dim)
         annotations = self._parse_annotations(data)
-        modules += self._parse_external_modules(data, driver_config)
+        registered: list[RegisteredModule] = []
+        modules += self._parse_external_modules(data, driver_config, registered)
         return ParsedConfig(
             modules=modules,
             driver_config=driver_config,
@@ -454,6 +511,8 @@ class Config:
             checks=checks,
             annotations=annotations,
             point_dim=point_dim,
+            base=self._base,
+            registered_modules=registered,
         )
 
 
@@ -465,11 +524,6 @@ class Config:
 def load_config(config_path: str | Path) -> ParsedConfig:
     """Load and parse a TOML config file."""
     return Config.load(config_path).parse()
-
-
-def _is_valid_module_path(path: str) -> bool:
-    """Return True if path is a non-empty dotted Python identifier."""
-    return bool(path) and all(part.isidentifier() for part in path.split("."))
 
 
 def _merge_params(
@@ -484,7 +538,7 @@ def _merge_params(
     cannot fix a collision without knowing who they are colliding with.
     """
     for key in sorted(set(params) & set(driver_config)):
-        raise ValueError(
+        raise ConduitValueError(
             f"Parameter {key!r} is defined by both [{defined_by[key]}] and "
             f"[{section}]. Module parameters share one flat namespace, so give the "
             f"two parameters distinct names (e.g. {defined_by[key]}_{key} and "
@@ -493,3 +547,27 @@ def _merge_params(
         )
     driver_config |= params
     defined_by.update(dict.fromkeys(params, section))
+
+
+def _no_module_for(section_label: str) -> str:
+    """Explain a section that names no module conduit can find."""
+    give_one = (
+        "Give an '_import_path', naming either an installed module "
+        "('_import_path = \"pkg.module\"') or a .py file beside the config "
+        "('_import_path = \"nodes.py\"')."
+    )
+    known = discover_registered_modules()
+    if not known:
+        return (
+            f"Section [{section_label}] is missing '_import_path'. {give_one} A "
+            f"bare section name works only when an installed package registers a "
+            f"module under it, and none is installed here."
+        )
+    listed = ", ".join(
+        f"{name} (from {mod.distribution})" for name, mod in sorted(known.items())
+    )
+    return (
+        f"Section [{section_label}] is missing '_import_path', and no installed "
+        f"package registers a module by that name. Registered names are: {listed}. "
+        f"{give_one}"
+    )

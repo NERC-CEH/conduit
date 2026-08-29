@@ -445,7 +445,7 @@ class TestCLIParallelWorkflow:
     ):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         store = tmp_path / "weekly.zarr"
         runner = CliRunner()
@@ -510,7 +510,7 @@ class TestConcurrentZarrWrites:
 
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         store = tmp_path / "weekly.zarr"
 
@@ -542,7 +542,7 @@ class TestConcurrentZarrWrites:
                 [
                     sys.executable,
                     "-c",
-                    "from conduit.cli import app; app()",
+                    "from conduit.cli import main; main()",
                     "run",
                     str(cfg),
                 ],

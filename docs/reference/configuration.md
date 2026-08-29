@@ -6,22 +6,20 @@ icon: lucide/settings
 # Configuration reference
 
 A conduit pipeline is described by a [TOML](https://toml.io/en/) file. Each section
-activates a pipeline component; absent sections are simply not included, so you build a
-pipeline from only the parts you need.
+switches on one part of the pipeline; leave a section out and that part is not there.
 
 Recognised top-level sections are listed below. **Any section not listed here is treated
-as your own module** and must carry an `_import_path` key (see [Modules](#modules)) — so
-a mistyped section name is an error rather than a silently ignored one. In particular
-there is no `[grid]` section (gridding is detected from the inputs' CRS) and no
-`[graphviz]` section (styling belongs in a `conduit graph --style` file, not the science
-config).
+as your own module**, named either by an `_import_path` key or by an installed package
+that has registered it (see [Modules](#modules)), so a mistyped section name is an error
+rather than a silently ignored one. Gridding comes from the inputs' CRS, and graph
+styling from a `conduit graph --style` file.
 
-/// admonition | Paths are resolved relative to the config file
-    type: note
+!!! note "Paths are resolved relative to the config file"
 
-Relative `path` values in `[inputs.*]`, `[outputs.*]` and `[cache]` are resolved
-against the directory containing the config file, not the current working directory.
-///
+    Every relative path in a config — `path` in `[inputs.*]`, `[outputs.*]` and
+    `[cache]`, and a `.py` `_import_path` — is resolved against the directory
+    containing the config file, never the current working directory. A config and the
+    files beside it therefore travel together, and run the same from anywhere.
 
 ## Inputs
 
@@ -61,9 +59,7 @@ vars = ["elevation"]
   path = "data/daily.nc"   # no `vars`: loads every variable as `{var}_daily`
   ```
 
-  An *empty* list (`vars = []`) is a parse error rather than a way to spell this — it
-  would bind nothing, which is never what a section is for. (Output sections always
-  require `vars`; there is nothing to enumerate a destination file's variables from.)
+  An empty list (`vars = []`) is a parse error. Output sections always require `vars`.
 
 ## Outputs
 
@@ -84,41 +80,66 @@ inferred from the extension.
 
 Compose the pipeline from modules. There is one built-in addressable by short name —
 `[[node]]` (with the `[[resample]]` preset) — and any other section is **your own
-module**, loaded by its dotted `_import_path`. A module's keyword-only parameters can be
-supplied in its section body.
+module**. A module's keyword-only parameters can be supplied in its section body.
 
 ```toml
-# Your own module, with a parameter
+# A .py file beside the config
+[climate_nodes]
+_import_path = "nodes.py"
+
+# An installed package, with a parameter
 [aridity]
 _import_path = "mypackage.indices"
 floor = 1e-4
 ```
 
-The section header (`aridity`) is a free-form label; only `_import_path` is semantic.
-See [Bring your own module](../guides/bring-your-own-module.md) for the authoring
-conventions.
+`_import_path` takes either form, told apart by the `.py` ending:
 
-/// admonition | Parameter namespacing
-    type: note
+| Value | Resolved as |
+| --- | --- |
+| `"nodes.py"`, `"lib/nodes.py"` | a file, relative to the config file's directory |
+| `"/shared/nodes.py"` | a file, at an absolute path |
+| `"mypackage.indices"` | a dotted module name, imported from the environment |
 
-Module parameters from **every** section are merged into a single flat dictionary — the
-Hamilton driver config. This is deliberate: Hamilton resolves a node function's
-keyword-only arguments by *name* against that one dict, so a parameter's config key and
-the function's argument name are the same string. Auto-prefixing by section would mean
-every module had to name its argument `aridity_floor` rather than `floor`, which is a
-worse trade for the common single-module case.
+A module named by a `.py` path is loaded on its own: it can import installed packages,
+but not another loose `.py` file beside it. Code that spans several files has to be an
+installed package, named by a dotted path.
 
-The consequence is that parameter names must be unique across active sections. Two
-sections defining `threshold` is a parse-time error naming both:
+### How a section finds its module
 
-```
-Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
-share one flat namespace, so give the two parameters distinct names ...
-```
+A section header is a free-form label wherever `_import_path` is present. Without one, it
+has to name a module that an installed package registers.
 
-To fix it, rename the parameter in the config *and* the keyword argument in the module
-that reads it (e.g. `aridity_floor`). Sections that are not both active never collide.
-///
+| The section | What conduit does |
+| --- | --- |
+| carries `_import_path` | imports that, whatever else the environment offers under the same name |
+| carries no `_import_path`, and an installed package registers a module under the section name | imports the registered module, and reports which package supplied it |
+| neither | fails at parse time, listing the registered names it does know |
+
+An explicit `_import_path` always wins, so installing a package can never redirect a
+config that already says where its code lives.
+
+See [Bring your own module](../guides/nodes/bring-your-own-module.md) for the authoring
+conventions, and
+[Register modules from a package](../extending/register-modules.md) for the other side of
+registration, written for the author of the package doing the registering.
+
+!!! note "Parameter namespacing"
+
+    Module parameters from **every** section are merged into a single flat dictionary, the
+    Hamilton driver config. A parameter's config key and the function's argument name are
+    therefore the same string.
+
+    Parameter names must be unique across active sections. Two sections defining `threshold`
+    is a parse-time error naming both:
+
+    ```
+    Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
+    share one flat namespace, so give the two parameters distinct names ...
+    ```
+
+    To fix it, rename the parameter in the config *and* the keyword argument in the module
+    that reads it (e.g. `aridity_floor`). Sections that are not both active never collide.
 
 ## Nodes
 
@@ -139,7 +160,7 @@ units = "1"
 | `name` | **Required.** The node this entry produces. |
 | `inputs` | **Required.** Node names this entry consumes (available in `expression`). |
 | `expression` | A Python/xarray expression over `inputs` (`xr` is in scope). |
-| `_import_path` + `function` | Alternative to `expression`: call `function` in that module. |
+| `_import_path` + `function` | Alternative to `expression`: call `function` in that module. Same two forms as a module section's. |
 | `units` | Output unit contract (validated at parse time). |
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). |
@@ -149,8 +170,8 @@ units = "1"
 | `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
 
 Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer
-the [contract check](../concepts/contracts.md) can verify. See
-[Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) for worked examples.
+the [contract check](../guides/nodes/contracts.md) can verify. See
+[Inline nodes & fan-out](../guides/configs/inline-nodes-and-fan-out.md) for worked examples.
 
 An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an
 unanchored one (`"7D"`, `"W"`) constrains the spacing only.
@@ -178,15 +199,11 @@ aggfunc = "mean"
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 
-/// admonition | `from` and `to` are names, not frequencies
-    type: note
+!!! note "`from` and `to` are node-name suffixes"
 
-They are **node-name suffixes** and nothing more: `from = "daily"` reads
-`{var}_daily`, `to = "weekly"` writes `{var}_weekly`. They are free-form —
-`from = "raw"`, `to = "smoothed"` is equally valid — and no frequency is inferred from
-them. `freq` alone says what actually happens to the time axis. There is no table of
-"supported directions": any pair of labels works, given a `freq`.
-///
+    `from = "daily"` reads `{var}_daily` and `to = "weekly"` writes `{var}_weekly`. They are
+    free-form, so `from = "raw"`, `to = "smoothed"` works just as well. `freq` is what sets
+    the time axis.
 
 `freq` also becomes the generated node's **declared output frequency**, so every
 resample carries a checkable frequency contract: a downstream consumer declaring
@@ -194,19 +211,17 @@ resample carries a checkable frequency contract: a downstream consumer declaring
 
 The time axis is detected from the data, so it need not be called `time`.
 
-/// admonition | Choosing `aggfunc` is not something the checks can help with
-    type: warning
+!!! warning "Choosing `aggfunc` is not something the checks can help with"
 
-Resampling preserves units, so `mean` and `sum` are equally *dimensionally* valid — a
-wrong choice produces a meaningless number that no contract check will flag. Use `mean`
-for a rate and `sum` for an amount-per-period; see
-[Resampling & units](../guides/resampling-and-units.md).
-///
+    Resampling preserves units, so `mean` and `sum` are equally valid *dimensionally*, and a
+    wrong choice gives a meaningless number that no contract check will flag. Use `mean` for
+    a rate and `sum` for an amount-per-period; see
+    [Resampling & units](../guides/nodes/resampling-and-units.md).
 
 ## Cache
 
 `[cache]` persists intermediate results to disk (Hamilton caching). See
-[Scale up › caching](../guides/scale-up.md#caching-results).
+[Scale up › caching](../guides/run/scale-up.md#caching-results).
 
 ```toml
 [cache]
@@ -236,7 +251,7 @@ point_dim = "location"   # optional; defaults to "pixel"
 
 The two must agree. If a table input were given a `pixel` axis while `[subset]`
 partitioned over `location`, the subset would skip that input entirely and leave a
-phantom `pixel` axis in the outputs — so one key drives both.
+stray `pixel` axis in the outputs, which is why one key drives both.
 
 Gridded pipelines should leave this at its default: the geospatial layer stacks `(y, x)`
 into `pixel` by name.
@@ -244,7 +259,7 @@ into `pixel` by name.
 ## Blocking
 
 `[blocking]` processes a partition dimension in fixed-size sequential chunks to bound
-peak memory. See [Scale up › blocking](../guides/scale-up.md#memory-bounded-execution-with-blocking).
+peak memory. See [Scale up › blocking](../guides/run/scale-up.md#memory-bounded-execution-with-blocking).
 
 ```toml
 [blocking]
@@ -261,7 +276,7 @@ dim = "pixel"
 
 `[subset]` restricts the run to a contiguous slice of one dimension, so independent
 processes can each handle a different shard of the same inputs. See
-[Scale up › parallel subset runs](../guides/scale-up.md#parallel-subset-runs).
+[Scale up › parallel subset runs](../guides/run/scale-up.md#parallel-subset-runs).
 
 ```toml
 [subset]
@@ -282,22 +297,20 @@ processes concurrently (`[subset]`). A non-gridded pipeline can subset over `loc
 `site` just as it can block over it, and each part is written to its own suffixed file
 (`out_location0-500.nc`).
 
-/// admonition | Zarr stores are pixel-only
-    type: warning
+!!! warning "Zarr stores are pixel-only"
 
-The one place `pixel` is still special is the shared Zarr store built by
-`conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
-`merge` unstacks back to `(y, x)`. Configuring `dim` — or `point_dim` — as anything else
-alongside a Zarr output is an error. Use a NetCDF output instead — its subset parts are
-separate files and need no pre-created store.
-///
+    The one place `pixel` is still special is the shared Zarr store built by
+    `conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which
+    `merge` unstacks back to `(y, x)`. Configuring `dim` — or `point_dim` — as anything else
+    alongside a Zarr output is an error. Use a NetCDF output instead — its subset parts are
+    separate files and need no pre-created store.
 
 ## Validation
 
-`[validation]` groups **declarations about properties you expect and want to check** — as
-opposed to the DAG's structure, which conduit derives on its own. Its `checks` array runs
-a suite of input-Dataset compatibility checks before compute (and as a stage of
-[`--dry-run`](../guides/validate-before-running.md)).
+`[validation]` is where you declare properties you expect and want checked, as opposed to
+the DAG's structure, which conduit works out on its own. Its `checks` array runs a set of
+input-Dataset compatibility checks before compute, and as a stage of
+[`--dry-run`](../guides/validate/validate-before-running.md).
 
 ```toml
 [validation]
@@ -328,12 +341,11 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks are a real importable library ([`conduit.checks`](../api/conduit.checks.md)),
-so the [notebook-driven path](../guides/drive-from-python.md) calls them directly — the
-config list is only sugar over the same functions. They are **opt-in**: with no `[validation]`
-block conduit performs no cross-input validation (it does not guess which inputs are
-*meant* to align — only you know that). Under [`[subset]`](#subset) they are skipped, with
-a warning, since they describe the whole domain rather than a single shard.
+The checks are an importable library ([`conduit.input_checks`](modules/conduit.input_checks.md)), so
+the [notebook-driven path](../guides/run/drive-from-python.md) can call them directly.
+They are **opt-in**: conduit cannot know which inputs are *meant* to align, so declare the
+ones that must. Under [`[subset]`](#subset) they are skipped with a warning, since they
+describe the whole domain rather than a single shard.
 
 ## Annotations
 
@@ -343,7 +355,7 @@ and temporal: freq) are validated. Omit it to keep the defaults.
 ```toml
 [annotations]
 mode = "strict"           # "strict" | "warn" (default) | "off"
-exact = false             # reject value-changing unit conversions
+on_inexact = "convert"    # "convert" (default) | "warn" | "error"
 on_mismatch = "error"     # "error" | "warn" | "ignore" — dims/coords/dtype/freq
 on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 ```
@@ -351,7 +363,7 @@ on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 | Key | Description |
 |-----|-------------|
 | `mode` | Units strictness. `strict` raises on a unit problem; `warn` reports and continues; `off` disables **all** contract checking (every facet). Default `warn`. |
-| `exact` | When `true`, a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared) is rejected rather than converted. Default `false`. |
+| `on_inexact` | What to do with a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared): `convert` it silently (default), `warn` and convert, or `error`. Two spellings of the same unit (`"pascal"` for `"Pa"`) are relabelled without consulting this. |
 | `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
 | `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
 
@@ -361,28 +373,30 @@ Validation happens at two points:
   when the driver is built, so a mismatch is caught before compute. Contracts propagate
   through passthrough nodes (e.g. resampling), so those edges are covered too.
 - **Run time** — as each node executes, every `DataArray` input is validated against its
-  declaration. With `exact = false` a compatible input is converted; with `exact = true`
-  it must already match. Dimensionally-incompatible inputs always raise. A `units`
+  declaration. Under `on_inexact = "convert"` a compatible input is converted; under
+  `"error"` it must already match. Dimensionally-incompatible inputs always raise. A `units`
   attribute that is missing or unparseable follows `mode`.
 
 Run the run-time input checks against your real data *without* executing the pipeline
-with [`conduit run --dry-run`](../guides/validate-before-running.md).
+with [`conduit run --dry-run`](../guides/validate/validate-before-running.md).
 
-/// admonition | Affine units (temperature)
-    type: warning
+!!! warning "Affine units (temperature)"
 
-Converting between offset units such as `degC` and `K` applies the offset
-(`degC → K` adds 273.15), which is correct for an *absolute* temperature but wrong for a
-*difference* or anomaly. Declare such quantities in the unit they are stored in (no
-conversion), or set `exact = true` to forbid implicit temperature conversions.
-///
+    Converting between offset units such as `degC` and `K` applies the offset
+    (`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a
+    *difference* or anomaly. Declare such quantities in the unit they are stored in, so no
+    conversion happens, or set `on_inexact = "error"` to forbid implicit temperature
+    conversions. `on_inexact = "warn"` is the middle course: the conversion still happens,
+    but each one is reported by name, so an unintended one cannot pass unnoticed.
 
 ## See also
 
-- [Validate before running](../guides/validate-before-running.md) — the `--dry-run`
+- [Write a config](../guides/configs/write-a-config.md) — the shape of a config, and the
+  edits you are most likely to make.
+- [Validate before running](../guides/validate/validate-before-running.md) — the `--dry-run`
   pre-flight, the wiring check, and the `[validation]` input checks.
 - [Data formats](data-formats.md) — supported file types and spatial/temporal handling.
-- [Inline nodes & fan-out](../guides/inline-nodes-and-fan-out.md) — the `[[node]]` and
+- [Inline nodes & fan-out](../guides/configs/inline-nodes-and-fan-out.md) — the `[[node]]` and
   `[[resample]]` guide.
-- [Bring your own module](../guides/bring-your-own-module.md) — external module
+- [Bring your own module](../guides/nodes/bring-your-own-module.md) — external module
   conventions.

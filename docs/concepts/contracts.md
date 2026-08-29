@@ -1,123 +1,101 @@
 ---
-title: Contracts before compute
-icon: lucide/shield-check
+title: Contracts and the whole-graph check
+icon: lucide/badge-check
 ---
 
-# Contracts before compute
+# Contracts and the whole-graph check
 
-conduit's flagship feature is lifting per-function contract validation to a **whole-DAG,
-before-compute guarantee**. This page explains what that means, why it is possible, and
-how far it reaches. For a hands-on walkthrough, see
-[Add unit contracts](../get-started/units-and-contracts.md); for the task-level
-mechanics, [Validate before running](../guides/validate-before-running.md).
-
-## What is a contract?
-
-A *contract* is a machine-checkable claim a node makes about the data on one of its
-edges — declared in ordinary type annotations:
+A contract is a claim a node makes about the data on one of its edges, written as an ordinary type annotation:
 
 ```python
 def aridity_index_daily(
     precipitation_daily: Annotated[xr.DataArray, "mm/day"],
     evapotranspiration_daily: Annotated[xr.DataArray, "mm/day"],
-) -> Annotated[xr.DataArray, "1"]:
-    ...
+) -> Annotated[xr.DataArray, "1"]: ...
 ```
 
-conduit understands five **facets** of a contract, all through the same machinery:
+[xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) already checks a claim like that against the arguments the function is actually handed, at the moment it is called.
+That is a per-function guarantee, and it arrives too late to be much comfort: by the time the mismatched array reaches the function, everything upstream of it has already run.
 
-- **units** (via `pint` / `cf-xarray`) — `"mm/day"`, `"Pa"`, `"1"` (dimensionless),
-- **dims** — the dimension names,
-- **coords** — required coordinate variables,
-- **dtype** — the array's element type,
-- **freq** — how often the time axis ticks, and on what phase: `Freq("7D")`,
-  `Freq("W-SUN")`, `Freq("1ME")`.
+Checking every edge *before* the graph runs needs the annotations and the graph together.
+conduit has both, and lifting the per-function check to a DAG-wide one is the part it adds.
 
-The `[[node]]` config form declares the same facets with
-`units`/`dims`/`coords`/`dtype`/`freq` keys (see
-[Configuration › nodes](../reference/configuration.md#nodes)).
+## What a contract can say
 
-Frequency is spelled as a marker rather than a bare string — a bare string in the
-metadata is always a unit:
+Five facets, each declared independently:
 
-```python
-from xarray_annotated.temporal import Freq
+| Facet | Declares |
+|---|---|
+| units | the physical unit, via pint and cf-xarray |
+| dims | the dimension names |
+| coords | required coordinate variables |
+| dtype | the array's element type |
+| freq | how often the time axis ticks, and on what phase |
 
-def weekly_mean(
-    temperature_daily: Annotated[xr.DataArray, "degC", Freq("D")],
-) -> Annotated[xr.DataArray, "degC", Freq("W-SUN")]:
-    ...
-```
+[Declaring contracts](../guides/nodes/contracts.md) is the vocabulary and the syntax.
+This page is about what the checks do with it.
 
-An *unanchored* declaration compares spacing only (`Freq("7D")` accepts any weekly),
-while an *anchored* one also pins the phase (`Freq("W-SUN")` rejects a `W-WED` axis) —
-which is what catches a resample landing on the wrong weekday.
+## Producers, consumers, and passthroughs
 
-## The leap: per-function → whole-graph
+An annotation on a node's return value makes it a **typed producer**: conduit knows that node's output unit statically, without running it.
+An annotation on a parameter declares what the node **requires** of its input.
+An edge is checked wherever both ends declare a contract for the same facet.
 
-Libraries like `xarray-annotated` already validate a single function's contract when it
-runs. conduit's contribution is to check the **whole graph, before any node executes**.
+Some nodes transform data while leaving most facets alone.
+Resampling is the usual case: a weekly mean of a daily temperature is still degrees Celsius.
+These nodes are tagged **passthrough**, and the checker carries the upstream contract across them, so an edge running through a resample is still covered end to end.
 
-At build time it walks every internal edge. Where the producer declares an output
-contract *and* the consumer declares an input contract, it proves the two are
-consistent — for units, that they are convertible (and, under `exact`, identical); for
-dims/coords/dtype, that they match; for freq, that the spacing and phase can describe
-the same axis. If they don't, the build fails with a message naming both nodes and the
-offending facet. No data has moved yet.
+That happens per facet, because a passthrough preserves some and changes others.
+A resample preserves units and dims.
+It does not preserve frequency, since frequency is exactly what it changes, so it declares its own output frequency and becomes an ordinary typed producer for that one facet.
+Declare `Freq("W-SUN")` downstream and a `W-WED` offset fails when the driver is built.
 
-This is only possible because **both the annotations and the graph are present at the
-same time**. The annotations supply the per-edge claims; the graph supplies the edges to
-check. Take away either — annotations without a graph, or a graph without annotations —
-and a before-compute proof is not available. That composition is conduit's reason to
-exist (see [Why conduit?](why-conduit.md)).
+## The layers, and when each runs
 
-## What each check covers
+The contract check is one of several.
+They ask different questions and fire at different moments:
 
-- **Internal edges** (`check_dag_contracts`) — every edge where both ends declare a
-  contract is proven at build time.
-- **Input edges** (`check_input_contracts`) — an input from a file has no producer
-  *function* to declare a contract, so its actual metadata is validated against its
-  consumers instead. This needs the real files, but still no compute — it is what
-  [`--dry-run`](../guides/validate-before-running.md) does.
-- **Wiring** (`check_wiring`) — a separate check that the *plumbing* is complete
-  (every required input is bound; unused inputs warn), independent of the facets.
+| Layer | Question | When |
+|---|---|---|
+| Config parse | Is the TOML a valid pipeline, with parseable units, dtypes and node names? | parse |
+| Input compatibility | Do the input *files* relate as you said, on grid, time axis or coordinates? | after inputs open |
+| Contract check | Does every internal edge with a contract at both ends agree? | when the driver is built |
+| Execution plan | Is every requested output reachable from the inputs? | driver build |
+| Wiring check | Is every required input bound, and is anything loaded going unused? | after inputs load |
+| Input contracts | Does each file's metadata match what its consuming node requires? | node call |
 
-## Passthrough nodes propagate contracts
+Everything above the last row happens before a single array is computed.
+Input contracts are the exception, because they compare against real file metadata rather than declarations, so a normal run defers them to the moment the consuming node is called.
 
-Some nodes neither produce nor consume a *fixed* contract — they transform data while
-preserving its facets. Resampling is the canonical case: `temperature_weekly` should
-inherit whatever contract `temperature_daily` declared. Such nodes are tagged
-**passthrough**, and the checker propagates the upstream contract across them
-generically — so an edge fed through a resample is still covered end to end. The
-`[[resample]]` preset produces passthrough nodes; you can mark your own inline
-`[[node]]` passthrough too.
+`conduit run --dry-run` brings that forward: it performs every layer, including the input contracts, and executes nothing.
+[Validate before running](../guides/validate/validate-before-running.md) is the guide.
 
-Propagation is decided per facet, because a passthrough preserves some facets and
-transforms others. A resample preserves units, but frequency is the very thing it
-*changes*, so no upstream `freq` is propagated across it. Instead a `[[resample]]`
-declares its own output frequency (the offset it resamples to), which makes it an
-ordinary, checkable producer for that one facet: declare `Freq("W-SUN")` downstream and
-a fat-fingered `W-WED` offset is caught when the driver is built.
+Input compatibility is the only layer that is opt-in.
+Different time axes across inputs are perfectly normal, so conduit does not guess which relationships must hold; you declare them in a `[validation]` block.
 
-## Conversion, not just rejection
+## Strictness is a policy, not a property
 
-Contracts do more than reject. For units, a *compatible-but-different* input is
-**converted** to what the consumer declares — feed `hPa` where `Pa` is wanted and
-conduit scales it, rather than failing. You choose the strictness with the
-[`[annotations]` policy](../reference/configuration.md#annotations): `warn` (default) vs
-`strict`, and `exact` to forbid value-changing conversions.
+The `[annotations]` section sets one policy for the whole pipeline.
+`mode` decides whether a contract problem raises, is reported, or is ignored.
+`on_inexact` governs implicit conversion, and only a value-changing conversion consults it: hectopascals into a node wanting pascals can be scaled silently, reported, or refused.
+Units that differ only in spelling are relabelled without touching the values, and dimensionally incompatible units are always an error regardless of policy.
 
-## Why this matters
+## What contracts cannot catch
 
-The mistakes contracts catch — a unit slip, a transposed axis, a renamed input — are
-exactly the ones that otherwise survive until deep into a long run, or worse, produce a
-plausible-looking wrong answer. Proving them away up front (and in CI, via `--dry-run`)
-turns a class of silent, expensive errors into a fast failure at build time.
+The check shows the pipeline is *consistent*.
+It says nothing about whether it is *correct*.
 
-## See also
+A contract constrains the shape and units of data on an edge, so anything that leaves both unchanged passes.
+Summing a rate where you meant to average it gives the same units and the same dimensions, and no check will save you.
+[Resampling and units](../guides/nodes/resampling-and-units.md) is about that specific trap.
+A sign error, a wrong coefficient, or the right calculation on the wrong variable are all invisible here too.
 
-- [Add unit contracts](../get-started/units-and-contracts.md) — a runnable tutorial.
-- [Validate before running](../guides/validate-before-running.md) — the `--dry-run`
-  workflow.
-- [`[annotations]` reference](../reference/configuration.md#annotations) — every policy
-  key.
+Contracts narrow the space of mistakes.
+They do not empty it.
+[Test your pipeline](../guides/validate/test-your-pipeline.md) covers the rest.
+
+## Where next
+
+- [Declaring contracts](../guides/nodes/contracts.md) — writing the annotations.
+- [Validate before running](../guides/validate/validate-before-running.md) — the `--dry-run` pre-flight.
+- [`[annotations]` reference](../reference/configuration.md#annotations) — every policy key.

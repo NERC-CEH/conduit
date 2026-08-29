@@ -1,0 +1,348 @@
+"""Tests for `conduit.build_graph` and the styling it applies.
+
+The heavy post-processing (`relabel_with_units`, `color_edges_by_frequency`,
+`cluster_nodes_by_frequency`) pattern-matches Hamilton's rendered Graphviz body,
+so most of these are canaries: if Hamilton changes how it renders, the patterns
+stop matching and every feature **silently degrades to a no-op**. Testing them
+against `build_graph` rather than through the CLI keeps them pointed at the
+library, where the behaviour lives.
+"""
+
+import shutil
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+import xarray as xr
+
+from conduit import build_graph
+from conduit.config import load_config
+from conduit.graph import (
+    _import_style_function,
+    assign_freq_colors,
+    cluster_nodes_by_frequency,
+    color_edges_by_frequency,
+    infer_frequencies,
+    make_style_function,
+    relabel_with_units,
+)
+from conduit.graph_style import (
+    DEFAULT_PALETTE,
+    FREQ_COLOR_CYCLE,
+    GraphvizSpec,
+    load_graphviz_spec,
+)
+
+requires_dot = pytest.mark.skipif(
+    not shutil.which("dot"), reason="graphviz not installed"
+)
+
+
+class TestBuildGraph:
+    """`build_graph` returns the styled Digraph; nothing is written to disk."""
+
+    @requires_dot
+    def test_returns_a_digraph_without_writing(self, config_toml, tmp_path):
+        digraph = build_graph(config_toml)
+        assert digraph.source
+        assert not list(tmp_path.glob("*.dot"))
+
+    @requires_dot
+    def test_accepts_a_parsed_config(self, config_toml):
+        """A caller may parse, adjust the spec, then visualise it in memory."""
+        digraph = build_graph(load_config(config_toml))
+        assert "mean_temperature_weekly" in digraph.source
+
+    @requires_dot
+    def test_style_file_pins_a_frequency_colour(self, config_toml, tmp_path):
+        style = tmp_path / "style.toml"
+        # The config's node declares freq = "7D"; pinning it overrides the cycle.
+        style.write_text('[palette]\n"7D" = "#123456"\n')
+        assert "#123456" in build_graph(config_toml, style=style).source
+
+    def test_applies_the_config_annotation_policy(self, inexact_units_config):
+        """Previously `graph` never applied the config policy, so it silently
+        accepted a DAG that a run rejected on the very same config."""
+        from xarray_annotated.units import policy
+
+        # The test session disables contract checking globally (conftest); re-enable
+        # it so the config's `on_inexact = "error"` has something to tighten.
+        with policy(enabled=True), pytest.raises(ValueError, match="exact match"):
+            build_graph(inexact_units_config)
+
+
+class TestGraphvizBodySurgery:
+    """Canaries for the post-processing that rewrites Hamilton's rendered body.
+
+    These assert the surgery actually applied, so a rendering change upstream
+    fails loudly here instead of quietly producing a plain graph.
+    """
+
+    @pytest.fixture
+    def dot_source(self, config_toml):
+        return build_graph(config_toml).source
+
+    @requires_dot
+    def test_dot_contains_declared_units(self, dot_source):
+        # The declared unit replaced the DataArray type ...
+        assert "<i>degC</i>" in dot_source
+        # ... and no node with a declared unit still shows the type it replaced.
+        for line in dot_source.splitlines():
+            if line.strip().startswith("mean_temperature_weekly "):
+                assert "DataArray" not in line
+
+    @requires_dot
+    def test_dot_contains_freq_clusters(self, dot_source):
+        # One cluster per distinct declared frequency; the config declares 7D.
+        assert "subgraph cluster_7D {" in dot_source
+        assert 'label="7D"' in dot_source
+
+    @requires_dot
+    def test_dot_edges_coloured(self, dot_source):
+        edges = [ln for ln in dot_source.splitlines() if " -> " in ln]
+        assert edges, "no edges rendered at all"
+        assert any("color=" in ln for ln in edges)
+
+
+class TestFreqColorAssignment:
+    """Colours are assigned to declared frequencies from a cycle, not a fixed table."""
+
+    def test_distinct_freqs_get_distinct_colours(self):
+        colors = assign_freq_colors(
+            {"a": "7D", "b": "1ME", "c": "7D"}, dict(DEFAULT_PALETTE)
+        )
+        assert set(colors) == {"7D", "1ME"}
+        assert colors["7D"] != colors["1ME"]
+
+    def test_colours_come_from_the_cycle_in_first_seen_order(self):
+        colors = assign_freq_colors({"a": "1ME", "b": "7D"}, dict(DEFAULT_PALETTE))
+        assert colors["1ME"] == FREQ_COLOR_CYCLE[0]
+        assert colors["7D"] == FREQ_COLOR_CYCLE[1]
+
+    def test_palette_entry_pins_a_frequency(self):
+        colors = assign_freq_colors({"a": "7D"}, {**DEFAULT_PALETTE, "7D": "#123456"})
+        assert colors["7D"] == "#123456"
+
+    def test_no_frequencies_no_colours(self):
+        assert assign_freq_colors({}, dict(DEFAULT_PALETTE)) == {}
+
+
+class TestCustomStyleFunction:
+    def _mock_node(self, tags=None, type_=None, name=""):
+        node = MagicMock()
+        node.tags = tags or {}
+        node.type = type_ or object
+        node.name = name
+        return node
+
+    def _style(
+        self,
+        output_vars: "set[str] | frozenset[str]" = frozenset(),
+        freq_map: "dict[str, str] | None" = None,
+    ):
+        freq_map = freq_map if freq_map is not None else {}
+        colors = assign_freq_colors(freq_map, dict(DEFAULT_PALETTE))
+        return (
+            make_style_function(GraphvizSpec(), set(output_vars), freq_map, colors),
+            colors,
+        )
+
+    def test_declared_freq_node_coloured_and_labelled(self):
+        # The fill comes from the node's *declared* frequency, not its name.
+        node = self._mock_node(type_=xr.DataArray, name="gpp_smoothed")
+        style_fn, colors = self._style(freq_map={"gpp_smoothed": "7D"})
+        style, _, label = style_fn(node=node, node_class="default")
+        assert style["fillcolor"] == colors["7D"]
+        assert label == "7D"
+
+    def test_output_node_gets_highlight_border(self):
+        node = self._mock_node(type_=xr.DataArray, name="gpp_monthly")
+        style_fn, colors = self._style({"gpp_monthly"}, freq_map={"gpp_monthly": "1ME"})
+        style, _, label = style_fn(node=node, node_class="default")
+        assert style["color"] == DEFAULT_PALETTE["output"]
+        assert "penwidth" in style
+        # frequency fill is retained alongside the output border
+        assert style["fillcolor"] == colors["1ME"]
+        assert label == "output"
+
+    def test_node_without_a_declared_freq_has_empty_style(self):
+        # A name suffix alone means nothing now — only declarations count.
+        node = self._mock_node(type_=xr.DataArray, name="gpp_daily")
+        style_fn, _ = self._style()
+        style, _, label = style_fn(node=node, node_class="default")
+        assert style == {}
+        assert label is None
+
+
+class TestGraphPostProcessing:
+    def test_relabel_replaces_type_with_unit(self):
+        digraph = SimpleNamespace(
+            body=[
+                "\tgpp_weekly [label=<<b>gpp_weekly</b><br /><br /><i>DataArray</i>>]\n",
+                "\tlatitude [label=<<b>latitude</b><br /><br /><i>DataArray</i>>]\n",
+            ]
+        )
+        relabel_with_units(digraph, {"gpp_weekly": "g m-2 d-1"})  # type: ignore[arg-type]
+        assert "<i>g m-2 d-1</i>" in digraph.body[0]
+        # nodes without a declared unit keep their original type
+        assert "<i>DataArray</i>" in digraph.body[1]
+
+    def test_relabel_input_table_rows(self):
+        row = "<tr><td>temperature_daily</td><td>DataArray</td></tr>"
+        other = "<tr><td>latitude</td><td>DataArray</td></tr>"
+        digraph = SimpleNamespace(
+            body=[f'\t_inputs [label=<<table border="0">{row}{other}</table>>]\n']
+        )
+        relabel_with_units(digraph, {"temperature_daily": "degC"})  # type: ignore[arg-type]
+        assert "<td>temperature_daily</td><td>degC</td>" in digraph.body[0]
+        # rows for inputs without a declared unit are untouched
+        assert "<td>latitude</td><td>DataArray</td>" in digraph.body[0]
+
+    def test_color_edges_by_source_frequency(self):
+        digraph = SimpleNamespace(
+            body=[
+                "\ttemperature_weekly -> gpp_weekly\n",
+                "\tlatitude -> gpp_weekly\n",
+            ]
+        )
+        color_edges_by_frequency(
+            digraph,  # type: ignore[arg-type]
+            {"temperature_weekly": "7D"},
+            {"7D": "#8da0cb"},
+        )
+        assert 'color="#8da0cb"' in digraph.body[0]
+        # edges from unknown-frequency sources are untouched
+        assert "color=" not in digraph.body[1]
+
+    def test_infer_frequencies_by_neighbour_consensus(self):
+        # mymodel: weekly in, weekly out -> weekly; its input table follows it.
+        digraph = SimpleNamespace(
+            body=[
+                "\ttemperature_weekly -> mymodel\n",
+                "\tmymodel -> gpp_weekly\n",
+                "\t_mymodel_inputs -> mymodel\n",
+            ]
+        )
+        freq = infer_frequencies(
+            digraph,  # type: ignore[arg-type]
+            {"temperature_weekly": "weekly", "gpp_weekly": "weekly"},
+        )
+        assert freq["mymodel"] == "weekly"
+        assert freq["_mymodel_inputs"] == "weekly"
+
+    def test_infer_frequencies_conflict_stays_unresolved(self):
+        # a node bridging daily and monthly has no consensus -> not assigned.
+        digraph = SimpleNamespace(
+            body=[
+                "\ttemperature_daily -> bridge\n",
+                "\tbridge -> soc_monthly\n",
+            ]
+        )
+        freq = infer_frequencies(
+            digraph,  # type: ignore[arg-type]
+            {"temperature_daily": "daily", "soc_monthly": "monthly"},
+        )
+        assert "bridge" not in freq
+
+    def test_cluster_groups_nodes_by_frequency(self):
+        digraph = SimpleNamespace(
+            body=[
+                "\tgpp_weekly [label=<<b>gpp_weekly</b>>]\n",
+                "\ttemperature_daily [label=<<b>temperature_daily</b>>]\n",
+                "\tsurface_type [label=<<b>surface_type</b>>]\n",  # ungrouped
+                "\t_gpp_weekly_inputs [label=<<table></table>>]\n",  # joins 7D
+                "\ttemperature_daily -> gpp_weekly\n",
+                "\t_gpp_weekly_inputs -> gpp_weekly\n",
+            ]
+        )
+        cluster_nodes_by_frequency(
+            digraph,  # type: ignore[arg-type]
+            {"gpp_weekly": "7D", "temperature_daily": "1D"},
+            {"7D": "#8da0cb", "1D": "#fc8d62", "1ME": "#a6d854"},
+        )
+        source = "".join(digraph.body)
+        assert "subgraph cluster_7D {" in source
+        assert "subgraph cluster_1D {" in source
+        # a frequency with no members emits no empty cluster
+        assert "cluster_1ME" not in source
+        # the input table joins the cluster of the node it feeds
+        weekly = source.split("cluster_7D {", 1)[1].split("}", 1)[0]
+        assert "_gpp_weekly_inputs" in weekly
+        assert "gpp_weekly [label" in weekly
+        # ungrouped nodes stay outside any cluster
+        plant_idx = source.index("surface_type [label")
+        assert plant_idx > source.index("}")  # after the last cluster brace
+        # every node is declared before any edge (clustering pitfall guard)
+        assert source.index("gpp_weekly [label") < source.index(" -> ")
+
+    def test_cluster_id_is_sanitised_and_label_quoted(self):
+        # An anchored offset alias contains a hyphen, which Graphviz will not accept
+        # in a bare cluster id.
+        digraph = SimpleNamespace(body=["\tgpp [label=<<b>gpp</b>>]\n"])
+        cluster_nodes_by_frequency(
+            digraph,  # type: ignore[arg-type]
+            {"gpp": "W-SUN"},
+            {"W-SUN": "#8da0cb"},
+        )
+        source = "".join(digraph.body)
+        assert "subgraph cluster_W_SUN {" in source
+        assert 'label="W-SUN"' in source
+
+
+class TestGraphvizSpec:
+    def test_none_returns_defaults(self):
+        spec = load_graphviz_spec(None)
+        assert spec.palette == DEFAULT_PALETTE
+        assert spec.style_function is None
+        assert spec.show_legend is True
+        assert spec.cluster_by_frequency is True
+
+    def test_cluster_by_frequency_can_be_disabled(self, tmp_path):
+        f = tmp_path / "style.toml"
+        f.write_text("cluster_by_frequency = false\n")
+        spec = load_graphviz_spec(f)
+        assert spec.cluster_by_frequency is False
+
+    def test_partial_palette_is_deep_merged(self, tmp_path):
+        f = tmp_path / "style.toml"
+        f.write_text('[palette]\n"7D" = "#000000"\n')
+        spec = load_graphviz_spec(f)
+        assert spec.palette["7D"] == "#000000"
+        # untouched categories fall back to the defaults
+        assert spec.palette["output"] == DEFAULT_PALETTE["output"]
+
+    def test_graph_attr_collected_into_kwargs(self, tmp_path):
+        f = tmp_path / "style.toml"
+        f.write_text('[graph_attr]\nrankdir = "TB"\n')
+        spec = load_graphviz_spec(f)
+        assert spec.graphviz_kwargs == {"graph_attr": {"rankdir": "TB"}}
+
+    def test_unknown_key_raises(self, tmp_path):
+        f = tmp_path / "style.toml"
+        f.write_text("bogus = 1\n")
+        with pytest.raises(ValueError, match="Unknown key"):
+            load_graphviz_spec(f)
+
+
+class TestImportStyleFunction:
+    def test_imports_module_function(self):
+        import os.path
+
+        assert _import_style_function("os.path:join") is os.path.join
+
+    def test_rejects_malformed_path(self):
+        with pytest.raises(ValueError, match="module:function"):
+            _import_style_function("not_a_reference")
+
+
+class TestStrayGraphvizSection:
+    def test_science_config_rejects_graphviz_section(self, tmp_path):
+        # Styling belongs in a `graph --style` file, not the science config. It used
+        # to be swallowed silently, which masks typos; now it is an error.
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            "[graphviz]\nshow_legend = true\n"
+            '[[node]]\nname = "y"\ninputs = ["x"]\nexpression = "x * 2"\n'
+        )
+        with pytest.raises(ValueError, match="_import_path"):
+            load_config(cfg)

@@ -22,6 +22,11 @@ test:
 test-cov:
   pytest --cov=conduit --cov-report=term-missing --cov-fail-under=90
 
-# Build the documentation using Zensical.
-docs:
+# Export executable notebooks and build the documentation using Zensical.
+docs: docs-recipes
   zensical build
+
+# Export the executable recipe notebooks with their rendered outputs.
+docs-recipes:
+  marimo-md-export recipes/pipeline_101/demo.py docs/recipes/pipeline-101.md
+  marimo-md-export recipes/flux_pipeline/demo.py docs/recipes/flux-pipeline.md

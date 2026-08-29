@@ -8,14 +8,14 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from conduit.config import BlockingSpec, Config, IOSpec
-from conduit.dag.blocking import (
+from conduit.blocking import (
     _block_input_names,
     _concat_results,
     _make_blocks,
     execute_blocked,
 )
-from conduit.dag.driver import build_driver
+from conduit.build import build_driver
+from conduit.config import BlockingSpec, Config, IOSpec
 from conduit.io import get_final_vars
 
 # ---------------------------------------------------------------------------
@@ -291,7 +291,7 @@ block_size = 2
     def test_exits_zero(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, _ = blocking_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -300,7 +300,7 @@ block_size = 2
     def test_output_file_written(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, out_path = blocking_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -310,7 +310,7 @@ block_size = 2
         import xarray as xr
         from typer.testing import CliRunner
 
-        from conduit.cli import app
+        from conduit.cli.app import app
 
         config_path, out_path = blocking_config_toml
         # Run with blocking.
@@ -318,8 +318,8 @@ block_size = 2
         blocked_ds = xr.open_dataset(out_path)
 
         # Run without blocking for reference.
+        from conduit.build import build_driver
         from conduit.config import load_config
-        from conduit.dag.driver import build_driver
         from conduit.io import get_outputs, load_inputs
 
         parsed = load_config(config_path)

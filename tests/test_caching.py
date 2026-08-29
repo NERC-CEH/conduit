@@ -9,12 +9,12 @@ import pytest
 import xarray as xr
 from hamilton.caching import fingerprinting
 
-import conduit.dag.caching  # noqa: F401  (registers the xarray fingerprint)
+import conduit.caching  # noqa: F401  (registers the xarray fingerprint)
 from conduit import CacheSpec
-from conduit.cli.run import _resolve_cache
+from conduit.build import build_driver
 from conduit.config import Config, IOSpec, load_config
-from conduit.dag.driver import build_driver
 from conduit.io import get_final_vars
+from conduit.pipeline import _resolve_cache
 
 
 class TestCacheConfig:
@@ -230,3 +230,65 @@ class TestPipelineWithCache:
         for name in final_vars:
             np.testing.assert_allclose(cached[name].values, uncached[name].values)
         assert (tmp_path / "cache").exists()
+
+
+class TestGeneratedNodesAreVersioned:
+    """A `[[node]]` whose expression changes must not be served from the cache.
+
+    Hamilton versions a node by hashing its source, read with `inspect.getsource`.
+    A generated node is built by `exec`, so without a registered source it hashed
+    as unversioned and an edited `expression` silently returned the old numbers --
+    the one place a user edits code in the config rather than in a .py file.
+    """
+
+    @staticmethod
+    def _config(tmp_path, input_nc, factor):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            f"""\
+[cache]
+path = "{tmp_path / "cache"}"
+
+[inputs.daily]
+path = "{input_nc}"
+vars = ["temperature"]
+
+[[node]]
+name = "scaled_daily"
+inputs = ["temperature_daily"]
+expression = "temperature_daily * {factor}"
+
+[outputs.daily]
+path = "{tmp_path / "out.nc"}"
+vars = ["scaled"]
+"""
+        )
+        return cfg
+
+    def test_source_is_readable(self):
+        """What Hamilton needs in order to version the node at all."""
+        import inspect
+
+        from conduit.nodegen import make_node_module
+        from conduit.specs import NodeSpec
+
+        spec = NodeSpec.from_config(
+            {"name": "a", "inputs": ["b"], "expression": "b * 2"}
+        )
+        assert "b * 2" in inspect.getsource(make_node_module([spec]).a)
+
+    def test_a_changed_expression_recomputes(self, tmp_path, synthetic_data_dir):
+        import xarray as xr
+
+        import conduit
+
+        nc = synthetic_data_dir / "daily.nc"
+        conduit.run(self._config(tmp_path, nc, 2))
+        with xr.open_dataset(tmp_path / "out.nc") as ds:
+            doubled = ds.scaled.values.copy()
+
+        conduit.run(self._config(tmp_path, nc, 3))
+        with xr.open_dataset(tmp_path / "out.nc") as ds:
+            tripled = ds.scaled.values.copy()
+
+        assert not (doubled == tripled).all()

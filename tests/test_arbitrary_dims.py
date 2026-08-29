@@ -14,8 +14,8 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
+from conduit.build import build_driver
 from conduit.config import IOSpec, SubsetSpec, load_config
-from conduit.dag.driver import build_driver
 from conduit.io import effective_suffix, get_final_vars, get_outputs, load_inputs
 
 
@@ -92,8 +92,8 @@ class TestNonTemporalPipeline:
 
 class TestBlockingArbitraryDim:
     def test_blocked_matches_unblocked_over_location(self, tmp_path):
+        from conduit.blocking import execute_blocked
         from conduit.config import BlockingSpec
-        from conduit.dag.blocking import execute_blocked
 
         _write_scene(tmp_path / "scene.nc")
         cfg = tmp_path / "config.toml"

@@ -393,3 +393,64 @@ class TestSingleTimeDim:
         specs = {"fc": IOSpec(path=str(path), vars=["forecast"])}
         with pytest.raises(ValueError, match="multiple time dimensions"):
             load_inputs(specs)
+
+
+# ---------------------------------------------------------------------------
+# vars: naming something the file does not contain
+# ---------------------------------------------------------------------------
+
+
+class TestMissingVars:
+    """A `vars` entry absent from the file is a conduit error, not an xarray one."""
+
+    @pytest.fixture
+    def input_path(self, tmp_path):
+        path = tmp_path / "input.nc"
+        _simple_ds().to_netcdf(path)
+        return path
+
+    def _load(self, path, vars_):
+        return load_inputs({"daily": IOSpec(path=str(path), vars=vars_)})
+
+    def test_missing_var_raises_value_error(self, input_path):
+        with pytest.raises(ValueError, match=r"\[inputs\.daily\] names variables"):
+            self._load(input_path, ["var_a", "absent"])
+
+    def test_message_names_the_file_and_the_variable(self, input_path):
+        with pytest.raises(ValueError, match="names variables") as excinfo:
+            self._load(input_path, ["absent"])
+        message = str(excinfo.value)
+        assert "absent" in message
+        assert str(input_path) in message
+        assert "var_a" in message  # the file's contents are listed
+
+    def test_all_missing_vars_are_reported_at_once(self, input_path):
+        with pytest.raises(ValueError, match="names variables") as excinfo:
+            self._load(input_path, ["nope_one", "var_a", "nope_two"])
+        message = str(excinfo.value)
+        assert "nope_one" in message
+        assert "nope_two" in message
+
+    def test_near_miss_gets_a_suggestion(self, input_path):
+        with pytest.raises(ValueError, match="did you mean 'var_a'"):
+            self._load(input_path, ["var_b"])
+
+    def test_unrelated_name_gets_no_suggestion(self, input_path):
+        with pytest.raises(ValueError, match="names variables") as excinfo:
+            self._load(input_path, ["completely_different"])
+        assert "did you mean" not in str(excinfo.value)
+
+    def test_mapping_form_is_checked_too(self, input_path):
+        with pytest.raises(ValueError, match="'absent'"):
+            self._load(input_path, {"node_name": "absent"})
+
+    def test_a_coordinate_may_be_selected(self, input_path):
+        """Coordinates are legitimate inputs, so naming one is not an error."""
+        inputs = load_inputs(
+            {"daily": IOSpec(path=str(input_path), vars=["pixel"], suffix="")}
+        )
+        assert "pixel" in inputs
+
+    def test_present_vars_still_load(self, input_path):
+        inputs = self._load(input_path, ["var_a"])
+        assert "var_a_daily" in inputs

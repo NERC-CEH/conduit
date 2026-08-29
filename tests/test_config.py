@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from conduit import config as config_module
 from conduit.config import (
     AnnotationPolicySpec,
     Config,
@@ -12,6 +13,7 @@ from conduit.config import (
     ParsedConfig,
     load_config,
 )
+from conduit.errors import ConduitValueError
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -222,14 +224,14 @@ class TestValidation:
         config = Config({"mymodel": {"_import_path": "no_such_pkg.mod"}})
 
         def _build():
-            from conduit.dag.driver import build_driver
+            from conduit.build import build_driver
 
             parsed = config.parse()
             build_driver(
                 parsed.modules, parsed.driver_config, node_specs=parsed.node_specs
             )
 
-        with pytest.raises(ValueError, match="Cannot load module"):
+        with pytest.raises(ValueError, match="Could not import"):
             _build()
 
     def test_duplicate_module_params_raise(self, tmp_path):
@@ -263,7 +265,7 @@ class TestValidation:
 
     def test_external_module_invalid_import_path_raises(self):
         config = Config({"my_section": {"_import_path": "not a.valid..path"}})
-        with pytest.raises(ValueError, match="not a valid dotted module path"):
+        with pytest.raises(ValueError, match="neither a dotted module path nor"):
             config.parse()
 
     def test_external_module_import_path_accepted(self):
@@ -273,6 +275,11 @@ class TestValidation:
         parsed = config.parse()
         assert "mypackage.mymodule" in parsed.modules
         assert parsed.driver_config["param"] == 42
+
+    def test_external_module_file_path_accepted(self):
+        """A .py path is a valid `_import_path`; it is resolved at build time."""
+        config = Config({"my_section": {"_import_path": "nodes.py"}})
+        assert "nodes.py" in config.parse().modules
 
     def test_input_section_missing_path_raises(self):
         config = Config({"inputs": {"daily": {"vars": ["x"]}}})
@@ -563,7 +570,9 @@ class TestNode:
         with pytest.raises(ValueError, match="'a b'"):
             config.parse()
 
-    @pytest.mark.parametrize("reserved", ["xr", "Any", "import_module", "__transforms"])
+    @pytest.mark.parametrize(
+        "reserved", ["xr", "Any", "__import_module", "__transforms"]
+    )
     def test_reserved_node_names_rejected(self, reserved):
         # A node named `xr` would shadow the helper bound in the generated module's
         # namespace for every later node's expression.
@@ -640,11 +649,26 @@ class TestMultipleFrequencies:
 class TestAnnotationsSection:
     """Tests for the [annotations] section."""
 
-    def test_mode_and_exact(self):
-        parsed = Config({"annotations": {"mode": "strict", "exact": True}}).parse()
+    def test_mode_and_on_inexact(self):
+        parsed = Config(
+            {"annotations": {"mode": "strict", "on_inexact": "error"}}
+        ).parse()
         assert parsed.annotations.on_missing == "error"
         assert parsed.annotations.on_inexact == "error"
         assert parsed.annotations.on_mismatch is None
+
+    def test_on_inexact_warn(self):
+        parsed = Config({"annotations": {"on_inexact": "warn"}}).parse()
+        assert parsed.annotations.on_inexact == "warn"
+
+    def test_bad_on_inexact_rejected(self):
+        with pytest.raises(ValueError, match="'on_inexact' must be one of"):
+            Config({"annotations": {"on_inexact": "maybe"}}).parse()
+
+    def test_unrecognised_key_rejected(self):
+        """A silently ignored policy is worse than an absent one."""
+        with pytest.raises(ValueError, match="unrecognised key"):
+            Config({"annotations": {"exact": True}}).parse()
 
     def test_units_section_no_longer_recognised(self):
         # The legacy alias is gone, so [units] falls through to the external-module
@@ -934,3 +958,49 @@ class TestCheckSpecs:
     def test_missing_inputs_key_rejected(self):
         with pytest.raises(ValueError, match="missing a non-empty 'inputs'"):
             self._cfg([{"check": "time_equal"}]).parse()
+
+
+class TestRecognisedSectionsStayInSync:
+    """`specs.RECOGNISED_SECTIONS` must list every section `parse` handles itself.
+
+    It is what stops an installed package registering a module under a name no
+    config could ever reach. A section added to `parse` without being added here
+    would silently become registrable and permanently dead.
+    """
+
+    def test_every_popped_section_is_listed(self):
+        import re
+        from pathlib import Path
+
+        from conduit.specs import RECOGNISED_SECTIONS
+
+        source = Path(config_module.__file__).read_text()
+        popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
+        assert popped - RECOGNISED_SECTIONS == set()
+
+    def test_nothing_is_listed_that_parse_does_not_handle(self):
+        import re
+        from pathlib import Path
+
+        from conduit.specs import RECOGNISED_SECTIONS
+
+        source = Path(config_module.__file__).read_text()
+        popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
+        assert RECOGNISED_SECTIONS - popped == set()
+
+
+class TestAStrayTopLevelKey:
+    """A scalar where a section is expected names the key, rather than a TypeError.
+
+    `dict(params)` on an unrecognised top-level entry raised
+    `TypeError: 'int' object is not iterable`, which says nothing about which key
+    is wrong. AGENTS.md requires an unrecognised section to be a hard error.
+    """
+
+    def test_names_the_key(self):
+        with pytest.raises(ConduitValueError, match="n_workers"):
+            Config({"n_workers": 4}).parse()
+
+    def test_is_a_conduit_error(self):
+        with pytest.raises(ConduitValueError):
+            Config({"point_dims": "pixel"}).parse()

@@ -1,28 +1,20 @@
-"""Execute a pipeline defined in a configuration file."""
+"""``conduit run``: execute or validate a pipeline, and print what happened.
 
-import warnings
-from dataclasses import replace
+Options in, `conduit.pipeline.run` or `conduit.pipeline.dry_run` out. The
+pipeline logic lives in `conduit.pipeline`; everything here is presentation —
+glyphs, colour and column alignment over a `RunReport` or a `DryRunReport`, plus
+a handler that prints the library's progress logging as a run reaches it.
+"""
+
+import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import typer
 
-from ..config import load_config
-from ..dag.blocking import execute_blocked
-from ..dag.driver import build_driver
-from ..dag.wiring_check import check_wiring
-from ..io import (
-    assert_output_paths_writable,
-    auxiliary_input_names,
-    get_final_vars,
-    get_outputs,
-    load_inputs,
-    save_outputs,
-)
-from ..specs import CacheSpec
-
-if TYPE_CHECKING:
-    from ..specs import ParsedConfig
+from ..pipeline import DryRunReport, RunReport
+from ..pipeline import dry_run as _dry_run
+from ..pipeline import run as _run
 
 app = typer.Typer(help="Execute a pipeline defined in a configuration file.")
 
@@ -64,51 +56,45 @@ def run(
     ] = False,
 ) -> None:
     """Execute a pipeline defined in a configuration file."""
-    parsed = load_config(config_file)
-    parsed.annotations.apply()
-
     if dry_run:
-        _dry_run(parsed, config_file, allow_overrides)
+        _echo_report(_dry_run(config_file, allow_overrides=allow_overrides))
         return
 
-    cache_spec = _resolve_cache(parsed.cache_spec, cache, cache_dir)
-
-    inputs = load_inputs(
-        parsed.input_specs,
-        subset_spec=parsed.subset_spec,
-        point_dim=parsed.point_dim,
-    )
-
-    _run_input_checks(parsed)
-
-    dr = build_driver(
-        modules=parsed.modules,
-        config=parsed.driver_config,
-        node_specs=parsed.node_specs,
-        allow_module_overrides=allow_overrides,
-        cache=cache_spec,
-    )
-
-    if parsed.output_specs:
-        target_vars = get_final_vars(parsed.output_specs)
-        # Before compute, not after: an unwritable destination discovered inside
-        # save_outputs would cost the whole run. Same check `--dry-run` performs.
-        assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
-        check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
-        if parsed.blocking_spec is not None:
-            results = execute_blocked(dr, inputs, target_vars, parsed.blocking_spec)
-        else:
-            results = dr.execute(target_vars, inputs=inputs)  # type: ignore[reportArgumentType]
-        stacked = parsed.subset_spec is not None
-        output_datasets = get_outputs(results, parsed.output_specs, stacked=stacked)
-        save_outputs(
-            output_datasets,
-            parsed.output_specs,
-            subset_spec=parsed.subset_spec,
-            provenance=_config_provenance(config_file),
-            point_dim=parsed.point_dim,
+    _echo_progress_as_it_happens()
+    typer.echo(f"Running {config_file}")
+    _echo_run(
+        _run(
+            config_file,
+            allow_overrides=allow_overrides,
+            cache=cache,
+            cache_dir=cache_dir,
         )
-    else:
+    )
+
+
+class _EchoHandler(logging.Handler):
+    """Print a log record as one indented line, through typer."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        typer.echo(f"  {record.getMessage()}")
+
+
+def _echo_progress_as_it_happens() -> None:
+    """Route the library's INFO progress lines to the terminal as the run reaches them.
+
+    A `RunReport` only exists once the run is over, so the stages a user waits
+    through are logged rather than returned. The library sets no handler; this is
+    the application deciding where they go.
+    """
+    logger = logging.getLogger("conduit")
+    if not any(isinstance(h, _EchoHandler) for h in logger.handlers):
+        logger.addHandler(_EchoHandler())
+    logger.setLevel(logging.INFO)
+
+
+def _echo_run(report: RunReport) -> None:
+    """Print what a run wrote, then how long the whole thing took."""
+    if not report.outputs:
         # A config with no outputs is a legitimate checks-only invocation (it still
         # parsed, loaded inputs, ran the input checks and built the DAG), so this
         # exits 0 — but silently doing nothing looked like a successful run.
@@ -116,155 +102,64 @@ def run(
             "No [outputs.*] configured; nothing to execute. "
             "Config, inputs and DAG were validated."
         )
-
-
-def _run_input_checks(parsed: "ParsedConfig") -> int:
-    """Run the configured input-compatibility checks before the DAG is built.
-
-    Returns the number of checks run (0 if none configured). Under ``[subset]``
-    the checks operate on a pixel slice rather than the full domain, so they are
-    skipped with a warning recommending a full-domain ``--dry-run``. A failure
-    raises `conduit.checks.InputCheckError`.
-    """
-    if not parsed.checks:
-        return 0
-    if parsed.subset_spec is not None:
-        warnings.warn(
-            "input checks skipped under [subset]; run `conduit run --dry-run` on "
-            "the full domain to validate them",
-            stacklevel=2,
+    for output in report.written:
+        tick = typer.style("✓", fg=typer.colors.GREEN)
+        size = (
+            "" if output.size_bytes is None else f", {_format_size(output.size_bytes)}"
         )
-        return 0
-    from ..checks import run_input_checks
-    from ..io import load_raw_datasets
-
-    run_input_checks(
-        load_raw_datasets(parsed.input_specs, parsed.point_dim), parsed.checks
-    )
-    return len(parsed.checks)
-
-
-def _config_provenance(config_file: Path) -> dict[str, str]:
-    """Config text + its SHA-256, stamped onto outputs so a store is self-describing."""
-    import hashlib
-
-    text = Path(config_file).read_text()
-    return {
-        "conduit_config": text,
-        "conduit_config_sha256": hashlib.sha256(text.encode()).hexdigest(),
-    }
-
-
-def _dry_run(parsed: "ParsedConfig", config_file: Path, allow_overrides: bool) -> None:
-    """Validate everything a real run depends on, without executing it.
-
-    Runs the same setup as `run` up to (but excluding) execution: parse
-    config, load inputs (lazily — file metadata only), build the driver (which runs
-    the build-time contract check), validate the execution plan, validate the loaded
-    inputs' contracts (units + dims/coords/dtype + freq) against what the DAG
-    declares, and confirm the output destinations are writable. Prints a per-stage
-    summary. Hard failures raise (non-zero exit); soft issues follow the active
-    policy (warnings stay warnings). No model runs and nothing is written.
-    """
-    from xarray_annotated.schema import get_policy as schema_get_policy
-    from xarray_annotated.temporal import get_policy as temporal_get_policy
-    from xarray_annotated.units import get_policy
-
-    from ..dag.contract_check import check_input_contracts
-
-    typer.echo(f"Dry run for {config_file}")
-    typer.echo("  ✓ config parsed")
-
-    inputs = load_inputs(
-        parsed.input_specs,
-        subset_spec=parsed.subset_spec,
-        point_dim=parsed.point_dim,
-    )
-    typer.echo(
-        f"  ✓ inputs loaded: {len(inputs)} variable(s) "
-        f"from {len(parsed.input_specs)} source(s)"
-    )
-
-    if parsed.checks:
-        n_checks = _run_input_checks(parsed)
-        if n_checks:
-            typer.echo(f"  ✓ input checks passed ({n_checks})")
-        else:
-            typer.echo("  - input checks: skipped (running under [subset])")
-    else:
-        typer.echo("  - input checks: none configured")
-
-    # Caching is an execution-time adapter; disable it so the dry run creates no
-    # cache directory. The graph structure and unit checks are unaffected.
-    dr = build_driver(
-        modules=parsed.modules,
-        config=parsed.driver_config,
-        node_specs=parsed.node_specs,
-        allow_module_overrides=allow_overrides,
-        cache=None,
-    )
-    typer.echo("  ✓ DAG built (static contract check passed)")
-
-    if parsed.output_specs:
-        target_vars = get_final_vars(parsed.output_specs)
-        # Wiring check first: an unbound input raises here with a clearer message
-        # than Hamilton's; an unused input surfaces as a warning below.
-        with warnings.catch_warnings(record=True) as wiring_warnings:
-            warnings.simplefilter("always")
-            check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
-        dr.validate_execution(target_vars, inputs=inputs)  # type: ignore[reportArgumentType]
         typer.echo(
-            f"  ✓ execution plan valid: {len(target_vars)} output node(s) reachable"
+            f"  {tick} wrote {_shorten(output.path)} "
+            f"({len(output.variables)} variable(s){size})"
         )
-        for w in wiring_warnings:
-            typer.echo(f"      ! {w.message}")
-    else:
-        typer.echo("  - execution plan: skipped (no [outputs.*] configured)")
+    typer.echo(f"Run completed in {report.elapsed:.2f}s")
 
-    # Capture warn-mode contract findings so they surface in the report rather
-    # than scattering across stderr; strict-mode findings raise straight out.
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        check_input_contracts(dr, inputs)
-    pol = get_policy()
-    axes = (
-        f"enabled={pol.enabled}, on_missing={pol.on_missing}, "
-        f"on_inexact={pol.on_inexact}, on_mismatch={schema_get_policy().on_mismatch}, "
-        f"on_uninferable={temporal_get_policy().on_uninferable}"
-    )
-    if caught:
-        typer.echo(f"  ✓ input contracts checked ({axes}, {len(caught)} warning(s)):")
-        for w in caught:
-            typer.echo(f"      ! {w.message}")
-    else:
-        typer.echo(f"  ✓ input contracts validated ({axes})")
 
-    if parsed.output_specs:
-        assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
-        typer.echo(
-            f"  ✓ output paths writable: {len(parsed.output_specs)} destination(s)"
+def _shorten(path: Path) -> Path:
+    """Express a written path relative to the working directory where possible.
+
+    Output paths resolve against the config file's directory, so they come back
+    absolute. Printing the whole thing is noise in a terminal and machine-specific
+    in captured output, e.g. a documentation build.
+    """
+    cwd = Path.cwd()
+    return path.relative_to(cwd) if path.is_relative_to(cwd) else path
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format a byte count in the largest unit that leaves it above 1."""
+    size = float(size_bytes)
+    for unit in ("B", "kB", "MB", "GB"):
+        if size < 1000 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1000
+    raise AssertionError("unreachable")
+
+
+def _echo_report(report: DryRunReport) -> None:
+    """Print a `DryRunReport` as the per-stage summary, with findings indented under.
+
+    ``typer.echo`` strips the escape codes when stdout is not a terminal, so piped
+    and captured output (the documentation build among them) stays plain.
+    """
+    typer.echo(f"Dry run for {report.config_file}")
+    for stage in report.stages:
+        glyph = (
+            typer.style("✓", fg=typer.colors.GREEN)
+            if stage.status == "ok"
+            else typer.style("-", dim=True)
         )
-    else:
-        typer.echo("  - output paths: skipped (no [outputs.*] configured)")
-
+        typer.echo(f"  {glyph} {stage.detail}")
+        if stage.name == "contracts":
+            _echo_policy(report.policy)
+        for finding in stage.findings:
+            typer.echo(f"      {typer.style('!', fg=typer.colors.YELLOW)} {finding}")
     typer.echo("Dry run passed.")
 
 
-def _resolve_cache(
-    config_cache: "CacheSpec | None",
-    cache_flag: bool | None,
-    cache_dir: Path | None,
-) -> "CacheSpec | None":
-    """Combine the config's [cache] spec with CLI overrides.
-
-    ``--no-cache`` always wins. ``--cache`` or ``--cache-dir`` enable caching
-    with defaults when the config has no [cache] section.
-    """
-    if cache_flag is False:
-        return None
-    spec = config_cache
-    if cache_flag is True and spec is None:
-        spec = CacheSpec()
-    if cache_dir is not None:
-        spec = replace(spec or CacheSpec(), path=str(cache_dir))
-    return spec
+def _echo_policy(policy: dict[str, str]) -> None:
+    """Print the active contract policy, one row per policy object, columns aligned."""
+    if not policy:
+        return
+    width = max(len(label) for label in policy)
+    for label, settings in policy.items():
+        typer.echo(f"      {label:<{width}}  {settings}")

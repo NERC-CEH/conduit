@@ -1,12 +1,14 @@
 """I/O functions for loading inputs and saving outputs outside the Hamilton DAG."""
 
 import os
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import xarray as xr
 
+from .errors import ConduitFileNotFoundError, ConduitPermissionError, ConduitValueError
 from .formats import (
     DEFAULT_POINT_DIM,
     FORMATS,
@@ -21,9 +23,7 @@ def effective_suffix(label: str, spec: IOSpec) -> str:
     """Resolve the node-name suffix for an input/output section.
 
     Honours an explicit ``IOSpec.suffix`` when set; otherwise defaults to
-    ``_<label>``. This is the single place the frequency-suffix naming
-    convention is applied, so it is opt-out (set ``suffix = ""`` for bare
-    names) and not a hard requirement.
+    ``_<label>``. Set ``suffix = ""`` for bare names.
     """
     if spec.suffix is not None:
         return spec.suffix
@@ -35,7 +35,7 @@ def var_mapping(
 ) -> dict[str, str]:
     """Resolve a section's ``node_name -> file_var`` mapping.
 
-    The single place the two `IOSpec.vars` forms are reconciled:
+    The two `IOSpec.vars` forms are reconciled here:
 
     - a **mapping** ``{node_name: file_var}`` is used verbatim (suffix-free);
     - a **list** yields ``{f"{var}{suffix}": var}`` using `effective_suffix`;
@@ -47,6 +47,40 @@ def var_mapping(
     suffix = effective_suffix(label, spec)
     names = list(available or []) if spec.vars is None else spec.vars
     return {f"{var}{suffix}": var for var in names}
+
+
+def _check_requested_vars(
+    label: str, path: str, ds: xr.Dataset, mapping: dict[str, str]
+) -> None:
+    """Raise if a section names variables the file does not contain.
+
+    Without this, a typo in ``vars`` surfaces as an ``xarray`` ``KeyError`` from
+    deep inside `load_inputs`, naming neither the config section nor the file.
+    Every missing name in the section is reported at once, so fixing a config
+    with several typos takes one run rather than several.
+
+    Coordinates count as present: selecting one by name is legitimate, even
+    though only data variables are *suggested* as alternatives.
+    """
+    missing = [
+        var for var in dict.fromkeys(mapping.values()) if var not in ds.variables
+    ]
+    if not missing:
+        return
+    available = sorted(str(var) for var in ds.data_vars)
+    lines = [
+        f"[inputs.{label}] names variables that are not in {path}: "
+        f"{', '.join(repr(var) for var in missing)}."
+    ]
+    for var in missing:
+        close = get_close_matches(var, available, n=3, cutoff=0.6)
+        if close:
+            suggestions = ", ".join(repr(name) for name in close)
+            lines.append(f"  {var!r}: did you mean {suggestions}?")
+    lines.append(
+        f"The file contains: {', '.join(available) if available else '(none)'}."
+    )
+    raise ConduitValueError("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -70,13 +104,12 @@ def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
     """Names of ``obj``'s dimensions whose coordinate is datetime-like.
 
     A dimension counts as temporal when its dimension coordinate is a NumPy
-    ``datetime64`` array or a cftime index (``CFTimeIndex``). Scalar or
-    non-dimension datetime coordinates do not count — only true dimensions.
+    ``datetime64`` array or a cftime index (``CFTimeIndex``). Only true
+    dimensions qualify.
 
-    The single time-axis detector. It underpins the "at most one time dimension
-    per input dataset" invariant enforced in `load_inputs`, and is what lets the
-    rest of conduit find *the* time axis without hardcoding the name ``time`` —
-    see `conduit.transforms.resample` and `conduit.checks`.
+    This is how conduit finds *the* time axis without hardcoding the name
+    ``time``, and it backs the "at most one time dimension per input dataset"
+    rule enforced in `load_inputs`.
     """
     dims: list[str] = []
     for dim in obj.dims:
@@ -92,18 +125,17 @@ def time_dims(obj: xr.Dataset | xr.DataArray) -> list[str]:
 def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
     """Return the name of ``obj``'s one time dimension, or raise.
 
-    ``what`` names the object in the error message (e.g. a node name). Callers
-    that need *the* time axis go through this rather than assuming ``"time"``.
+    ``what`` names the object in the error message (e.g. a node name).
     """
     dims = time_dims(obj)
     if len(dims) == 1:
         return dims[0]
     if not dims:
-        raise ValueError(
+        raise ConduitValueError(
             f"{what} has no time dimension (no dimension coordinate is "
             f"datetime-like); its dimensions are {list(obj.dims)}."
         )
-    raise ValueError(
+    raise ConduitValueError(
         f"{what} has multiple time dimensions {sorted(dims)}; conduit cannot tell "
         f"which is meant. Merge, select, or rename the extra datetime axis."
     )
@@ -131,9 +163,8 @@ def load_raw_datasets(
 ) -> dict[str, xr.Dataset]:
     """Open every configured input as a raw ``Dataset`` (pre-stack, pre-subset).
 
-    The single source of truth for "load the raw input files": `load_inputs`
-    calls it internally, and the input-checks pre-flight calls it too. Opens are
-    lazy (metadata only), so calling it twice per run is cheap.
+    `load_inputs` calls this internally, and so does the input-checks pre-flight.
+    Opens are lazy (metadata only), so calling it twice per run is cheap.
 
     ``point_dim`` names the synthetic axis given to single-point ``table``/``scalar``
     inputs; see `conduit.formats`.
@@ -153,10 +184,12 @@ def load_inputs(
 
     Node names are formed from each section's variables and its
     `effective_suffix` (``{var}{suffix}``, e.g. ``temperature_daily``, or
-    ``elevation`` for a section that sets ``suffix = ""``). Section labels are
-    otherwise inert — nothing is inferred from ``daily``/``weekly``/``monthly``; an
-    input's frequency is validated only where a consumer declares a
-    `xarray_annotated.temporal.Freq` contract for it.
+    ``elevation`` for a section that sets ``suffix = ""``). A section label
+    supplies that suffix and nothing else; an input's frequency is validated
+    where a consumer declares a `xarray_annotated.temporal.Freq` contract for it.
+
+    A section naming a variable the file does not contain raises a conduit error
+    reporting the section, the file, and every missing name at once.
 
     The geospatial layer (CRS-aware ``(y, x)`` → ``pixel`` stacking plus computed
     ``latitude``/``longitude``) is **opt-in**: it activates only when an input carries
@@ -195,7 +228,7 @@ def load_inputs(
     for label, ds in raw_datasets.items():
         tdims = time_dims(ds)
         if len(tdims) > 1:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[inputs.{label}] has multiple time dimensions {sorted(tdims)}; "
                 f"conduit requires at most one time dimension per input dataset. "
                 f"Merge, select, or rename the extra datetime axis before loading."
@@ -208,9 +241,10 @@ def load_inputs(
         ds_raw = raw_datasets[label]
         ds = stack_if_gridded(ds_raw) if geospatial else ds_raw
         mapping = var_mapping(label, spec, available=[str(v) for v in ds.data_vars])
+        _check_requested_vars(label, spec.path, ds, mapping)
         for node_name, file_var in mapping.items():
             if node_name in inputs:
-                raise ValueError(
+                raise ConduitValueError(
                     f"input node name {node_name!r} (from [inputs.{label}]) collides "
                     f"with an already-loaded input. Use distinct suffixes or an "
                     f"explicit {{node_name = file_var}} mapping to disambiguate."
@@ -236,8 +270,6 @@ def subset_inputs(
     """Slice every input carrying ``subset_spec.dim`` to that spec's range.
 
     Inputs without the dimension (a static scalar, say) pass through untouched.
-    Shared by `load_inputs` and by `conduit.gridded.io.create_output_store`, which
-    reuses it to derive a single-pixel probe of the pipeline.
     """
     dim = subset_spec.dim
     sl = slice(subset_spec.start, subset_spec.stop)
@@ -290,8 +322,8 @@ def save_outputs(
     subset_spec: SubsetSpec | None = None,
     provenance: dict[str, str] | None = None,
     point_dim: str = DEFAULT_POINT_DIM,
-) -> None:
-    """Write each output section's Dataset to disk.
+) -> dict[str, Path]:
+    """Write each output section's Dataset to disk, returning where each went.
 
     Parameters
     ----------
@@ -313,13 +345,22 @@ def save_outputs(
     point_dim:
         Name of the size-1 point axis to squeeze out when writing a CSV/Parquet
         output. Typically ``parsed_config.point_dim``.
+
+    Returns
+    -------
+    dict
+        The path actually written for each section label. Under ``[subset]`` a
+        NetCDF path carries the subset's suffix, so this is not always the path
+        the config asked for.
     """
+    written: dict[str, Path] = {}
     for label, ds in output_datasets.items():
         path = output_specs[label].path
         if provenance:
             ds = ds.assign_attrs(provenance)
         if subset_spec is None:
             _save(ds, path, point_dim)
+            written[label] = Path(path)
             continue
 
         from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
@@ -327,15 +368,19 @@ def save_outputs(
         fmt = _subset_format(path, label)
         if fmt.needs_store:
             save_zarr_region(ds, path, subset_spec)
+            written[label] = Path(path)
         else:
-            write_in_group(ds, subset_path(path, subset_spec), "dataset")
+            part = subset_path(path, subset_spec)
+            write_in_group(ds, part, "dataset")
+            written[label] = Path(part)
+    return written
 
 
-def _subset_format(path: str, label: str) -> "Format":
+def _subset_format(path: str, label: str) -> Format:
     """Return the `Format` for a ``[subset]`` output, or raise if it cannot be one."""
     fmt = format_for(path, writable=True)
     if not fmt.supports_subset:
-        raise ValueError(
+        raise ConduitValueError(
             f"[subset] is only supported for "
             f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
             f"outputs, but output {label!r} has path {path!r}."
@@ -352,9 +397,8 @@ def assert_output_paths_writable(
     Raises (before any computation) if a destination would fail at save time: an
     unsupported file extension, a missing or unwritable parent directory, a subset
     run targeting a Zarr store that has not been pre-created, or a subset run
-    targeting a format that cannot be partially written (CSV/Parquet). Both this and
-    `save_outputs` derive those rules from `conduit.formats`, so a clean pass here
-    means ``save_outputs`` will not reject the path. Used by ``conduit run
+    targeting a format that cannot be partially written (CSV/Parquet). A clean
+    pass here means `save_outputs` will accept the path. Used by ``conduit run
     --dry-run``.
     """
     for label, spec in output_specs.items():
@@ -366,7 +410,7 @@ def assert_output_paths_writable(
             fmt = _subset_format(spec.path, label)
             if fmt.needs_store:
                 if not Path(spec.path).exists():
-                    raise FileNotFoundError(
+                    raise ConduitFileNotFoundError(
                         f"Zarr store {spec.path!r} for output {label!r} does not "
                         f"exist. Create it once before subset runs with "
                         f"`conduit gridded create-store <config>`."
@@ -378,12 +422,12 @@ def assert_output_paths_writable(
 
         parent = path.parent
         if not parent.is_dir():
-            raise FileNotFoundError(
+            raise ConduitFileNotFoundError(
                 f"output {label!r} parent directory {str(parent)!r} does not exist "
                 f"(path {spec.path!r})."
             )
         if not os.access(parent, os.W_OK):
-            raise PermissionError(
+            raise ConduitPermissionError(
                 f"output {label!r} parent directory {str(parent)!r} is not writable "
                 f"(path {spec.path!r})."
             )
@@ -393,9 +437,8 @@ def auxiliary_input_names(inputs: dict[str, Any]) -> set[str]:
     """Names of auto-derived inputs `load_inputs` emits that nodes needn't consume.
 
     The geospatial ``latitude`` / ``longitude`` arrays are computed from the input
-    files' CRS rather than read from them, so a pipeline that doesn't consume them
-    is not misconfigured. The wiring check
-    (`conduit.dag.wiring_check.check_wiring`) excludes these from its "unused
+    files' CRS, so a pipeline may legitimately ignore them. The wiring check
+    (`conduit.wiring_check.check_wiring`) excludes them from its "unused
     input" diagnostic.
     """
     return {"latitude", "longitude"} & set(inputs)
@@ -425,7 +468,7 @@ def get_final_vars(output_specs: dict[str, IOSpec]) -> list[str]:
     for label, spec in output_specs.items():
         for node in var_mapping(label, spec):
             if node in seen:
-                raise ValueError(
+                raise ConduitValueError(
                     f"output node name {node!r} (from [outputs.{label}]) is requested "
                     f"by more than one output section. Give each output a distinct "
                     f"node name (suffix or explicit mapping)."

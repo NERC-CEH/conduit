@@ -1,28 +1,72 @@
 """The parsed configuration data model: one dataclass per config section.
 
-A **leaf** module: it imports nothing else from conduit. That is deliberate. These
-specs are what `conduit.io`, `conduit.checks` and `conduit.dag` all need to talk
-about, and while they lived in `config.py` — alongside the TOML parser, which needs
-`checks` to validate check names — every one of those modules had to import
-`config` lazily to dodge a `config -> checks -> io -> config` cycle. Keeping the
-data model separate from the parser removes the cycle rather than working around it.
+`conduit.config` builds these from a TOML file; `run`, `dry_run` and
+`build_graph` accept the resulting `ParsedConfig` in place of a path.
 
 Each spec validates itself in `from_config`, so a malformed section fails at parse
-time with a message naming the section — never later, inside a DAG node.
+time with a message naming the section, never later inside a DAG node.
 """
 
 import keyword
 from dataclasses import dataclass, field
-from typing import Any, cast
+from pathlib import Path
+from typing import Any, Self, cast
+
+from .errors import ConduitValueError
 
 _VALID_AGGFUNCS: frozenset[str] = frozenset(
     {"mean", "sum", "max", "min", "first", "last"}
+)
+
+#: Node names and node inputs a config may not use. Each one names a helper bound
+#: in every generated node module's namespace, so a node called ``xr`` would shadow
+#: that helper for every later node's expression. `conduit.nodegen` binds them and
+#: `NodeSpec.from_config` rejects them at parse time; the two are kept in step by
+#: ``test_nodegen.py::test_reserved_names_match_generated_namespace``.
+RESERVED_NODE_NAMES: frozenset[str] = frozenset(
+    {"xr", "Any", "__import_module", "__transforms"}
+)
+
+#: Top-level config sections and keys conduit parses itself. A section named here is
+#: never treated as a user module, so a package registering one of these names would
+#: register something no config could ever reach.
+RECOGNISED_SECTIONS: frozenset[str] = frozenset(
+    {
+        "point_dim",
+        "inputs",
+        "outputs",
+        "validation",
+        "node",
+        "resample",
+        "cache",
+        "blocking",
+        "subset",
+        "annotations",
+    }
 )
 
 
 # ---------------------------------------------------------------------------
 # Spec dataclasses (the parsed data model)
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RegisteredModule:
+    """A config section resolved to a module by an installed package.
+
+    Produced when a section carries no ``_import_path`` and its name matches one an
+    installed package declares in the ``conduit.modules`` entry-point group (see
+    `conduit.importing`). `run` and `dry_run` report these, so a section whose code
+    comes from somewhere the config does not name is still visible.
+    """
+
+    #: The config section that named it.
+    section: str
+    #: The dotted module path the package registered.
+    import_path: str
+    #: The distribution that registered it.
+    distribution: str
 
 
 @dataclass
@@ -45,16 +89,16 @@ class ResampleSpec:
     aggfunc: str = "mean"
 
     @classmethod
-    def from_config(cls, entry: dict) -> "ResampleSpec":
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [[resample]] TOML entry."""
         aggfunc = entry.get("aggfunc", "mean")
         if aggfunc not in _VALID_AGGFUNCS:
-            raise ValueError(
+            raise ConduitValueError(
                 f"Unsupported aggfunc '{aggfunc}'. Supported: {sorted(_VALID_AGGFUNCS)}"
             )
         missing = [key for key in ("vars", "from", "to", "freq") if key not in entry]
         if missing:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[[resample]] entry is missing required key(s) {missing}. Every "
                 f"entry needs 'vars', 'from' and 'to' (the node-name suffixes to read "
                 f"from and write to) and 'freq' (the target pandas offset alias, e.g. "
@@ -77,24 +121,22 @@ class ResampleSpec:
 def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
     """Reject a node name / input that is unsafe to interpolate into node source.
 
-    `conduit.dag.node` builds each node's ``def`` line by string formatting, so a
+    `conduit.nodegen` builds each node's ``def`` line by string formatting, so a
     name that is not a plain Python identifier fails as an opaque ``SyntaxError``
     deep in module generation (or, worse, injects statements). The generated
     module's own namespace names are reserved too: a node called ``xr`` would
     shadow the helper for every later node's expression.
     """
-    from .dag.node import RESERVED_NODE_NAMES
-
     where = f"[[node]] '{node_name}' {field_}"
     if not isinstance(value, str) or not value.isidentifier():
-        raise ValueError(
+        raise ConduitValueError(
             f"{where}: {value!r} is not a valid Python identifier, and node names "
             f"and inputs become identifiers in the generated node module."
         )
     if keyword.iskeyword(value):
-        raise ValueError(f"{where}: {value!r} is a Python keyword.")
+        raise ConduitValueError(f"{where}: {value!r} is a Python keyword.")
     if value in RESERVED_NODE_NAMES:
-        raise ValueError(
+        raise ConduitValueError(
             f"{where}: {value!r} is reserved — it names a helper bound in every "
             f"generated node module ({sorted(RESERVED_NODE_NAMES)}). Choose "
             f"another name."
@@ -109,7 +151,7 @@ class NodeSpec:
     contract: validated and stamped at runtime, and read by the build-time check.
     ``passthrough`` instead declares no fixed contract and tags the node so the check
     propagates its input's declaration across it — per facet, so ``freq`` may still be
-    declared. See `conduit.dag.contract_check` for what propagation means.
+    declared. See `conduit.contract_check` for what propagation means.
     """
 
     name: str
@@ -125,7 +167,7 @@ class NodeSpec:
     passthrough: bool = False
 
     @classmethod
-    def from_config(cls, entry: dict) -> "NodeSpec":
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw (expanded) [[node]] TOML entry."""
         name = entry.get("name")
         _assert_node_identifier(name, "name", name)
@@ -135,19 +177,19 @@ class NodeSpec:
         has_import_path = "_import_path" in entry
         has_function = "function" in entry
         if has_expression and (has_import_path or has_function):
-            raise ValueError(
+            raise ConduitValueError(
                 f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function'), not both."
             )
         if not has_expression and not (has_import_path or has_function):
-            raise ValueError(
+            raise ConduitValueError(
                 f"Node entry for '{name}' must specify either "
                 "'expression' or ('_import_path' + 'function')."
             )
         if has_import_path != has_function:
             missing = "function" if has_import_path else "_import_path"
             present = "_import_path" if has_import_path else "function"
-            raise ValueError(
+            raise ConduitValueError(
                 f"Node entry for '{name}' specifies '{present}' but is missing "
                 f"'{missing}'. A function node needs both keys: "
                 f"'_import_path' (the module) and 'function' (the name within it)."
@@ -199,7 +241,7 @@ class CacheSpec:
     disable: bool | list[str] = field(default_factory=list)
 
     @classmethod
-    def from_config(cls, entry: dict) -> "CacheSpec":
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [cache] TOML entry."""
 
         def _coerce(key: str) -> bool | list[str]:
@@ -208,7 +250,7 @@ class CacheSpec:
                 return val
             if isinstance(val, list) and all(isinstance(v, str) for v in val):
                 return val
-            raise ValueError(
+            raise ConduitValueError(
                 f"[cache] '{key}' must be a boolean or a list of node names, "
                 f"got {val!r}."
             )
@@ -227,7 +269,7 @@ def assert_dim_name(value: Any, where: str) -> str:
     overrides that default to it fail the same way, with the same message.
     """
     if not isinstance(value, str) or not value:
-        raise ValueError(f"{where} must be a non-empty string, got {value!r}.")
+        raise ConduitValueError(f"{where} must be a non-empty string, got {value!r}.")
     return value
 
 
@@ -245,11 +287,11 @@ class BlockingSpec:
     dim: str = "pixel"
 
     @classmethod
-    def from_config(cls, entry: dict, default_dim: str = "pixel") -> "BlockingSpec":
+    def from_config(cls, entry: dict, default_dim: str = "pixel") -> Self:
         """Construct and validate from a raw [blocking] TOML entry."""
         block_size = entry.get("block_size")
         if not isinstance(block_size, int) or block_size < 1:
-            raise ValueError(
+            raise ConduitValueError(
                 "[blocking] 'block_size' must be a positive integer, "
                 f"got {block_size!r}."
             )
@@ -279,13 +321,13 @@ class SubsetSpec:
     dim: str = "pixel"
 
     @classmethod
-    def from_config(cls, entry: dict, default_dim: str = "pixel") -> "SubsetSpec":
+    def from_config(cls, entry: dict, default_dim: str = "pixel") -> Self:
         """Construct and validate from a raw [subset] TOML entry."""
 
         def _index(key: str) -> int:
             value = entry.get(key)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                raise ValueError(
+                raise ConduitValueError(
                     f"[subset] {key!r} must be a non-negative integer, got {value!r}."
                 )
             return value
@@ -293,7 +335,7 @@ class SubsetSpec:
         start = _index("start")
         stop = _index("stop")
         if stop <= start:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[subset] 'stop' ({stop}) must be greater than 'start' ({start})."
             )
         dim = assert_dim_name(entry.get("dim", default_dim), "[subset] 'dim'")
@@ -315,7 +357,7 @@ class IOSpec:
       ``gpp_daily`` to file var ``gpp``). Use this to decouple file naming from DAG
       naming, or to alias a variable without renaming the file;
     - **omitted** (``None``) — *inputs only*: bind **every** variable in the file,
-      through the suffix. An empty list is not a way to spell this and is rejected:
+      through the suffix. An empty list is rejected:
       binding nothing is never what a section is for.
 
     ``suffix`` controls the list/load-everything forms' node names. When ``None``
@@ -333,7 +375,7 @@ class IOSpec:
 def _severity(value: Any, label: str, key: str) -> str | None:
     """Validate an ``error``/``warn``/``ignore`` policy key; ``None`` passes through."""
     if value is not None and value not in ("error", "warn", "ignore"):
-        raise ValueError(
+        raise ConduitValueError(
             f"[{label}] {key!r} must be one of 'error', 'warn', 'ignore', "
             f"got {value!r}."
         )
@@ -349,14 +391,14 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
             if not isinstance(k, str) or not isinstance(v, str)
         ]
         if bad:
-            raise ValueError(
+            raise ConduitValueError(
                 f"[{label}] 'vars' mapping must be {{node_name = file_var}} with "
                 f"string keys and values, got offending entries {bad!r}."
             )
         return dict(vars_)
     if isinstance(vars_, list) and all(isinstance(v, str) for v in vars_):
         return list(vars_)
-    raise ValueError(
+    raise ConduitValueError(
         f"[{label}] 'vars' must be a list of names or a {{node_name = file_var}} "
         f"mapping, got {vars_!r}."
     )
@@ -433,7 +475,7 @@ class AnnotationPolicySpec:
 class CheckSpec:
     """One entry of ``[validation].checks``: a named input-compatibility check.
 
-    ``check`` is a key in `conduit.checks.CHECKS`; ``inputs`` are the resolved
+    ``check`` is a key in `conduit.input_checks.CHECKS`; ``inputs`` are the resolved
     ``[inputs.*]`` section labels to pass (``["*"]`` already expanded at parse
     time); ``kwargs`` are the remaining inline-table keys forwarded verbatim.
     """
@@ -464,3 +506,10 @@ class ParsedConfig:
     #: inputs are given (see `conduit.formats`) and supplies the default ``dim``
     #: for `BlockingSpec` and `SubsetSpec`.
     point_dim: str = "pixel"
+    #: The directory relative paths in the config resolve against, normally the
+    #: one holding the config file. ``None`` for a config with no file, which can
+    #: then only use absolute paths and dotted ``_import_path`` names.
+    base: Path | None = None
+    #: Sections whose module came from an installed package rather than an
+    #: ``_import_path``, in config order.
+    registered_modules: list["RegisteredModule"] = field(default_factory=list)

@@ -18,8 +18,8 @@ import typing
 
 import pytest
 
+from conduit.build import build_driver
 from conduit.config import load_config
-from conduit.dag.driver import build_driver
 
 CONFIG = """
 [[node]]
