@@ -48,6 +48,10 @@ nav = [
       "recipes/pipeline-101.md",
       "recipes/flux-pipeline.md",
   ]},
+  { "Extending" = [
+      "extending/index.md",
+      "extending/register-modules.md",
+  ]},
   { "Reference" = [
       "reference/configuration.md",
       "reference/data-formats.md",

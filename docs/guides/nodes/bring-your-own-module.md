@@ -112,7 +112,9 @@ _import_path = "mypackage.indices"
 floor = 1e-4          # overrides the function's default
 ```
 
-conduit recognises a fixed set of section names and treats every other section as one of your modules, which is why an unrecognised section without `_import_path` is an error rather than something quietly skipped.
+conduit recognises a fixed set of section names and treats every other section as one of your modules.
+Such a section needs an `_import_path`, unless an installed package has registered a module under that name.
+Either way a mistyped section name is an error rather than something quietly skipped.
 
 Everything else is wired by name.
 `aridity_index_daily`'s `precipitation_daily` parameter finds the `precipitation_daily` node on its own.
@@ -161,6 +163,31 @@ A dotted name is an ordinary Python import, so the package must be installed in 
     [uv](https://docs.astral.sh/uv/), that is a `pyproject.toml` and
     `uv pip install -e .`; the [Python Packaging User Guide](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
     covers it in full. The single-file form is for exactly that — one file.
+
+## Modules an installed package provides
+
+A package built on conduit can register the modules it ships, and a config then names one by its section header alone:
+
+```toml
+# `science` is installed, and registers a module called `diagnostics`
+[diagnostics]
+threshold = 0.3
+```
+
+That saves writing `_import_path = "science.diagnostics"` in every config that uses it.
+Registering is the package author's job rather than yours — [Register modules from a package](../../extending/register-modules.md) covers that side.
+
+A config using this form says nothing about where its code lives, so conduit reports it.
+`--dry-run` names the package behind each such section:
+
+```
+✓ config parsed; [diagnostics] provided by science: science.diagnostics
+```
+
+and `conduit run` logs the same line at `INFO`.
+
+Writing `_import_path` yourself always wins, so installing a package can never redirect a section that already says where its code comes from.
+If two installed packages register the same name, conduit refuses to guess: it fails naming both packages and both modules, and an explicit `_import_path` is how you pick one.
 
 ## Parameter names share one namespace
 

@@ -9,9 +9,10 @@ A conduit pipeline is described by a [TOML](https://toml.io/en/) file. Each sect
 switches on one part of the pipeline; leave a section out and that part is not there.
 
 Recognised top-level sections are listed below. **Any section not listed here is treated
-as your own module** and must carry an `_import_path` key (see [Modules](#modules)), so a
-mistyped section name is an error rather than a silently ignored one. Gridding comes from
-the inputs' CRS, and graph styling from a `conduit graph --style` file.
+as your own module**, named either by an `_import_path` key or by an installed package
+that has registered it (see [Modules](#modules)), so a mistyped section name is an error
+rather than a silently ignored one. Gridding comes from the inputs' CRS, and graph
+styling from a `conduit graph --style` file.
 
 !!! note "Paths are resolved relative to the config file"
 
@@ -79,8 +80,7 @@ inferred from the extension.
 
 Compose the pipeline from modules. There is one built-in addressable by short name —
 `[[node]]` (with the `[[resample]]` preset) — and any other section is **your own
-module**, loaded by its `_import_path`. A module's keyword-only parameters can be
-supplied in its section body.
+module**. A module's keyword-only parameters can be supplied in its section body.
 
 ```toml
 # A .py file beside the config
@@ -105,9 +105,24 @@ A module named by a `.py` path is loaded on its own: it can import installed pac
 but not another loose `.py` file beside it. Code that spans several files has to be an
 installed package, named by a dotted path.
 
-The section header (`aridity`) is a free-form label; only `_import_path` is semantic.
+### How a section finds its module
+
+A section header is a free-form label wherever `_import_path` is present. Without one, it
+has to name a module that an installed package registers.
+
+| The section | What conduit does |
+| --- | --- |
+| carries `_import_path` | imports that, whatever else the environment offers under the same name |
+| carries no `_import_path`, and an installed package registers a module under the section name | imports the registered module, and reports which package supplied it |
+| neither | fails at parse time, listing the registered names it does know |
+
+An explicit `_import_path` always wins, so installing a package can never redirect a
+config that already says where its code lives.
+
 See [Bring your own module](../guides/nodes/bring-your-own-module.md) for the authoring
-conventions.
+conventions, and
+[Register modules from a package](../extending/register-modules.md) for the other side of
+registration, written for the author of the package doing the registering.
 
 !!! note "Parameter namespacing"
 
