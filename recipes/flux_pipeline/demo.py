@@ -33,7 +33,7 @@ def _():
         """Path relative to the repository root, so output is machine-independent."""
         return Path(path).relative_to(project_dir)
 
-    return config_path, data_dir, mo, nodes_path, recipe_dir, rel, results_dir
+    return config_path, data_dir, mo, nodes_path, recipe_dir, rel
 
 
 @app.cell(hide_code=True)
@@ -111,11 +111,11 @@ def _(mo):
 
 
 @app.cell
-def _(config_path, mo):
+def _(config_path):
     import conduit
 
     graph = conduit.build_graph(config_path)
-    mo.Html(graph.pipe(format="svg").decode())
+    graph
     return (conduit,)
 
 
