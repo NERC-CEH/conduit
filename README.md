@@ -46,7 +46,7 @@ conduit run config.toml            # execute
 ```python
 import conduit
 
-digraph = conduit.build_graph( "config.toml") # styled graphviz.Digraph
+digraph = conduit.build_graph("config.toml")  # styled graphviz.Digraph
 report = conduit.dry_run("config.toml")  # validate contracts and wiring
 datasets = conduit.run("config.toml")  # execute and return outputs
 ```

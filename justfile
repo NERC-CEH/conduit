@@ -24,9 +24,9 @@ test-cov:
 
 # Export executable notebooks and build the documentation using Zensical.
 docs: docs-recipes
-  uv run zensical build
+  zensical build
 
 # Export the executable recipe notebooks with their rendered outputs.
 docs-recipes:
-  uv run marimo-md-export recipes/pipeline_101/demo.py docs/recipes/pipeline-101.md --timeout 120
-  uv run marimo-md-export recipes/flux_pipeline/demo.py docs/recipes/flux-pipeline.md --timeout 120
+  marimo-md-export recipes/pipeline_101/demo.py docs/recipes/pipeline-101.md
+  marimo-md-export recipes/flux_pipeline/demo.py docs/recipes/flux-pipeline.md
