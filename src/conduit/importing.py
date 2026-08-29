@@ -1,5 +1,8 @@
 """Import a user's node module, named by an ``_import_path`` in the config.
 
+A section either carries an ``_import_path``, or is named after a module some
+installed package has registered (see `discover_registered_modules`).
+
 An ``_import_path`` takes one of two forms, told apart by whether it ends in
 ``.py``:
 
@@ -20,10 +23,26 @@ explanation pointing at packaging when one tries.
 import hashlib
 import importlib.util
 import sys
+from functools import cache
+from importlib.metadata import entry_points
 from pathlib import Path
 from types import ModuleType
 
 from .errors import ConduitFileNotFoundError, ConduitValueError
+from .specs import RegisteredModule
+
+#: Entry-point group a package declares to give its modules a bare section name.
+#: An installed package announcing
+#: ``[project.entry-points."conduit.modules"] diagnostics = "science.diagnostics"``
+#: makes ``[diagnostics]`` a valid config section with no ``_import_path``.
+ENTRY_POINT_GROUP = "conduit.modules"
+
+#: Module names conduit itself claims, which no package may register. ``node`` is
+#: generated from the config's ``[[node]]`` entries rather than imported, and is
+#: handled directly in `conduit.build.build_driver`.
+BUILTIN_MODULES: dict[str, str] = {
+    "node": "conduit.nodegen",
+}
 
 #: Prefix for the ``sys.modules`` name a file-form module is registered under.
 #: Hamilton resolves a node's originating function through ``sys.modules``, so the
@@ -123,3 +142,48 @@ def import_user_module(import_path: str, base: Path | None = None) -> ModuleType
             f"the package has to be installed. To point at a .py file instead, "
             f"give its path: '_import_path = \"nodes.py\"', relative to the config."
         ) from exc
+
+
+@cache
+def discover_registered_modules() -> dict[str, RegisteredModule]:
+    """Return the modules installed packages have registered, keyed by section name.
+
+    A package makes its modules addressable by a bare section name by declaring
+    them in its own ``pyproject.toml``::
+
+        [project.entry-points."conduit.modules"]
+        transforms = "science.transforms"
+        diagnostics = "science.diagnostics"
+
+    A config may then write ``[transforms]`` with no ``_import_path``. Nothing is
+    imported here: the entry point's value is read as a string, so a registered
+    module costs nothing until a config names it.
+
+    The result is cached for the life of the process. Call ``cache_clear()`` after
+    installing a package into the running interpreter.
+    """
+    found: dict[str, RegisteredModule] = {}
+    for entry in entry_points(group=ENTRY_POINT_GROUP):
+        distribution = entry.dist.name if entry.dist is not None else "<unknown>"
+        if entry.name in BUILTIN_MODULES:
+            raise ConduitValueError(
+                f"Package {distribution!r} registers a conduit module named "
+                f"{entry.name!r}, which conduit itself defines. The package must "
+                f"choose another name."
+            )
+        if (clash := found.get(entry.name)) is not None:
+            raise ConduitValueError(
+                f"Packages {clash.distribution!r} and {distribution!r} both "
+                f"register a conduit module named {entry.name!r} "
+                f"({clash.import_path} and {entry.value}). Uninstall one, or name "
+                f"the module you want with an explicit '_import_path'."
+            )
+        found[entry.name] = RegisteredModule(
+            section=entry.name, import_path=entry.value, distribution=distribution
+        )
+    return found
+
+
+def registered_module(section: str) -> RegisteredModule | None:
+    """Return the module registered under ``section``, if any package registers one."""
+    return discover_registered_modules().get(section)

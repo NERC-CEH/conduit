@@ -127,6 +127,8 @@ def run(
     """
     started = time.perf_counter()
     parsed, config_file = prepare_config(config)
+    for source in _registered_sources(parsed):
+        logger.info("%s", source)
     cache_spec = _resolve_cache(parsed.cache_spec, cache, cache_dir)
     if cache_spec is not None:
         logger.info("caching enabled: %s", cache_spec.path)
@@ -257,7 +259,12 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     from .contract_check import check_input_contracts
 
     parsed, config_file = prepare_config(config)
-    stages: list[Stage] = [Stage("config", "ok", "config parsed")]
+    # Reported in `detail` rather than `findings`: a finding renders as a warning,
+    # and where a module came from is information, not a problem.
+    sources = _registered_sources(parsed)
+    stages: list[Stage] = [
+        Stage("config", "ok", "; ".join(("config parsed", *sources)))
+    ]
 
     inputs = load_inputs(
         parsed.input_specs,
@@ -357,6 +364,18 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
 
     return DryRunReport(
         config_file=config_file, stages=tuple(stages), policy=_policy_summary()
+    )
+
+
+def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
+    """Name each section whose module came from an installed package.
+
+    A section with no ``_import_path`` says nothing about where its code lives, so
+    the run reports what the environment supplied rather than resolving it silently.
+    """
+    return tuple(
+        f"[{mod.section}] provided by {mod.distribution}: {mod.import_path}"
+        for mod in parsed.registered_modules
     )
 
 

@@ -15,7 +15,12 @@ import tomli_w
 
 from .errors import ConduitValueError
 from .formats import DEFAULT_POINT_DIM
-from .importing import is_file_form, is_valid_module_path
+from .importing import (
+    discover_registered_modules,
+    is_file_form,
+    is_valid_module_path,
+    registered_module,
+)
 from .input_checks import CHECKS
 from .specs import (
     AnnotationPolicySpec,
@@ -25,6 +30,7 @@ from .specs import (
     IOSpec,
     NodeSpec,
     ParsedConfig,
+    RegisteredModule,
     ResampleSpec,
     SubsetSpec,
     _severity,
@@ -402,8 +408,18 @@ class Config:
             ),
         )
 
-    def _parse_external_modules(self, data: dict, driver_config: dict) -> list[str]:
+    def _parse_external_modules(
+        self,
+        data: dict,
+        driver_config: dict,
+        registered: list[RegisteredModule],
+    ) -> list[str]:
         """Handle remaining sections as external modules.
+
+        A section names its module with an ``_import_path``, or is itself the name
+        of a module an installed package registered (`conduit.importing`). An
+        explicit ``_import_path`` always wins, so a config can never be silently
+        redirected by something in the environment.
 
         Module params share one flat `driver_config` namespace (that is how Hamilton
         resolves a node's keyword-only config arguments), so ``defined_by`` tracks
@@ -416,13 +432,14 @@ class Config:
             params = dict(params)
             import_path = params.pop("_import_path", None)
             if import_path is None:
-                raise ConduitValueError(
-                    f"Section [{section_label!r}] is missing '_import_path'. "
-                    f"All non-built-in sections must include one, naming either an "
-                    f"installed module ('_import_path = \"pkg.module\"') or a .py "
-                    f"file beside the config ('_import_path = \"nodes.py\"')."
-                )
-            if not is_file_form(import_path) and not is_valid_module_path(import_path):
+                if (found := registered_module(section_label)) is not None:
+                    registered.append(found)
+                    import_path = found.import_path
+                else:
+                    raise ConduitValueError(_no_module_for(section_label))
+            elif not is_file_form(import_path) and not is_valid_module_path(
+                import_path
+            ):
                 raise ConduitValueError(
                     f"'_import_path = {import_path!r}' in [{section_label!r}] is "
                     f"neither a dotted module path nor a path to a .py file."
@@ -472,7 +489,8 @@ class Config:
         blocking_spec = self._parse_blocking(data, point_dim)
         subset_spec = self._parse_subset(data, point_dim)
         annotations = self._parse_annotations(data)
-        modules += self._parse_external_modules(data, driver_config)
+        registered: list[RegisteredModule] = []
+        modules += self._parse_external_modules(data, driver_config, registered)
         return ParsedConfig(
             modules=modules,
             driver_config=driver_config,
@@ -486,6 +504,7 @@ class Config:
             annotations=annotations,
             point_dim=point_dim,
             base=self._base,
+            registered_modules=registered,
         )
 
 
@@ -520,3 +539,27 @@ def _merge_params(
         )
     driver_config |= params
     defined_by.update(dict.fromkeys(params, section))
+
+
+def _no_module_for(section_label: str) -> str:
+    """Explain a section that names no module conduit can find."""
+    give_one = (
+        "Give an '_import_path', naming either an installed module "
+        "('_import_path = \"pkg.module\"') or a .py file beside the config "
+        "('_import_path = \"nodes.py\"')."
+    )
+    known = discover_registered_modules()
+    if not known:
+        return (
+            f"Section [{section_label!r}] is missing '_import_path'. {give_one} A "
+            f"bare section name works only when an installed package registers a "
+            f"module under it, and none is installed here."
+        )
+    listed = ", ".join(
+        f"{name} (from {mod.distribution})" for name, mod in sorted(known.items())
+    )
+    return (
+        f"Section [{section_label!r}] is missing '_import_path', and no installed "
+        f"package registers a module by that name. Registered names are: {listed}. "
+        f"{give_one}"
+    )

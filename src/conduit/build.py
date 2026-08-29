@@ -8,16 +8,8 @@ from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
 from .errors import ConduitValueError
-from .importing import import_user_module
+from .importing import BUILTIN_MODULES, import_user_module
 from .specs import CacheSpec, NodeSpec
-
-# Built-in DAG module addressable by a short name in config. Every other section
-# is loaded by its `_import_path` (see `conduit.importing`), so user-defined modules
-# are first-class and treated no differently. ("node" is handled specially in
-# build_driver, which generates it from node_specs; [[resample]] desugars to those.)
-MODULES: dict[str, str] = {
-    "node": "conduit.nodegen",
-}
 
 
 def build_driver(
@@ -71,8 +63,8 @@ def build_driver(
     for mod in modules:
         if mod == "node":
             modules_.append(make_node_module(node_specs or [], base))
-        elif mod in MODULES:
-            modules_.append(import_module(MODULES[mod]))
+        elif mod in BUILTIN_MODULES:
+            modules_.append(import_module(BUILTIN_MODULES[mod]))
         else:
             modules_.append(import_user_module(mod, base))
 

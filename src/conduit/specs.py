@@ -33,6 +33,24 @@ RESERVED_NODE_NAMES: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class RegisteredModule:
+    """A config section resolved to a module by an installed package.
+
+    Produced when a section carries no ``_import_path`` and its name matches one an
+    installed package declares in the ``conduit.modules`` entry-point group (see
+    `conduit.importing`). `run` and `dry_run` report these, so a section whose code
+    comes from somewhere the config does not name is still visible.
+    """
+
+    #: The config section that named it.
+    section: str
+    #: The dotted module path the package registered.
+    import_path: str
+    #: The distribution that registered it.
+    distribution: str
+
+
 @dataclass
 class ResampleSpec:
     """Specification for a single [[resample]] entry.
@@ -474,3 +492,6 @@ class ParsedConfig:
     #: one holding the config file. ``None`` for a config with no file, which can
     #: then only use absolute paths and dotted ``_import_path`` names.
     base: Path | None = None
+    #: Sections whose module came from an installed package rather than an
+    #: ``_import_path``, in config order.
+    registered_modules: list["RegisteredModule"] = field(default_factory=list)
