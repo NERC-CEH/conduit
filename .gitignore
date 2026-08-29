@@ -19,5 +19,5 @@ __marimo__/
 
 .claude/
 
-docs/examples
-docs/recipes/flux-pipeline.md
+docs/recipes/*
+! docs/recipes/index.md
