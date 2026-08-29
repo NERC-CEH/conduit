@@ -9,6 +9,7 @@ time with a message naming the section, never later inside a DAG node.
 
 import keyword
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Self, cast
 
 from .errors import ConduitValueError
@@ -23,7 +24,7 @@ _VALID_AGGFUNCS: frozenset[str] = frozenset(
 #: `NodeSpec.from_config` rejects them at parse time; the two are kept in step by
 #: ``test_nodegen.py::test_reserved_names_match_generated_namespace``.
 RESERVED_NODE_NAMES: frozenset[str] = frozenset(
-    {"xr", "Any", "import_module", "__transforms"}
+    {"xr", "Any", "__import_module", "__transforms"}
 )
 
 
@@ -469,3 +470,7 @@ class ParsedConfig:
     #: inputs are given (see `conduit.formats`) and supplies the default ``dim``
     #: for `BlockingSpec` and `SubsetSpec`.
     point_dim: str = "pixel"
+    #: The directory relative paths in the config resolve against, normally the
+    #: one holding the config file. ``None`` for a config with no file, which can
+    #: then only use absolute paths and dotted ``_import_path`` names.
+    base: Path | None = None

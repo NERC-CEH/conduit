@@ -263,7 +263,7 @@ class TestValidation:
 
     def test_external_module_invalid_import_path_raises(self):
         config = Config({"my_section": {"_import_path": "not a.valid..path"}})
-        with pytest.raises(ValueError, match="not a valid dotted module path"):
+        with pytest.raises(ValueError, match="neither a dotted module path nor"):
             config.parse()
 
     def test_external_module_import_path_accepted(self):
@@ -273,6 +273,11 @@ class TestValidation:
         parsed = config.parse()
         assert "mypackage.mymodule" in parsed.modules
         assert parsed.driver_config["param"] == 42
+
+    def test_external_module_file_path_accepted(self):
+        """A .py path is a valid `_import_path`; it is resolved at build time."""
+        config = Config({"my_section": {"_import_path": "nodes.py"}})
+        assert "nodes.py" in config.parse().modules
 
     def test_input_section_missing_path_raises(self):
         config = Config({"inputs": {"daily": {"vars": ["x"]}}})
@@ -563,7 +568,9 @@ class TestNode:
         with pytest.raises(ValueError, match="'a b'"):
             config.parse()
 
-    @pytest.mark.parametrize("reserved", ["xr", "Any", "import_module", "__transforms"])
+    @pytest.mark.parametrize(
+        "reserved", ["xr", "Any", "__import_module", "__transforms"]
+    )
     def test_reserved_node_names_rejected(self, reserved):
         # A node named `xr` would shadow the helper bound in the generated module's
         # namespace for every later node's expression.

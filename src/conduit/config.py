@@ -15,6 +15,7 @@ import tomli_w
 
 from .errors import ConduitValueError
 from .formats import DEFAULT_POINT_DIM
+from .importing import is_file_form, is_valid_module_path
 from .input_checks import CHECKS
 from .specs import (
     AnnotationPolicySpec,
@@ -126,9 +127,14 @@ class Config:
         return cls(data, base=path.parent)
 
     @classmethod
-    def loads(cls, toml_str: str) -> Self:
-        """Load config from a TOML string; relative paths resolve against the CWD."""
-        return cls(tomllib.loads(toml_str))
+    def loads(cls, toml_str: str, base: str | os.PathLike | None = None) -> Self:
+        """Load config from a TOML string.
+
+        A string has no file to anchor relative paths against, so pass ``base`` to
+        say what they resolve against. Without it, every path in the config must be
+        absolute and every ``_import_path`` must be a dotted module name.
+        """
+        return cls(tomllib.loads(toml_str), base=Path(base).resolve() if base else None)
 
     def _resolve(self, path: str) -> str:
         """Resolve one config path against the config file's directory."""
@@ -412,13 +418,14 @@ class Config:
             if import_path is None:
                 raise ConduitValueError(
                     f"Section [{section_label!r}] is missing '_import_path'. "
-                    f"All non-built-in sections must include "
-                    f"'_import_path = \"pkg.module\"'."
+                    f"All non-built-in sections must include one, naming either an "
+                    f"installed module ('_import_path = \"pkg.module\"') or a .py "
+                    f"file beside the config ('_import_path = \"nodes.py\"')."
                 )
-            if not _is_valid_module_path(import_path):
+            if not is_file_form(import_path) and not is_valid_module_path(import_path):
                 raise ConduitValueError(
-                    f"'_import_path = {import_path!r}' in [{section_label!r}] "
-                    f"is not a valid dotted module path."
+                    f"'_import_path = {import_path!r}' in [{section_label!r}] is "
+                    f"neither a dotted module path nor a path to a .py file."
                 )
             _merge_params(section_label, params, driver_config, defined_by)
             modules.append(import_path)
@@ -478,6 +485,7 @@ class Config:
             checks=checks,
             annotations=annotations,
             point_dim=point_dim,
+            base=self._base,
         )
 
 
@@ -489,11 +497,6 @@ class Config:
 def load_config(config_path: str | Path) -> ParsedConfig:
     """Load and parse a TOML config file."""
     return Config.load(config_path).parse()
-
-
-def _is_valid_module_path(path: str) -> bool:
-    """Return True if path is a non-empty dotted Python identifier."""
-    return bool(path) and all(part.isidentifier() for part in path.split("."))
 
 
 def _merge_params(

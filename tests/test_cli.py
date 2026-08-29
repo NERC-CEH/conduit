@@ -7,14 +7,13 @@ left here is the part only the command can get wrong.
 
 import shutil
 import sys
-from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
 from conduit._version import __version__
 from conduit.cli import main
-from conduit.cli.app import _prepare_import_path, app
+from conduit.cli.app import app
 from conduit.errors import (
     ConduitError,
     ConduitFileNotFoundError,
@@ -230,36 +229,38 @@ class TestGraphRendering:
         assert not out.with_suffix(".png").exists()
 
 
-class TestWorkingDirectoryImports:
-    """The CLI appends the working directory so `_import_path` can resolve locally."""
+class TestModuleBesideTheConfig:
+    """A `.py` file named by an `_import_path` resolves against the config.
 
-    def test_cwd_is_appended_not_prepended(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(sys, "path", ["/first", "/second"])
-        _prepare_import_path()
-        assert sys.path[-1] == str(tmp_path)
+    The CLI used to append the working directory to ``sys.path`` for this. It no
+    longer touches ``sys.path`` at all, so the config has to be self-contained --
+    and it is, from any working directory.
+    """
 
-    def test_already_present_cwd_is_not_duplicated(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(sys, "path", [str(tmp_path), "/other"])
-        _prepare_import_path()
-        assert sys.path.count(str(tmp_path)) == 1
-
-    def test_safe_path_disables_it(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(sys, "path", ["/only"])
-        monkeypatch.setattr(sys, "flags", SimpleNamespace(safe_path=True))
-        _prepare_import_path()
-        assert sys.path == ["/only"]
-
-    def test_local_module_resolves_through_the_cli(self, tmp_path, monkeypatch):
-        """A module beside the config resolves when it is the working directory."""
+    @pytest.fixture
+    def local_pipeline(self, tmp_path):
         (tmp_path / "local_nodes.py").write_text(
             "def doubled(scalar: float) -> float:\n    return 2 * scalar\n"
         )
-        (tmp_path / "config.toml").write_text('[local]\n_import_path = "local_nodes"\n')
-        monkeypatch.chdir(tmp_path)
+        (tmp_path / "config.toml").write_text(
+            '[local]\n_import_path = "local_nodes.py"\n'
+        )
+        return tmp_path / "config.toml"
+
+    def test_resolves_from_the_config_directory(self, local_pipeline, monkeypatch):
+        monkeypatch.chdir(local_pipeline.parent)
         result = runner.invoke(app, ["graph", "config.toml", "--output", "graph"])
+        assert result.exit_code == 0, result.output
+
+    def test_resolves_from_an_unrelated_directory(
+        self, local_pipeline, tmp_path_factory
+    ):
+        """The case the old cwd-on-sys.path behaviour could not handle."""
+        elsewhere = tmp_path_factory.mktemp("elsewhere")
+        result = runner.invoke(
+            app,
+            ["graph", str(local_pipeline), "--output", str(elsewhere / "graph")],
+        )
         assert result.exit_code == 0, result.output
 
 

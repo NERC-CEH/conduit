@@ -6,8 +6,6 @@ script exist in an install without the ``cli`` extra and answer with an install
 hint instead of an ImportError traceback.
 """
 
-import sys
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -36,25 +34,6 @@ def _show_version(value: bool) -> None:
         raise typer.Exit()
 
 
-def _prepare_import_path() -> None:
-    """Make modules under the working directory importable by `_import_path`.
-
-    A config's `_import_path` is resolved as an ordinary Python import, so
-    `conduit` must be able to find user modules that are not installed. Console
-    scripts do not put the working directory on `sys.path` (only `python -m` and
-    `python script.py` do), so conduit adds it here.
-
-    It is *appended*, not prepended: an installed distribution of the same name
-    always wins, so a stray `xarray.py` in the working directory cannot shadow
-    the real one. `PYTHONSAFEPATH=1` disables this, as it does elsewhere.
-    """
-    if sys.flags.safe_path:
-        return
-    cwd = str(Path.cwd())
-    if cwd not in sys.path:
-        sys.path.append(cwd)
-
-
 @app.callback()
 def _root(
     version: Annotated[
@@ -70,12 +49,9 @@ def _root(
 ) -> None:
     """Run before any subcommand.
 
-    Typer allows one root callback, so every app-wide concern hangs off this one:
-    it declares the app-wide options and does the setup each subcommand needs. Each
-    concern lives in its own function; this body is only the wiring. `--version` is
-    handled by its own eager callback, which exits before this runs.
+    Typer allows one root callback, so every app-wide option hangs off this one.
+    `--version` is handled by its own eager callback, which exits before this runs.
     """
-    _prepare_import_path()
 
 
 app.add_typer(graph_app)

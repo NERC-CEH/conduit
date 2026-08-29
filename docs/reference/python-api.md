@@ -48,6 +48,7 @@ Read here when you are building on conduit rather than with it — writing a che
 | --- | --- |
 | [`conduit.config`](modules/conduit.config.md) | TOML file to `ParsedConfig`: section dispatch, fan-out expansion, path resolution. |
 | [`conduit.specs`](modules/conduit.specs.md) | One dataclass per config section, each validating itself. |
+| [`conduit.importing`](modules/conduit.importing.md) | Resolving an `_import_path` to a module: dotted names, and `.py` files relative to the config. |
 | [`conduit.io`](modules/conduit.io.md) | Loading inputs and saving outputs, outside the DAG. |
 | [`conduit.formats`](modules/conduit.formats.md) | The file-format registry: which reader, which writer, what a format supports. |
 

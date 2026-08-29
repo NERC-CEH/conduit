@@ -1,6 +1,5 @@
 """Build Hamilton drivers from configured module lists."""
 
-import sys
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -9,12 +8,13 @@ from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
 from .errors import ConduitValueError
+from .importing import import_user_module
 from .specs import CacheSpec, NodeSpec
 
 # Built-in DAG module addressable by a short name in config. Every other section
-# is loaded by its dotted `_import_path`, so user-defined modules are first-class
-# and treated no differently. ("node" is handled specially in build_driver, which
-# generates it from the config's node_specs; [[resample]] desugars to node specs.)
+# is loaded by its `_import_path` (see `conduit.importing`), so user-defined modules
+# are first-class and treated no differently. ("node" is handled specially in
+# build_driver, which generates it from node_specs; [[resample]] desugars to those.)
 MODULES: dict[str, str] = {
     "node": "conduit.nodegen",
 }
@@ -26,14 +26,16 @@ def build_driver(
     allow_module_overrides: bool = False,
     cache: CacheSpec | None = None,
     node_specs: list[NodeSpec] | None = None,
+    base: Path | None = None,
 ) -> driver.Driver:
     """Build a Hamilton driver from a list of module names and config.
 
     Parameters
     ----------
     modules
-        List of module identifiers: the built-in short name "node" or a dotted
-        import path to a user module (e.g. "mypkg.mymodel").
+        List of module identifiers: the built-in short name "node", a dotted
+        import path to an installed module (e.g. "mypkg.mymodel"), or a path to a
+        .py file (e.g. "nodes.py").
     config
         Configuration dict passed to the Hamilton driver. Copied, not mutated.
     allow_module_overrides
@@ -44,6 +46,9 @@ def build_driver(
         The `[[node]]` specs to generate the built-in "node" module from
         (`conduit.config.ParsedConfig.node_specs`). Required whenever "node"
         appears in ``modules``.
+    base
+        The directory a relative .py path in ``modules`` resolves against, normally
+        the one holding the config (`conduit.specs.ParsedConfig.base`).
 
     Returns
     -------
@@ -65,29 +70,11 @@ def build_driver(
     modules_ = []
     for mod in modules:
         if mod == "node":
-            modules_.append(make_node_module(node_specs or []))
+            modules_.append(make_node_module(node_specs or [], base))
         elif mod in MODULES:
             modules_.append(import_module(MODULES[mod]))
         else:
-            try:
-                modules_.append(import_module(mod))
-            except ModuleNotFoundError as exc:
-                if sys.flags.safe_path:
-                    where = (
-                        "conduit looks for an installed package of that name. The "
-                        f"working directory ({Path.cwd()}) is not searched, because "
-                        "PYTHONSAFEPATH is set."
-                    )
-                else:
-                    where = (
-                        "conduit looks for an installed package of that name first, "
-                        f"then for it under the working directory ({Path.cwd()})."
-                    )
-                raise ConduitValueError(
-                    f"Could not import {mod!r}, named by an '_import_path' in the "
-                    f"config. {where} Built-in module names are: "
-                    f"{', '.join(sorted(MODULES))}."
-                ) from exc
+            modules_.append(import_user_module(mod, base))
 
     dr = driver.Builder().with_modules(*modules_).with_config(config)
 

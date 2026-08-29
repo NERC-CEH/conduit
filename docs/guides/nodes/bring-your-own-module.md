@@ -6,7 +6,7 @@ icon: lucide/puzzle
 # Bring your own module
 
 This is where your science code goes.
-Inline `[[node]]` expressions handle glue, but anything worth testing belongs in a Python module, and any importable module can become part of a pipeline.
+Inline `[[node]]` expressions handle glue, but anything worth testing belongs in a Python module — a single `.py` file beside your config, or an installed package.
 
 A node is a plain function. conduit reads its signature to work out how it wires in.
 
@@ -114,12 +114,53 @@ floor = 1e-4          # overrides the function's default
 
 conduit recognises a fixed set of section names and treats every other section as one of your modules, which is why an unrecognised section without `_import_path` is an error rather than something quietly skipped.
 
-`_import_path` is resolved as an ordinary Python import.
-A module you have not installed resolves against the working directory, which conduit appends to `sys.path`, so `_import_path = "mypackage.indices"` works from the directory above `mypackage/`.
-An installed package of the same name wins, and `PYTHONSAFEPATH=1` turns the working directory off entirely.
-
 Everything else is wired by name.
 `aridity_index_daily`'s `precipitation_daily` parameter finds the `precipitation_daily` node on its own.
+
+## Two ways to name a module
+
+`_import_path` takes either form, told apart by the `.py` ending.
+
+| Written as | Means | Use it when |
+|---|---|---|
+| `"nodes.py"`, `"lib/nodes.py"` | a file, relative to **the config file's directory** | you have a file of functions next to your config |
+| `"/shared/models/nodes.py"` | a file, at an absolute path | several configs in different directories share one module |
+| `"mypackage.indices"` | a dotted module name, imported from your environment | the code is an installed package |
+
+A relative path resolves against the config, never against the directory you happen to be standing in, so a config and its module travel together and the pipeline runs the same from anywhere:
+
+```toml
+# in ~/work/aridity/config.toml — finds ~/work/aridity/nodes.py
+[aridity]
+_import_path = "nodes.py"
+```
+
+```bash
+cd /anywhere
+conduit run ~/work/aridity/config.toml   # still works
+```
+
+A dotted name is an ordinary Python import, so the package must be installed in the environment you are running in.
+
+!!! warning "A single file cannot import another single file"
+
+    A module named by a `.py` path is loaded on its own. It can import anything
+    installed in your environment — xarray, numpy, your lab's published package —
+    but it cannot import another loose `.py` file sitting beside it:
+
+    ```python
+    # nodes.py, next to config.toml
+    import helpers          # ✗ ModuleNotFoundError
+    import xarray as xr     # ✓ installed
+    ```
+
+    conduit fails with a message naming `helpers` rather than a bare traceback.
+
+    Splitting your code across several files means making it a package and
+    installing it, then naming it with a dotted `_import_path`. With
+    [uv](https://docs.astral.sh/uv/), that is a `pyproject.toml` and
+    `uv pip install -e .`; the [Python Packaging User Guide](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
+    covers it in full. The single-file form is for exactly that — one file.
 
 ## Parameter names share one namespace
 
@@ -140,7 +181,7 @@ Worth choosing prefixed names from the start in a pipeline you expect to grow.
 ## Dependencies are yours
 
 conduit does not manage what your module imports.
-Whatever it needs has to be installed in the same environment.
+Whatever it needs has to be installed in the same environment, whichever form of `_import_path` you used.
 
 ## Where next
 

@@ -4,7 +4,9 @@ import hashlib
 import sys
 import types
 from dataclasses import astuple
+from functools import partial
 from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 import xarray as xr
@@ -14,6 +16,7 @@ from xarray_annotated.schema import declare_schema
 from xarray_annotated.temporal import declare_freq
 from xarray_annotated.units import declare_units
 
+from .importing import import_user_module
 from .specs import NodeSpec
 
 #: Hamilton tag marking a node whose output preserves its input's declared contract.
@@ -22,19 +25,21 @@ from .specs import NodeSpec
 PASSTHROUGH_TAG = "conduit_passthrough"
 
 
-def _node_namespace() -> dict[str, Any]:
+def _node_namespace(base: Path | None = None) -> dict[str, Any]:
     """Build the namespace every generated node's body is ``exec``'d in."""
     return {
         "xr": xr,
         "Any": Any,
-        "import_module": import_module,
+        # A `[[node]]` naming '_import_path' + 'function' resolves it the same way a
+        # config section does, so a relative .py path is relative to the config.
+        "__import_module": partial(import_user_module, base=base),
         # Available to node expressions (e.g. the [[resample]] preset desugars to
         # ``__transforms.resample(...)``).
         "__transforms": import_module("conduit.transforms"),
     }
 
 
-def _module_name(node_specs: list[NodeSpec]) -> str:
+def _module_name(node_specs: list[NodeSpec], base: Path | None) -> str:
     """Return a stable module name, keyed on the specs it is generated from.
 
     Hamilton requires the generated module to live in ``sys.modules`` (it resolves a
@@ -42,14 +47,17 @@ def _module_name(node_specs: list[NodeSpec]) -> str:
     dropped. A random per-build name would therefore leak one entry *per build* —
     unbounded in a long-lived process such as a calibration loop or a test session.
 
-    Keying the name on the specs' content means rebuilding the same config reuses one
+    Keying the name on the specs' content, and on the directory a relative
+    ``_import_path`` resolves against, means rebuilding the same config reuses one
     entry, while two different configs still get distinct modules.
     """
-    payload = repr([astuple(spec) for spec in node_specs]).encode()
+    payload = repr((str(base), [astuple(spec) for spec in node_specs])).encode()
     return f"conduit_node_generated_{hashlib.sha256(payload).hexdigest()[:12]}"
 
 
-def make_node_module(node_specs: list[NodeSpec]) -> types.ModuleType:
+def make_node_module(
+    node_specs: list[NodeSpec], base: Path | None = None
+) -> types.ModuleType:
     """Generate a Hamilton-compatible module with one function per node spec.
 
     The node's *body* is built by ``exec`` (a ``[[node]]`` expression is arbitrary
@@ -62,8 +70,8 @@ def make_node_module(node_specs: list[NodeSpec]) -> types.ModuleType:
     `_module_name`), which Hamilton requires and which keeps repeated builds of the
     same config from accumulating entries.
     """
-    mod = types.ModuleType(_module_name(node_specs))
-    ns: dict = _node_namespace()
+    mod = types.ModuleType(_module_name(node_specs, base))
+    ns: dict = _node_namespace(base)
     for spec in node_specs:
         exec(_build_fn_code(spec), ns)
         fn = _decorate(ns[spec.name], spec)
@@ -113,7 +121,7 @@ def _build_fn_code(spec: NodeSpec) -> str:
     else:
         kwargs = ", ".join(f"{inp}={inp}" for inp in spec.inputs)
         body = (
-            f"    _fn = getattr(import_module({spec.import_path!r}), "
+            f"    _fn = getattr(__import_module({spec.import_path!r}), "
             f"{spec.function!r})\n"
             f"    return _fn({kwargs})"
         )

@@ -6,9 +6,9 @@ path = "data/climate.nc"
 vars = ["temperature"]
 
 # Any section conduit does not recognise is one of your own modules, and must
-# say where to import it from.
+# say where to import it from. A path ending in .py is relative to this file.
 [climate_nodes]
-_import_path = "recipes.pipeline_101.nodes"
+_import_path = "nodes.py"
 
 # Glue that does not deserve a Python module can be declared inline.
 [[node]]

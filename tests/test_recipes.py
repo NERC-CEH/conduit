@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import xarray as xr
 
+import conduit
+
 RECIPES = Path(__file__).parents[1] / "recipes"
 
 
@@ -44,8 +46,6 @@ def executed_recipe(name: str, tmp_path: Path) -> Iterator[Path]:
         for path in (
             *(recipe / "data").glob("*"),
             *(recipe / "results").glob("*"),
-            recipe / "pipeline.dot",
-            recipe / "pipeline.png",
         ):
             path.unlink(missing_ok=True)
 
@@ -99,13 +99,8 @@ def test_recipe_config_dry_runs(name: str) -> None:
     try:
         (recipe / "results").mkdir(exist_ok=True)
         _write_inputs(recipe)
-        subprocess.run(
-            ["conduit", "run", "--dry-run", str(recipe / "config.toml")],
-            cwd=RECIPES.parent,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        report = conduit.dry_run(recipe / "config.toml")
+        assert [stage for stage in report.stages if stage.status == "failed"] == []
     finally:
         for path in (recipe / "data").glob("*"):
             path.unlink(missing_ok=True)

@@ -151,6 +151,7 @@ def run(
         node_specs=parsed.node_specs,
         allow_module_overrides=allow_overrides,
         cache=cache_spec,
+        base=parsed.base,
     )
 
     if not parsed.output_specs:
@@ -295,6 +296,7 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
         node_specs=parsed.node_specs,
         allow_module_overrides=allow_overrides,
         cache=None,
+        base=parsed.base,
     )
     stages.append(Stage("dag", "ok", "DAG built (static contract check passed)"))
 

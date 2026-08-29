@@ -15,8 +15,10 @@ the inputs' CRS, and graph styling from a `conduit graph --style` file.
 
 !!! note "Paths are resolved relative to the config file"
 
-    Relative `path` values in `[inputs.*]`, `[outputs.*]` and `[cache]` are resolved
-    against the directory containing the config file, not the current working directory.
+    Every relative path in a config — `path` in `[inputs.*]`, `[outputs.*]` and
+    `[cache]`, and a `.py` `_import_path` — is resolved against the directory
+    containing the config file, never the current working directory. A config and the
+    files beside it therefore travel together, and run the same from anywhere.
 
 ## Inputs
 
@@ -77,15 +79,31 @@ inferred from the extension.
 
 Compose the pipeline from modules. There is one built-in addressable by short name —
 `[[node]]` (with the `[[resample]]` preset) — and any other section is **your own
-module**, loaded by its dotted `_import_path`. A module's keyword-only parameters can be
+module**, loaded by its `_import_path`. A module's keyword-only parameters can be
 supplied in its section body.
 
 ```toml
-# Your own module, with a parameter
+# A .py file beside the config
+[climate_nodes]
+_import_path = "nodes.py"
+
+# An installed package, with a parameter
 [aridity]
 _import_path = "mypackage.indices"
 floor = 1e-4
 ```
+
+`_import_path` takes either form, told apart by the `.py` ending:
+
+| Value | Resolved as |
+| --- | --- |
+| `"nodes.py"`, `"lib/nodes.py"` | a file, relative to the config file's directory |
+| `"/shared/nodes.py"` | a file, at an absolute path |
+| `"mypackage.indices"` | a dotted module name, imported from the environment |
+
+A module named by a `.py` path is loaded on its own: it can import installed packages,
+but not another loose `.py` file beside it. Code that spans several files has to be an
+installed package, named by a dotted path.
 
 The section header (`aridity`) is a free-form label; only `_import_path` is semantic.
 See [Bring your own module](../guides/nodes/bring-your-own-module.md) for the authoring
@@ -127,7 +145,7 @@ units = "1"
 | `name` | **Required.** The node this entry produces. |
 | `inputs` | **Required.** Node names this entry consumes (available in `expression`). |
 | `expression` | A Python/xarray expression over `inputs` (`xr` is in scope). |
-| `_import_path` + `function` | Alternative to `expression`: call `function` in that module. |
+| `_import_path` + `function` | Alternative to `expression`: call `function` in that module. Same two forms as a module section's. |
 | `units` | Output unit contract (validated at parse time). |
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). |
