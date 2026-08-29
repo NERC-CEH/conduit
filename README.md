@@ -6,7 +6,7 @@ Working with Conduit falls into four stages:
 
 1. **Write the science code.** Ordinary Python functions that take and return `xarray.DataArray`s, with optional [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) declaring what each one requires and produces: units, dimensions, coordinates, dtype, temporal frequency.
 2. **Write the config.** A TOML file names the input files, the nodes and the outputs. Assembling or adapting a pipeline from here needs no Python.
-3. **Validate.** Conduit assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
+3. **Validate.** Conduit assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
 4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes. The choice lives in the config, and none of it changes the science code.
 
 > [!WARNING]
