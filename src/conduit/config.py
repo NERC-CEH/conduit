@@ -429,6 +429,14 @@ class Config:
         modules: list[str] = []
         defined_by: dict[str, str] = {}
         for section_label, params in data.items():
+            if not isinstance(params, dict):
+                raise ConduitValueError(
+                    f"Top-level key {section_label!r} is not a recognised conduit "
+                    f"setting, and its value ({params!r}) is not a section. Every "
+                    f"unrecognised section is treated as one of your modules, so "
+                    f"this must either be removed or written as a table naming a "
+                    f"module."
+                )
             params = dict(params)
             import_path = params.pop("_import_path", None)
             if import_path is None:
@@ -441,7 +449,7 @@ class Config:
                 import_path
             ):
                 raise ConduitValueError(
-                    f"'_import_path = {import_path!r}' in [{section_label!r}] is "
+                    f"'_import_path = {import_path!r}' in [{section_label}] is "
                     f"neither a dotted module path nor a path to a .py file."
                 )
             _merge_params(section_label, params, driver_config, defined_by)
@@ -551,7 +559,7 @@ def _no_module_for(section_label: str) -> str:
     known = discover_registered_modules()
     if not known:
         return (
-            f"Section [{section_label!r}] is missing '_import_path'. {give_one} A "
+            f"Section [{section_label}] is missing '_import_path'. {give_one} A "
             f"bare section name works only when an installed package registers a "
             f"module under it, and none is installed here."
         )
@@ -559,7 +567,7 @@ def _no_module_for(section_label: str) -> str:
         f"{name} (from {mod.distribution})" for name, mod in sorted(known.items())
     )
     return (
-        f"Section [{section_label!r}] is missing '_import_path', and no installed "
+        f"Section [{section_label}] is missing '_import_path', and no installed "
         f"package registers a module by that name. Registered names are: {listed}. "
         f"{give_one}"
     )

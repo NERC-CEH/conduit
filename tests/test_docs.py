@@ -36,6 +36,25 @@ class TestPythonApiPage:
         text = API_PAGE.read_text()
         assert [p for p in pages if f"({p})" not in text] == []
 
+    def test_every_module_has_a_page(self):
+        """The reverse direction: a module with no page is invisible in the docs.
+
+        AGENTS.md requires every top-level module to be listed under
+        ``docs/reference/modules/``. Only the forward direction was checked, so
+        `conduit.errors` -- the exception types a downstream package catches --
+        went undocumented.
+        """
+        import conduit
+
+        src = pathlib.Path(conduit.__file__).parent
+        modules = {
+            f"conduit.{p.stem}" for p in src.glob("*.py") if not p.stem.startswith("_")
+        }
+        missing = {
+            name for name in modules if not (MODULES_DIR / f"{name}.md").exists()
+        }
+        assert missing == set()
+
     def test_every_mapped_module_is_importable(self):
         modules = sorted(
             set(re.findall(r"\| \[`(conduit[\w.]*)`\]", API_PAGE.read_text()))

@@ -144,19 +144,27 @@ conduit run ~/work/aridity/config.toml   # still works
 
 A dotted name is an ordinary Python import, so the package must be installed in the environment you are running in.
 
-!!! warning "A single file cannot import another single file"
+!!! warning "Do not import one single file from another"
 
-    A module named by a `.py` path is loaded on its own. It can import anything
-    installed in your environment — xarray, numpy, your lab's published package —
-    but it cannot import another loose `.py` file sitting beside it:
+    A module named by a `.py` path is loaded from that path directly, rather than
+    by being found on Python's import search path. It can import anything installed
+    in your environment — xarray, numpy, your lab's published package — but a loose
+    `.py` file sitting beside it is not installed, and conduit does not add its
+    directory to the search path:
 
     ```python
     # nodes.py, next to config.toml
-    import helpers          # ✗ ModuleNotFoundError
+    import helpers          # ✗ ModuleNotFoundError under `conduit run`
     import xarray as xr     # ✓ installed
     ```
 
     conduit fails with a message naming `helpers` rather than a bare traceback.
+
+    It may nonetheless appear to work in a notebook or a script started from that
+    same directory, because Python puts *your* working directory on the search path
+    and `helpers` is found there by coincidence. That is not support: the identical
+    config fails under `conduit run`, and from any other directory. Treat a sibling
+    import as unsupported even when it happens to succeed.
 
     Splitting your code across several files means making it a package and
     installing it, then naming it with a dotted `_import_path`. With

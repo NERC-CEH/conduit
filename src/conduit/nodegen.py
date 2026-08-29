@@ -1,6 +1,7 @@
 """Generate Hamilton-compatible node modules from config specs."""
 
 import hashlib
+import linecache
 import sys
 import types
 from dataclasses import astuple
@@ -73,7 +74,20 @@ def make_node_module(
     mod = types.ModuleType(_module_name(node_specs, base))
     ns: dict = _node_namespace(base)
     for spec in node_specs:
-        exec(_build_fn_code(spec), ns)
+        source = _build_fn_code(spec)
+        filename = f"<conduit node {spec.name} in {mod.__name__}>"
+        # Hamilton's result cache versions a node by hashing its source, which it
+        # reads with `inspect.getsource`. An `exec`'d function has no file to read
+        # from, so without this the node hashes as unversioned and a changed
+        # `expression` is served stale from the cache. Registering the source under
+        # the name it was compiled with is what `inspect` looks up.
+        linecache.cache[filename] = (
+            len(source),
+            None,
+            source.splitlines(keepends=True),
+            filename,
+        )
+        exec(compile(source, filename, "exec"), ns)
         fn = _decorate(ns[spec.name], spec)
         fn.__module__ = mod.__name__
         setattr(mod, spec.name, fn)

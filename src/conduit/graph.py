@@ -386,6 +386,7 @@ def build_graph(
         node_specs=parsed.node_specs,
         allow_module_overrides=allow_overrides,
         base=parsed.base,
+        registered=parsed.registered_modules,
     )
 
     # The contracts must be read off the built DAG before styling: the node fills are

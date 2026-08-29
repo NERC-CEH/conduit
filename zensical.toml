@@ -58,6 +58,7 @@ nav = [
       "reference/cli.md",
       "reference/python-api.md",
       { "Modules" = [
+          "reference/modules/conduit.errors.md",
           "reference/modules/conduit.config.md",
           "reference/modules/conduit.specs.md",
           "reference/modules/conduit.importing.md",

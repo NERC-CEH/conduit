@@ -176,3 +176,34 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
 
         with policy(enabled=True), pytest.raises(ValueError, match="exact match"):
             run(inexact_units_config)
+
+
+class TestOutputsAreCheckedBeforeAnythingIsCreated:
+    """An aborted run must not leave a cache directory behind.
+
+    `build_driver` applies the [cache] spec, and it used to run before the output
+    paths were checked, so a run that could never have written its outputs still
+    created the store.
+    """
+
+    def test_no_cache_directory_after_an_unwritable_output(
+        self, tmp_path, synthetic_data_dir
+    ):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            f"""\
+[cache]
+path = "{tmp_path / "cachedir"}"
+
+[inputs.daily]
+path = "{synthetic_data_dir / "daily.nc"}"
+vars = ["temperature"]
+
+[outputs.daily]
+path = "{tmp_path / "missing" / "out.nc"}"
+vars = ["temperature"]
+"""
+        )
+        with pytest.raises(FileNotFoundError):
+            run(cfg)
+        assert not (tmp_path / "cachedir").exists()

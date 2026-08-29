@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from conduit import config as config_module
 from conduit.config import (
     AnnotationPolicySpec,
     Config,
@@ -12,6 +13,7 @@ from conduit.config import (
     ParsedConfig,
     load_config,
 )
+from conduit.errors import ConduitValueError
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -956,3 +958,49 @@ class TestCheckSpecs:
     def test_missing_inputs_key_rejected(self):
         with pytest.raises(ValueError, match="missing a non-empty 'inputs'"):
             self._cfg([{"check": "time_equal"}]).parse()
+
+
+class TestRecognisedSectionsStayInSync:
+    """`specs.RECOGNISED_SECTIONS` must list every section `parse` handles itself.
+
+    It is what stops an installed package registering a module under a name no
+    config could ever reach. A section added to `parse` without being added here
+    would silently become registrable and permanently dead.
+    """
+
+    def test_every_popped_section_is_listed(self):
+        import re
+        from pathlib import Path
+
+        from conduit.specs import RECOGNISED_SECTIONS
+
+        source = Path(config_module.__file__).read_text()
+        popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
+        assert popped - RECOGNISED_SECTIONS == set()
+
+    def test_nothing_is_listed_that_parse_does_not_handle(self):
+        import re
+        from pathlib import Path
+
+        from conduit.specs import RECOGNISED_SECTIONS
+
+        source = Path(config_module.__file__).read_text()
+        popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
+        assert RECOGNISED_SECTIONS - popped == set()
+
+
+class TestAStrayTopLevelKey:
+    """A scalar where a section is expected names the key, rather than a TypeError.
+
+    `dict(params)` on an unrecognised top-level entry raised
+    `TypeError: 'int' object is not iterable`, which says nothing about which key
+    is wrong. AGENTS.md requires an unrecognised section to be a hard error.
+    """
+
+    def test_names_the_key(self):
+        with pytest.raises(ConduitValueError, match="n_workers"):
+            Config({"n_workers": 4}).parse()
+
+    def test_is_a_conduit_error(self):
+        with pytest.raises(ConduitValueError):
+            Config({"point_dims": "pixel"}).parse()

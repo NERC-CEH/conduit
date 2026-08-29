@@ -47,8 +47,9 @@ The value is handled as a string until a config actually names the section, and 
 
 Two rules are enforced at the point a config is parsed:
 
-- **A registered name cannot shadow a built-in.** `node` is conduit's own, generated from the config's `[[node]]` and `[[resample]]` entries. Registering it fails, naming your package.
-- **Two packages cannot register the same name.** Rather than pick one, conduit fails naming both packages and both modules. A config can get past it by writing an explicit `_import_path`, which always wins.
+- **A registered name cannot be a section conduit parses itself.** `node`, `resample`, `inputs`, `outputs`, `validation`, `cache`, `blocking`, `subset`, `annotations` and `point_dim` are all handled before conduit looks for your modules, so a module registered under one of those names could never be reached. Registering one is ignored with a warning naming your package, rather than an error — the mistake is yours to fix, and it should not break configs belonging to people who merely have your package installed.
+- **The value must be a plain dotted module path.** The `module:attribute` form an entry point may take is not used here, and a `.py` path is rejected outright: it would resolve against *the user's* config directory, which would let your package claim a filename in someone else's project. Either is ignored with a warning.
+- **Two packages cannot register the same name.** There is no answer to which is meant, so conduit refuses that name, naming both packages and both modules. It refuses only that name: other sections in the same config, and other modules from both packages, keep working. A config picks a side by writing an explicit `_import_path`, which always wins.
 
 A section that carries `_import_path` never consults the registry at all, so installing your package cannot change the meaning of a config that already says where its code lives.
 
@@ -78,7 +79,7 @@ discover_registered_modules()
 ```
 
 That result is cached for the life of the process.
-If you install a package into a running interpreter — a notebook, mostly — call `discover_registered_modules.cache_clear()` before expecting to see it.
+If you install a package into a running interpreter — a notebook, mostly — call `conduit.importing.clear_registry_cache()` before expecting to see it.
 
 ## Naming
 

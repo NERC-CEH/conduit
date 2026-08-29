@@ -395,6 +395,7 @@ def create_output_store(
         config=parsed.driver_config,
         node_specs=parsed.node_specs,
         base=parsed.base,
+        registered=parsed.registered_modules,
     )
     probe = dr.execute(
         get_final_vars(zarr_specs),  # type: ignore[reportArgumentType]

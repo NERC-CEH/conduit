@@ -46,6 +46,7 @@ Read here when you are building on conduit rather than with it — writing a che
 
 | Module | Contents |
 | --- | --- |
+| [`conduit.errors`](modules/conduit.errors.md) | The exceptions conduit raises on purpose, each keeping the stdlib type a caller would catch. |
 | [`conduit.config`](modules/conduit.config.md) | TOML file to `ParsedConfig`: section dispatch, fan-out expansion, path resolution. |
 | [`conduit.specs`](modules/conduit.specs.md) | One dataclass per config section, each validating itself. |
 | [`conduit.importing`](modules/conduit.importing.md) | Resolving an `_import_path` to a module: dotted names, and `.py` files relative to the config. |

@@ -16,6 +16,7 @@ from conduit.config import Config
 from conduit.errors import ConduitValueError
 from conduit.importing import (
     ENTRY_POINT_GROUP,
+    clear_registry_cache,
     discover_registered_modules,
     registered_module,
 )
@@ -42,11 +43,11 @@ def registry(monkeypatch):
         monkeypatch.setattr(
             "conduit.importing.entry_points", lambda group=None: list(entries)
         )
-        discover_registered_modules.cache_clear()
+        clear_registry_cache()
 
-    discover_registered_modules.cache_clear()
+    clear_registry_cache()
     yield _install
-    discover_registered_modules.cache_clear()
+    clear_registry_cache()
 
 
 class TestDiscovery:
@@ -73,26 +74,84 @@ class TestDiscovery:
 
 
 class TestCollisions:
-    def test_two_packages_claiming_one_name_is_an_error(self, registry):
+    """A clash is refused, but only for the name that is actually ambiguous."""
+
+    @pytest.fixture
+    def clashing(self, registry):
         registry(
             _entry_point("transforms", "a.transforms", "science"),
             _entry_point("transforms", "b.transforms", "other"),
+            _entry_point("diagnostics", "b.diagnostics", "other"),
         )
+
+    def test_looking_up_the_clashing_name_is_an_error(self, clashing):
         with pytest.raises(ConduitValueError, match="both register"):
-            discover_registered_modules()
+            registered_module("transforms")
 
-    def test_the_error_names_both_packages(self, registry):
-        registry(
-            _entry_point("transforms", "a.transforms", "science"),
-            _entry_point("transforms", "b.transforms", "other"),
-        )
+    def test_the_error_names_both_packages(self, clashing):
         with pytest.raises(ConduitValueError, match="'science' and 'other'"):
+            registered_module("transforms")
+
+    def test_discovery_itself_does_not_raise(self, clashing):
+        """A clash must not brick every config in the environment.
+
+        Previously the whole registry was validated up front, so one clash between
+        two installed packages failed any config using any bare section at all --
+        with a message naming a module that config never mentioned.
+        """
+        assert "diagnostics" in discover_registered_modules()
+
+    def test_an_unrelated_name_still_resolves(self, clashing):
+        found = registered_module("diagnostics")
+        assert found is not None
+        assert found.distribution == "other"
+
+    def test_the_clashing_name_is_omitted_from_the_registry(self, clashing):
+        assert "transforms" not in discover_registered_modules()
+
+
+class TestUnusableRegistrations:
+    """A registration conduit could never honour is dropped with a warning.
+
+    Warned rather than raised: the mistake belongs to the package author, and
+    erroring would break configs belonging to anyone who merely has it installed.
+    """
+
+    @pytest.mark.parametrize(
+        "name", ["node", "resample", "cache", "subset", "validation", "inputs"]
+    )
+    def test_a_recognised_section_cannot_be_registered(self, registry, name):
+        registry(_entry_point(name, "science.thing", "science"))
+        with pytest.warns(UserWarning, match="conduit parses itself"):
+            assert discover_registered_modules() == {}
+
+    def test_the_warning_names_the_package(self, registry):
+        registry(_entry_point("cache", "science.thing", "science"))
+        with pytest.warns(UserWarning, match="'science'"):
             discover_registered_modules()
 
-    def test_shadowing_a_conduit_builtin_is_an_error(self, registry):
-        registry(_entry_point("node", "science.node", "science"))
-        with pytest.raises(ConduitValueError, match="conduit itself defines"):
-            discover_registered_modules()
+    def test_a_py_path_cannot_be_registered(self, registry):
+        """Otherwise a package claims a filename in the user's own config directory."""
+        registry(_entry_point("transforms", "nodes.py", "science"))
+        with pytest.warns(UserWarning, match="not a dotted module path"):
+            assert discover_registered_modules() == {}
+
+    def test_the_module_attribute_form_is_rejected(self, registry):
+        """`pkg.mod:attr` is what an entry-point author writes by habit."""
+        registry(_entry_point("transforms", "science.mod:attr", "science"))
+        with pytest.warns(UserWarning, match="not a dotted module path"):
+            assert discover_registered_modules() == {}
+
+
+class TestFailingRegisteredModule:
+    def test_the_error_names_the_distribution(self, registry, tmp_path):
+        """The user wrote no `_import_path`, so they cannot be told to fix one."""
+        registry(_entry_point("diagnostics", "package.not.installed", "science"))
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("[diagnostics]\n")
+        with pytest.raises(ConduitValueError, match="'science'") as excinfo:
+            conduit.dry_run(cfg)
+        assert "_import_path' in the config" not in str(excinfo.value)
 
 
 class TestThroughTheConfig:
@@ -207,9 +266,9 @@ class TestARealInstalledDistribution:
             "    return temperature_daily - temperature_daily.mean()\n"
         )
         monkeypatch.syspath_prepend(str(tmp_path))
-        discover_registered_modules.cache_clear()
+        clear_registry_cache()
         yield tmp_path
-        discover_registered_modules.cache_clear()
+        clear_registry_cache()
 
     def test_entry_point_is_discovered(self, installed_science_package):
         found = registered_module("diagnostics")

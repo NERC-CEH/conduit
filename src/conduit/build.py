@@ -9,7 +9,7 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 
 from .errors import ConduitValueError
 from .importing import BUILTIN_MODULES, import_user_module
-from .specs import CacheSpec, NodeSpec
+from .specs import CacheSpec, NodeSpec, RegisteredModule
 
 
 def build_driver(
@@ -19,6 +19,7 @@ def build_driver(
     cache: CacheSpec | None = None,
     node_specs: list[NodeSpec] | None = None,
     base: Path | None = None,
+    registered: list[RegisteredModule] | None = None,
 ) -> driver.Driver:
     """Build a Hamilton driver from a list of module names and config.
 
@@ -41,6 +42,10 @@ def build_driver(
     base
         The directory a relative .py path in ``modules`` resolves against, normally
         the one holding the config (`conduit.specs.ParsedConfig.base`).
+    registered
+        The modules an installed package supplied
+        (`conduit.specs.ParsedConfig.registered_modules`). Used only to name the
+        responsible distribution if one of them fails to import.
 
     Returns
     -------
@@ -59,6 +64,7 @@ def build_driver(
             "node_specs=parsed.node_specs."
         )
 
+    by = {m.import_path: m.distribution for m in registered or ()}
     modules_ = []
     for mod in modules:
         if mod == "node":
@@ -66,7 +72,7 @@ def build_driver(
         elif mod in BUILTIN_MODULES:
             modules_.append(import_module(BUILTIN_MODULES[mod]))
         else:
-            modules_.append(import_user_module(mod, base))
+            modules_.append(import_user_module(mod, base, by.get(mod)))
 
     dr = driver.Builder().with_modules(*modules_).with_config(config)
 

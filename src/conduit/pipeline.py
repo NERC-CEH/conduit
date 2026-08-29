@@ -147,6 +147,12 @@ def run(
     if n_checks := _run_input_checks(parsed):
         logger.info("input checks passed (%d)", n_checks)
 
+    # Before the driver is built, not after: building applies the [cache] spec,
+    # which creates the cache directory, and a run that is going to abort on an
+    # unwritable output should not leave one behind.
+    if parsed.output_specs:
+        assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
+
     dr = build_driver(
         modules=parsed.modules,
         config=parsed.driver_config,
@@ -154,6 +160,7 @@ def run(
         allow_module_overrides=allow_overrides,
         cache=cache_spec,
         base=parsed.base,
+        registered=parsed.registered_modules,
     )
 
     if not parsed.output_specs:
@@ -162,9 +169,6 @@ def run(
 
     target_vars = get_final_vars(parsed.output_specs)
     logger.info("DAG built: executing %d output node(s)", len(target_vars))
-    # Before compute, not after: an unwritable destination discovered inside
-    # save_outputs would cost the whole run. Same check `dry_run` performs.
-    assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
     check_wiring(dr, target_vars, inputs, exempt=auxiliary_input_names(inputs))
     if parsed.blocking_spec is not None:
         results = execute_blocked(dr, inputs, target_vars, parsed.blocking_spec)
@@ -304,6 +308,7 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
         allow_module_overrides=allow_overrides,
         cache=None,
         base=parsed.base,
+        registered=parsed.registered_modules,
     )
     stages.append(Stage("dag", "ok", "DAG built (static contract check passed)"))
 

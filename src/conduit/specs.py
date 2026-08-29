@@ -27,6 +27,24 @@ RESERVED_NODE_NAMES: frozenset[str] = frozenset(
     {"xr", "Any", "__import_module", "__transforms"}
 )
 
+#: Top-level config sections and keys conduit parses itself. A section named here is
+#: never treated as a user module, so a package registering one of these names would
+#: register something no config could ever reach.
+RECOGNISED_SECTIONS: frozenset[str] = frozenset(
+    {
+        "point_dim",
+        "inputs",
+        "outputs",
+        "validation",
+        "node",
+        "resample",
+        "cache",
+        "blocking",
+        "subset",
+        "annotations",
+    }
+)
+
 
 # ---------------------------------------------------------------------------
 # Spec dataclasses (the parsed data model)

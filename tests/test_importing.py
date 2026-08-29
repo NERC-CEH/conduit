@@ -6,6 +6,7 @@ form deliberately does not support importing another loose ``.py`` file, so the
 error a user gets when they try is part of the contract.
 """
 
+import os
 import sys
 
 import pytest
@@ -147,3 +148,50 @@ class TestThroughTheConfig:
     def test_loads_accepts_an_explicit_base(self, tmp_path):
         parsed = Config.loads('[local]\n_import_path = "nodes.py"\n', base=tmp_path)
         assert parsed.parse().base == tmp_path
+
+
+class TestAChangedFileIsReloaded:
+    """A file-form module must not be pinned to the code it had when first loaded.
+
+    Editing ``nodes.py`` and re-running is the documented notebook workflow, and
+    the ``sys.modules`` key is a hash of the path, so a user cannot evict a stale
+    module by hand even knowing it is there.
+    """
+
+    @pytest.fixture
+    def module_file(self, tmp_path):
+        path = tmp_path / "nodes.py"
+        path.write_text("VALUE = 1\n")
+        return path
+
+    @staticmethod
+    def _edit(path, text):
+        """Rewrite the file as a human would: with the clock having moved on.
+
+        Two writes in one test can share an mtime, and CPython's own __pycache__
+        is keyed on mtime and size, so without this the stale *bytecode* is
+        executed no matter what conduit decides.
+        """
+        path.write_text(text)
+        stamp = path.stat().st_mtime_ns + 1_000_000_000
+        os.utime(path, ns=(stamp, stamp))
+
+    def test_an_edit_takes_effect(self, module_file):
+        assert import_user_module(str(module_file)).VALUE == 1
+        self._edit(module_file, "VALUE = 2\n")
+        assert import_user_module(str(module_file)).VALUE == 2
+
+    def test_an_untouched_file_is_not_reloaded(self, module_file):
+        first = import_user_module(str(module_file))
+        assert import_user_module(str(module_file)) is first
+
+    def test_a_same_size_edit_takes_effect(self, module_file):
+        assert import_user_module(str(module_file)).VALUE == 1
+        self._edit(module_file, "VALUE = 9\n")
+        assert import_user_module(str(module_file)).VALUE == 9
+
+    def test_a_new_function_becomes_available(self, module_file):
+        """The notebook case: add a node function, re-run the cell."""
+        import_user_module(str(module_file))
+        self._edit(module_file, "VALUE = 1\n\n\ndef added():\n    return 42\n")
+        assert import_user_module(str(module_file)).added() == 42
