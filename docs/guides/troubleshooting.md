@@ -76,7 +76,7 @@ loading:
 import xarray as xr
 
 ds = xr.open_dataset("data.nc")
-ds = ds.rio.write_crs("EPSG:4326")   # or your CRS
+ds = ds.rio.write_crs("EPSG:4326")  # or your CRS
 ds.to_netcdf("data_with_crs.nc")
 ```
 

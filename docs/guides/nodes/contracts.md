@@ -19,8 +19,7 @@ from xarray_annotated.units import declare_units
 def aridity_index_daily(
     precipitation_daily: Annotated[xr.DataArray, "mm/day"],
     evapotranspiration_daily: Annotated[xr.DataArray, "mm/day"],
-) -> Annotated[xr.DataArray, "1"]:
-    ...
+) -> Annotated[xr.DataArray, "1"]: ...
 ```
 
 The decorators and the markers below are [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated)'s, and its [API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) documents them in full.
@@ -54,8 +53,7 @@ from xarray_annotated.units import declare_units
 @declare_freq
 def weekly_mean(
     temperature_daily: Annotated[xr.DataArray, "degC", Freq("D")],
-) -> Annotated[xr.DataArray, "degC", Freq("W-SUN")]:
-    ...
+) -> Annotated[xr.DataArray, "degC", Freq("W-SUN")]: ...
 ```
 
 An *unanchored* frequency compares spacing only, so `Freq("7D")` accepts any weekly axis.
@@ -107,9 +105,8 @@ Change that annotation to metres:
 ```python
 @declare_units
 def pressure_anomaly_climate(
-    pressure_climate: Annotated[xr.DataArray, "m"],   # length, not pressure
-) -> Annotated[xr.DataArray, "m"]:
-    ...
+    pressure_climate: Annotated[xr.DataArray, "m"],  # length, not pressure
+) -> Annotated[xr.DataArray, "m"]: ...
 ```
 
 Length and pressure do not interconvert, so conduit rejects the edge when the driver is built, naming both nodes and the facet that failed.

@@ -95,8 +95,7 @@ class _Water(TypedDict):
 def water_balance_daily(
     precipitation_daily: xr.DataArray,
     evapotranspiration_daily: xr.DataArray,
-) -> _Water:
-    ...
+) -> _Water: ...
 ```
 
 Each key becomes its own node, so `runoff_daily` and `soil_moisture_daily` can be consumed and requested independently.
@@ -154,8 +153,8 @@ A dotted name is an ordinary Python import, so the package must be installed in 
 
     ```python
     # nodes.py, next to config.toml
-    import helpers          # ✗ ModuleNotFoundError under `conduit run`
-    import xarray as xr     # ✓ installed
+    import helpers  # ✗ ModuleNotFoundError under `conduit run`
+    import xarray as xr  # ✓ installed
     ```
 
     conduit fails with a message naming `helpers` rather than a bare traceback.

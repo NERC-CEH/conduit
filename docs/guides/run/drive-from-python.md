@@ -163,14 +163,14 @@ paths = save_outputs(datasets, parsed.output_specs)
 from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
 from conduit.config import Config
 
-parsed = Config(config_data).parse()          # 1–2. build + parse
-parsed.annotations.apply()                     # 3. contract policy
-dr = build_driver(                             # 4.
+parsed = Config(config_data).parse()  # 1–2. build + parse
+parsed.annotations.apply()  # 3. contract policy
+dr = build_driver(  # 4.
     modules=parsed.modules,
     config=parsed.driver_config,
     node_specs=parsed.node_specs,
 )
-inputs = load_inputs(parsed.input_specs)       # 5.
+inputs = load_inputs(parsed.input_specs)  # 5.
 results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 6.
 datasets = get_outputs(results, parsed.output_specs)  # 7.
 save_outputs(datasets, parsed.output_specs)
@@ -185,13 +185,13 @@ adjusted in Python:
 ```python
 import conduit
 
-report = conduit.run("config.toml")     # writes each [outputs.*] section
-report.outputs["climate"]               # the Dataset that went into that section
-report.written                          # where each one landed, and how big it is
+report = conduit.run("config.toml")  # writes each [outputs.*] section
+report.outputs["climate"]  # the Dataset that went into that section
+report.written  # where each one landed, and how big it is
 
 parsed = conduit.load_config("config.toml")
 parsed.driver_config["scaling_factor"] = 2.0
-report = conduit.run(parsed)            # same run, with the spec tweaked first
+report = conduit.run(parsed)  # same run, with the spec tweaked first
 ```
 
 A [`RunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.RunReport) holds the datasets, one

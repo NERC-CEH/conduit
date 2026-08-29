@@ -19,6 +19,7 @@ results_dir = recipe_dir / "results"
 data_dir.mkdir(exist_ok=True)
 results_dir.mkdir(exist_ok=True)
 
+
 def rel(path):
     """Path relative to the repository root, so output is machine-independent."""
     return Path(path).relative_to(project_dir)
@@ -142,8 +143,7 @@ dry = conduit.dry_run(config_path)
 mo.md(
     "| Stage | Status | Detail |\n|---|---|---|\n"
     + "\n".join(
-        f"| `{stage.name}` | {stage.status} | {stage.detail} |"
-        for stage in dry.stages
+        f"| `{stage.name}` | {stage.status} | {stage.detail} |" for stage in dry.stages
     )
 )
 ```

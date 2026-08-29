@@ -35,9 +35,11 @@ Click through the tabs below.
     Science code is written in ordinary Python functions that accept and return `xarray.DataArray`s,
     with optional (but recommended) annotations declaring required properties such as units.
 
+    <!-- fmt:off -->
     ```python
     --8<-- "recipes/pipeline_101/nodes.py"
     ```
+    <!-- fmt:on -->
 
 === "TOML config"
 
