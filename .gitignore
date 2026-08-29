@@ -14,7 +14,6 @@ notes/
 tmp/
 *.nc
 
-*.html
 __marimo__/
 
 .claude/
