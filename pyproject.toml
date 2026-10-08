@@ -31,7 +31,7 @@ dependencies = [
 cli = ["typer>=0.24.1"]
 viz = ["apache-hamilton[visualization]>=1.90.0"]
 # Geospatial inputs (CRS-aware (y, x) -> pixel stacking and lat/lon reprojection).
-# Only needed when inputs carry CRS metadata; imported lazily by conduit.io.
+# Only needed when inputs carry CRS metadata; imported lazily by conduit.gridded.
 geo = ["pyproj>=3.7.2", "rioxarray>=0.22.0"]
 all = ["conduit[cli,viz,geo]"]
 

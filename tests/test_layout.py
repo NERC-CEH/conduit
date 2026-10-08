@@ -6,6 +6,7 @@ dependency is allowed to appear. These tests do that instead, and unlike a direc
 they fail in CI when someone crosses the line.
 """
 
+import ast
 import importlib.util
 import pathlib
 import pkgutil
@@ -102,6 +103,43 @@ class TestTyperIsConfinedToTheCli:
             "assert conduit.run and conduit.dry_run and conduit.build_graph"
         )
         assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+def _conduit_imports(text: str) -> set[str]:
+    """The conduit modules a source file imports, absolute or relative."""
+    tree = ast.parse(text)
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                found.add(f"conduit.{node.module}" if node.module else "conduit")
+            elif node.module and node.module.split(".")[0] == "conduit":
+                found.add(node.module)
+        elif isinstance(node, ast.Import):
+            found.update(
+                a.name for a in node.names if a.name.split(".")[0] == "conduit"
+            )
+    return found
+
+
+class TestSpecsIsALeaf:
+    """`specs` imports only `errors`, and `errors` imports nothing at all.
+
+    Every other module depends on `specs`, so one import out of it can close a
+    cycle through `config`, `input_checks` and `io`.
+    """
+
+    def test_specs_imports_only_errors(self):
+        assert _conduit_imports(_module_sources()["conduit.specs"]) <= {
+            "conduit.errors"
+        }
+
+    def test_errors_imports_nothing(self):
+        tree = ast.parse(_module_sources()["conduit.errors"])
+        imports = [
+            n for n in ast.walk(tree) if isinstance(n, ast.Import | ast.ImportFrom)
+        ]
+        assert not imports
 
 
 class TestOptionalExtrasStayUnimported:

@@ -4,7 +4,7 @@ This guide covers setting up a development checkout and the conventions we follo
 
 ## Prerequisites
 
-- Python 3.13
+- Python 3.12
 - [uv](https://docs.astral.sh/uv/)
 
 ## Set up for development

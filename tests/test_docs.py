@@ -3,10 +3,12 @@
 import importlib
 import pathlib
 import re
+import tomllib
 
 import pytest
 
 DOCS = pathlib.Path(__file__).parent.parent / "docs"
+ZENSICAL = DOCS.parent / "zensical.toml"
 API_PAGE = DOCS / "reference" / "python-api.md"
 MODULES_DIR = DOCS / "reference" / "modules"
 
@@ -54,6 +56,23 @@ class TestPythonApiPage:
             name for name in modules if not (MODULES_DIR / f"{name}.md").exists()
         }
         assert missing == set()
+
+    def test_every_module_page_is_in_the_nav(self):
+        """zensical builds a page left out of the nav but never links to it."""
+
+        def pages(entry) -> list[str]:
+            if isinstance(entry, str):
+                return [entry]
+            if isinstance(entry, list):
+                return [p for e in entry for p in pages(e)]
+            return [p for e in entry.values() for p in pages(e)]
+
+        nav = tomllib.loads(ZENSICAL.read_text())["project"]["nav"]
+        in_nav = set(pages(nav))
+        module_pages = [
+            p.relative_to(DOCS).as_posix() for p in MODULES_DIR.rglob("*.md")
+        ]
+        assert sorted(p for p in module_pages if p not in in_nav) == []
 
     def test_every_mapped_module_is_importable(self):
         modules = sorted(

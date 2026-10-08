@@ -386,7 +386,10 @@ def create_output_store(
     n_pixel = skeleton.sizes["pixel"]
     chunk = pixel_chunk or n_pixel
 
-    # Probe the pipeline over one pixel to learn each output's true layout. Caching
+    # Probe the pipeline over one pixel to learn each output's true layout. Do not
+    # replace this with inspecting the input files: an output can carry an axis no
+    # input has (a [[resample]]'s time axis), and the store must match what subset
+    # runs write. Caching
     # is deliberately not enabled: the probe is an implementation detail of building
     # the store and should neither consult nor populate the user's cache.
     probe_inputs = subset_inputs(inputs, SubsetSpec(start=0, stop=1, dim="pixel"))
