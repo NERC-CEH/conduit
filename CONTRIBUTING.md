@@ -56,15 +56,18 @@ The docs are built with [zensical](https://zensical.org/).
 That executes the pipelines, so a docs build is also a check that the recipes still work.
 It takes a while though.
 
-The docs are structured under five tabs:
+The docs are structured under six tabs:
 
 | Tab | Holds |
 | --- | --- |
 | Home | the pitch and one worked example |
-| How it works | the execution model, and the limits of the contract check |
-| Guides | how to do things, split into Authoring / Running / Scaling |
+| Concepts | how conduit works and why: the pipeline model, contracts, execution |
+| Guides | how to do things: write nodes, write configs, validate, run and scale |
 | Recipes | complete worked pipelines |
+| Extending | building a package on conduit |
 | Reference | config schema, data formats, Python API, CLI, module docstrings |
+
+Each fact has one home, and other pages link to it rather than restating it.
 
 
 House style is **one sentence per line in Markdown files.**

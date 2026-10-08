@@ -5,7 +5,7 @@ icon: lucide/database
 
 # Data formats
 
-conduit reads inputs from files and writes results to disk, and works out the format from the file extension.
+conduit picks a file's format from its extension.
 
 ## Supported formats
 
@@ -22,7 +22,7 @@ NetCDF and Zarr are the primary formats for N-dimensional (gridded or multi-poin
 CSV/Parquet are for single-site time series.
 JSON/TOML are for time-invariant scalar parameters, and are input-only.
 
-The table is [`conduit.formats.FORMATS`](modules/conduit.formats.md), which is where conduit looks up the reader, the writer, and whether a `[subset]` run can write the format.
+The table is defined in [`conduit.formats.FORMATS`](modules/conduit.formats.md).
 
 ## Spatial handling
 
@@ -40,25 +40,19 @@ Grid coordinate nodes (`latitude`, `longitude`) are computed from the CRS when a
 
 ## Temporal handling
 
-Time-varying NetCDF/Zarr inputs carry a dimension with a datetime coordinate, and data variables named **without** any frequency suffix (e.g. `temperature`, not `temperature_daily`) — conduit appends the suffix from the section label when building node names (see [Configuration › inputs](configuration.md#inputs)).
+conduit finds the time dimension by its datetime-like coordinate (NumPy `datetime64` or a cftime index), so the dimension can have any name.
+An input may have at most one such dimension.
+For CSV/Parquet, the first column must be a parseable date and becomes the time index.
 
-conduit finds the time dimension by looking for a datetime-like coordinate (NumPy `datetime64` or a cftime index), so the dimension can have any name.
-An input dataset may carry **at most one** such dimension; a second datetime axis is rejected at load.
-For CSV/Parquet, the first column must be a parseable date and is used as the time index.
-
-Section labels only supply a node-name suffix: calling a section `daily` gives its node names the `_daily` suffix, and that is all it does.
-
-Frequency is validated wherever it is **declared**.
-Two mechanisms cover it:
-
-- a consumer declaring `Freq("7D")` on its input (or a `[[node]]` with `freq = "7D"` on its output) — validated per node by the [contract check](../guides/nodes/contracts.md), at build time and in `--dry-run`;
-- the [`time_equal` / `time_subset` checks](configuration.md#validation) — validated across whole input datasets.
+File variables are named without a frequency suffix (`temperature`, not `temperature_daily`); conduit appends the section's suffix to make the [node name](configuration.md#inputs), and infers nothing else from it.
+Frequency is checked only where it is declared: by a `Freq` [contract](../guides/nodes/contracts.md), or across whole inputs by the [`time_equal` / `time_subset` checks](configuration.md#validation).
 
 ## Units metadata
 
-Set a CF-style `units` attribute on your input variables so conduit can validate and convert them against the contracts your nodes declare (see [Declaring contracts](../guides/nodes/contracts.md)).
-A missing or unparseable `units` attribute cannot be validated, so it falls to the active [`[annotations]` policy](configuration.md#annotations).
+Give input variables a CF-style `units` attribute so conduit can validate and convert them against your nodes' [contracts](../guides/nodes/contracts.md).
+A missing or unparseable `units` attribute is handled by the [`[annotations]` policy](configuration.md#annotations).
 
 ## Output provenance
 
-`conduit run` stamps the config used to produce an output, its full text and SHA-256, into the output's `attrs` (`conduit_config`, `conduit_config_sha256`), so every result file records the run that made it.
+A run from a config file stamps the config's full text and SHA-256 into each output's `attrs` (`conduit_config`, `conduit_config_sha256`), so every result records the pipeline that made it.
+A run from an in-memory `ParsedConfig` has no text to stamp, so its outputs carry neither.

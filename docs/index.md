@@ -10,7 +10,7 @@ An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/
 1. **Write the science code.** Ordinary Python functions that take and return `xarray.DataArray`s, with optional [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) declaring what each one requires and produces: units, dimensions, coordinates, dtype, temporal frequency.
 2. **Write the config.** A TOML file names the input files, the nodes and the outputs. Assembling or adapting a pipeline from here needs no Python.
 3. **Validate.** Conduit assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
-4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes, without changing the science code.
+4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes. The choice lives in the config, and none of it changes the science code.
 
 !!! warning "Alpha status"
 
@@ -19,8 +19,8 @@ An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/
 
 ## A very simple demo
 
-[Pipeline 101](recipes/pipeline-101.md) is one input file, one node function imported from a Python module, one node declared inline in the config, one output file.
-It derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces that anomaly to a per-site range.
+[Pipeline 101](recipes/pipeline-101.md) derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces it to a per-site range.
+It has one input file, one node function in a Python module, one node declared inline in the config, and one output file.
 
 <!-- The input file comes from `recipes/pipeline_101/make_data.py`. -->
 
@@ -28,12 +28,9 @@ It derives a temperature anomaly from 90 days of daily temperature at three site
 python recipes/pipeline_101/make_data.py > /dev/null
 ```
 
-Click through the tabs below.
-
 === "Python module"
 
-    Science code is written in ordinary Python functions that accept and return `xarray.DataArray`s,
-    with optional (but recommended) annotations declaring required properties such as units.
+    The science code: ordinary functions of `xarray.DataArray`s, annotated with the units they expect and return.
 
     <!-- fmt:off -->
     ```python
@@ -43,8 +40,8 @@ Click through the tabs below.
 
 === "TOML config"
 
-    A pipeline (DAG) is assembled based on a *configuration* written in the common TOML format.
-    (In Python sessions the config can also be passed as a plain Python dict.)
+    The config names the input file, the module, an inline node and the output.
+    From Python, the same structure can be passed as a dict.
 
     ```toml
     --8<-- "recipes/pipeline_101/config.toml"
@@ -79,23 +76,21 @@ Click through the tabs below.
 
 === "Run"
 
-    Finally, the pipeline can be executed from the command line.
-
     ```bash exec="true" source="block" result="text"
     conduit run recipes/pipeline_101/config.toml
     ```
 
-The [101 notebook walkthrough](recipes/pipeline-101.md) covers the same pipeline through the Python API instead.
+The [Pipeline 101 notebook](recipes/pipeline-101.md) runs the same pipeline through the Python API.
 
 ## Navigating these docs
 
 <div class="grid cards" markdown>
 
-- **[Concepts](concepts/overview.md)** — how conduit works and why it is built this way: the [pipeline model](concepts/pipeline-model.md), [contracts and the whole-graph check](concepts/contracts.md), and [execution and scaling](concepts/execution.md).
-- **[Guides](guides/install.md)** — How-to guides for common tasks. Start with [install](guides/install.md), then [write a config](guides/configs/write-a-config.md) if you are adapting someone else's pipeline, or [bring your own module](guides/nodes/bring-your-own-module.md) if you are adding nodes. [Troubleshooting](guides/troubleshooting.md) is at the end.
-- **[Recipes](recipes/index.md)** — complete pipelines as executable [marimo](https://marimo.io) notebooks. [Pipeline 101](recipes/pipeline-101.md) is the one above; [flux processing](recipes/flux-pipeline.md) is a real eddy-covariance workflow with unit conversion and resampling.
-- **[Extending](extending/index.md)** — for building a package *on* conduit: [registering modules](extending/register-modules.md) so configs name them without an `_import_path`, and what to build against.
-- **[Reference](reference/configuration.md)** — Authoritative reference for every [TOML section and key](reference/configuration.md), the [supported file formats](reference/data-formats.md), the [Python API](reference/python-api.md) and the modules behind it, and the [CLI](reference/cli.md).
+- **[Concepts](concepts/overview.md)** — how conduit works, and why.
+- **[Guides](guides/install.md)** — how to do things. After [installing](guides/install.md), start at [Write a config](guides/configs/write-a-config.md) to adapt a pipeline, or [Bring your own module](guides/nodes/bring-your-own-module.md) to add nodes.
+- **[Recipes](recipes/index.md)** — complete pipelines as executable [marimo](https://marimo.io) notebooks.
+- **[Extending](extending/index.md)** — building a package on top of conduit.
+- **[Reference](reference/configuration.md)** — every config key, file format, CLI flag and Python name.
 
 </div>
 

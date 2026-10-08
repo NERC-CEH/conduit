@@ -5,27 +5,24 @@ icon: lucide/gauge
 
 # Scale up a pipeline
 
-Four knobs, in rough order of the scale they address: result caching, out-of-core dask, memory-bounded blocking, and parallel subset runs over a shared Zarr store.
-They compose, so a blocked, dask-backed run over a subset with caching on is entirely ordinary.
-You change the config, not the code.
-
-[Execution and scaling](../../concepts/execution.md) is where to start if you are choosing between them rather than configuring one.
+Four settings, roughly in order of the scale they address: caching, out-of-core dask, memory-bounded blocking, and parallel subset runs.
+They compose, and none of them changes the node code.
+To choose between them, see [Execution and scaling](../../concepts/execution.md).
 
 ## Caching results
 
-Add a `[cache]` section to persist intermediate results to disk.
-On later runs, nodes whose code and inputs are unchanged are read from the cache instead of recomputed.
+A `[cache]` section persists node results to disk, and later runs read unchanged nodes back instead of recomputing them.
 
 ```toml
 [cache]
 path = ".conduit_cache"   # default; resolved relative to the config file
 ```
 
-This builds on [Hamilton's caching](https://hamilton.apache.org/concepts/caching/): each node is keyed on a fingerprint of its code plus its inputs' fingerprints, so the cache invalidates automatically when either changes. conduit registers a content-based fingerprint for `xarray.DataArray` that hashes both values *and* metadata.
+This uses [Hamilton's caching](https://hamilton.apache.org/concepts/caching/): each node is keyed on its code and its inputs' fingerprints, so the cache invalidates itself when either changes.
+conduit fingerprints an `xarray.DataArray` by its values *and* metadata.
 
-The main payoff is calibration loops, where you re-run a pipeline many times while changing only a few parameters.
-In an `a → b → c → d` chain, tweaking `c`'s parameters leaves `a` and `b` with the same fingerprint, so they come from the cache and only `c` and downstream recompute.
-You do not have to choose which nodes to cache.
+The payoff is in calibration loops.
+In an `a → b → c → d` chain, changing `c`'s parameters leaves `a` and `b` cached, so only `c` and `d` recompute.
 
 | Key | Description |
 |-----|-------------|
@@ -34,19 +31,17 @@ You do not have to choose which nodes to cache.
 | `recompute` | `true` or a list of node names — force recompute (and re-cache) even on a hit. |
 | `disable` | `true` or a list of node names — bypass the cache entirely for those nodes. |
 
-CLI overrides (`--cache`/`--no-cache`, `--cache-dir`) let you toggle caching without editing the config.
+`--cache`/`--no-cache` and `--cache-dir` override these from the command line.
 
 ## Out-of-core with dask
 
-Nodes are plain xarray functions, so passing dask-backed arrays makes them execute lazily and out-of-core with no code change.
-Open inputs with a `chunks` argument, or rely on Zarr's native chunking.
-Combine with blocking (below) to cap peak memory.
+Nodes are plain xarray functions, so dask-backed inputs make them execute lazily and out-of-core with no code change.
+When [driving conduit from Python](drive-from-python.md#step-by-step), `.chunk()` the arrays from `load_inputs` before executing.
+Combine with blocking to cap peak memory.
 
 ## Memory-bounded execution with `[blocking]`
 
-Add `[blocking]` to process a partition dimension in fixed-size sequential chunks.
-Each block is sliced from the full arrays, run through the DAG, and the results concatenated along the partition dim.
-Peak memory is bounded to a small multiple of one block's footprint, regardless of total size.
+`[blocking]` runs the whole DAG over one fixed-size block of a dimension at a time and concatenates the results, so peak memory stays near one block's footprint.
 
 ```toml
 [blocking]
@@ -56,13 +51,12 @@ dim = "pixel"        # default; set to any dim (e.g. "location") for non-gridded
 
 !!! warning "Outputs must vary over the partition dim"
 
-    Blocking concatenates results along `dim`.
-    If an `[outputs]` variable has no such dimension — e.g. a grid-mean aggregate — it cannot be recombined and conduit raises a `ValueError`.
+    An output without the `dim` dimension, such as a grid-mean aggregate, cannot be concatenated, and conduit raises an error.
     Drop such variables from `[outputs]` when blocking.
 
 ## Parallel subset runs
 
-For parallelism across the domain, run *independent* `conduit run` processes, each restricted to a contiguous slice of one dimension with `[subset]`:
+For parallelism, run independent `conduit run` processes, each restricted by `[subset]` to a contiguous slice of one dimension:
 
 ```toml
 [subset]
@@ -71,24 +65,22 @@ stop  = 500          # exclusive (Python slice convention)
 dim   = "pixel"      # optional; the default. Any dimension works.
 ```
 
-As with `[blocking]`, `dim` is free, so a non-gridded pipeline can shard over `location` or `site`.
-The two mechanisms partition identically and differ only in who runs the parts: one process sequentially, or many processes concurrently.
+As with `[blocking]`, `dim` can be any dimension, such as `location` or `site` in a non-gridded pipeline.
+Each process reads only its slice.
+The processes share one output `path`, so conduit keeps their writes apart, and `conduit gridded merge` (in the `geo` extra) reassembles them afterwards.
+In practice, generate one config per task, for example from a SLURM array job.
 
-`load_inputs` reads only that slice (lazy NetCDF/Zarr I/O means the rest is never loaded).
-Because the processes share one config — and one output `path` — conduit writes their outputs so they don't collide, then a `merge` step reassembles the grid.
-This is behind the optional `geo` extra and the `conduit gridded` command group.
-
-**NetCDF** — each process writes a uniquely-named part (`weekly.nc` → `weekly_pixel0-500.nc`); no setup needed beforehand:
+**NetCDF** — each process writes its own part (`weekly.nc` → `weekly_pixel0-500.nc`), with no setup needed:
 
 ```sh
 parallel conduit run config_{}.toml ::: 0 1 2 3   # writes weekly_<dim><start>-<stop>.nc
 conduit gridded merge config.toml                  # concatenate the parts back into weekly.nc
 ```
 
-`merge` refuses to proceed unless the parts *cover* the dimension end to end: a shard that died leaves a gap, and merging it anyway would silently produce unwritten (NaN) regions in the output.
+`merge` refuses to run unless the parts cover the dimension end to end, so a shard that died cannot leave a silent gap of NaNs.
 
-**Zarr** — all processes region-write into one shared store, which must be created **once** up front.
-A Zarr store *is* the stacked pixel grid, so this path is `pixel`-only (`create-store` rejects any other `dim`):
+**Zarr** — all processes write regions of one shared store, created once up front.
+The store's layout is the stacked pixel grid, so this path works only with `dim = "pixel"`:
 
 ```sh
 conduit gridded create-store config.toml           # build the empty shared store(s)
@@ -100,23 +92,13 @@ conduit gridded merge config.toml                  # unstack into a sibling *_gr
 
 !!! note "What `create-store` computes"
 
-    `create-store` derives each output's non-`pixel` axes by running the pipeline over a single pixel and reading the coordinates, dims and dtype off the result, so the layout matches what the shards will write.
-    A derived axis — a `[[resample]]`'s weekly time axis, say — works without any input file already having it.
+    `create-store` runs the pipeline over a single pixel and takes each output's other axes, dims and dtype from the result, so the layout matches what the shards will write, derived axes included.
 
     The store therefore belongs to the config that created it.
-    Change the config in a way that moves an output's time axis and the next `run` refuses to write into the stale store.
-    Re-create it with `--overwrite`.
+    If a config change moves an output's time axis, `run` refuses to write into the stale store; re-create it with `--overwrite`.
 
 !!! note "Chunk alignment for Zarr"
 
-    Concurrent Zarr region writes are only safe when each subset's boundaries fall on the store's pixel-chunk boundaries.
-    `conduit gridded create-store` sets that chunk from `--pixel-chunk` (default: `[blocking].block_size`); a `run` whose `[subset]` is misaligned raises a `ValueError`.
-    Keep subset ranges as multiples of the chunk size.
-
-With a SLURM array job, vary `start`/`stop` via environment variables or per-task config files.
-
-## Where next
-
-- [Execution and scaling](../../concepts/execution.md) — why execution is a separate decision from the science.
-- [Configuration reference](../../reference/configuration.md) — the `[cache]`, `[blocking]` and `[subset]` keys.
-- [CLI reference](../../reference/cli.md) — every `conduit gridded` flag.
+    Concurrent region writes are safe only when each subset's boundaries fall on the store's pixel-chunk boundaries.
+    `create-store` sets the chunk from `--pixel-chunk` (default: `[blocking].block_size`), and a misaligned `[subset]` is an error.
+    Keep subset ranges to multiples of the chunk size.

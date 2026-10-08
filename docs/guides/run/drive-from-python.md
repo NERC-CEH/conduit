@@ -5,24 +5,64 @@ icon: lucide/code-2
 
 # Drive conduit from Python
 
-`conduit run` is a thin wrapper over `conduit.run`, so everything the CLI does is available from Python with nothing extra installed.
+Everything the CLI does is available from Python, with no extras installed.
 
-Taking the steps yourself lets you inspect individual nodes, plot intermediate results, override values between runs, or skip writing to disk entirely.
-This guide walks through the same steps `run` takes; [the whole thing in one call](#the-whole-thing-in-one-call) is at the end.
+## In one call
 
-!!! info "Import convention"
+`conduit.run` takes a path to a TOML config, or a `ParsedConfig` you have adjusted in Python:
 
-    All examples below assume:
+```python
+import conduit
 
-    ```python
-    from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
-    from conduit.config import Config
-    ```
+report = conduit.run("config.toml")  # writes each [outputs.*] section
+report.outputs["climate"]  # the Dataset that went into that section
+report.written  # where each one landed, and how big it is
 
-## 1. Build a config
+parsed = conduit.load_config("config.toml")
+parsed.driver_config["scaling_factor"] = 2.0
+report = conduit.run(parsed)  # same run, with a parameter changed first
+```
 
-A pipeline is described by a config — a Python dict with the same structure as a [TOML config](../../reference/configuration.md) file.
-Pass it straight to `Config`:
+A [`RunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.RunReport) holds the datasets, one `WrittenOutput` per destination, and the elapsed time.
+Take paths from `written` rather than from the config, because a `[subset]` run adds a suffix to them.
+A run from a `ParsedConfig` has no config text, so its outputs carry no [provenance stamp](../../reference/data-formats.md#output-provenance).
+
+`conduit.dry_run` runs the same checks without executing anything and returns a [`DryRunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.DryRunReport), and `conduit.build_graph` returns the graph as a `graphviz.Digraph`.
+
+Progress is logged to the `conduit.pipeline` logger at `INFO`.
+The library installs no handler, so to see it:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.INFO)
+```
+
+## Step by step
+
+Taking the steps yourself lets you inspect individual nodes, plot intermediate results, override values between runs, or skip writing to disk.
+These are the steps `conduit.run` takes:
+
+```python
+from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
+from conduit.config import Config
+
+parsed = Config(config_data).parse()  # 1. parse
+parsed.annotations.apply()  # 2. contract policy
+dr = build_driver(  # 3. build, and check contracts
+    modules=parsed.modules,
+    config=parsed.driver_config,
+    node_specs=parsed.node_specs,
+)
+inputs = load_inputs(parsed.input_specs)  # 4. load
+results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 5. execute
+datasets = get_outputs(results, parsed.output_specs)  # 6. collect
+save_outputs(datasets, parsed.output_specs)  # 7. write
+```
+
+### 1. Parse a config
+
+A config can be a Python dict with the same structure as a [TOML config](../../reference/configuration.md):
 
 ```python
 config_data = {
@@ -41,79 +81,32 @@ config_data = {
         "climate": {"path": "results/anomaly.nc", "vars": ["temperature_anomaly"]},
     },
 }
-```
-
-!!! note "Loading from a file"
-
-    Already have a file?
-    Use `Config.load("config.toml")` (paths resolve relative to the file) or `Config.loads(toml_string)`.
-    The convenience function `conduit.load_config("config.toml")` does load-and-parse in one call, returning the `ParsedConfig` from the next step.
-
-## 2. Parse it
-
-`.parse()` validates the config and returns a `ParsedConfig` dataclass with everything the pipeline needs:
-
-```python
 parsed = Config(config_data).parse()
 ```
 
-Key fields: `modules` (module identifiers), `driver_config` (parameters for the driver and modules), `node_specs` (the `[[node]]` / `[[resample]]` specs), `input_specs` / `output_specs` (per-section `IOSpec`s), plus the parsed `cache_spec`, `blocking_spec`, `subset_spec` and `annotations` (an `AnnotationPolicySpec`).
+For a file, use `Config.load("config.toml")`, which resolves paths relative to the file, or `conduit.load_config("config.toml")`, which also parses it.
+The resulting `ParsedConfig` holds one spec per config section; see [its reference](../../reference/modules/conduit.specs.md#conduit.specs.ParsedConfig).
 
-## 3. Apply the contract policy
+### 2. Apply the contract policy
 
-Apply the `[annotations]` policy yourself before building, exactly as the CLI does.
-It sets `xarray-annotated`'s process-global policy, which the build-time contract check reads:
+`parsed.annotations.apply()` sets the `[annotations]` policy, which is process-global in `xarray-annotated`.
+Skip it and the DAG is checked under the default policy rather than your config's.
 
-```python
-parsed.annotations.apply()
-```
+### 3. Build the driver
 
-Skip this and your DAG is checked under the default policy rather than the one your config asked for.
+`build_driver()` constructs a Hamilton `Driver` and runs the contract check.
+Pass `node_specs` whenever the config has `[[node]]` or `[[resample]]` entries.
+The driver can be inspected with Hamilton's own methods, such as `dr.display_all_functions()` or `dr.visualize_path_between(...)`.
 
-## 4. Build the driver
+### 4. Load inputs
 
-`build_driver()` constructs a Hamilton `Driver` and runs the build-time contract check:
+`load_inputs()` opens the input files and returns a flat dict of `DataArray`s keyed by node name.
+When inputs carry a CRS, `latitude` and `longitude` nodes are computed too.
 
-```python
-dr = build_driver(
-    modules=parsed.modules,
-    config=parsed.driver_config,
-    node_specs=parsed.node_specs,
-)
-```
+### 5. Execute
 
-`node_specs` is required whenever the config defines `[[node]]` or `[[resample]]` entries — it is what the built-in `node` module is generated from.
-
-The driver is the DAG runtime: it resolves dependencies and executes nodes in order.
-You can inspect it now with `dr.display_all_functions()` or `dr.visualize_path_between(...)`.
-
-## 5. Load inputs
-
-`load_inputs()` reads the files in `input_specs` and returns a flat dict of named `DataArray`s, keyed by node name:
-
-```python
-inputs = load_inputs(parsed.input_specs)
-```
-
-Node names follow the config's naming: `{var}{suffix}` for list-form `vars`, or the explicit `{node_name: file_var}` alias for mapping-form.
-Grid coordinates (`latitude`, `longitude`) are computed automatically when inputs carry a CRS.
-
-## 6. Execute
-
-Call `dr.execute()` with the node names you want.
-`get_final_vars()` turns `output_specs` into that flat list:
-
-```python
-results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)
-```
-
-You can also request any node by name, which is handy for inspecting intermediates:
-
-```python
-anomaly = dr.execute(["temperature_anomaly_climate"], inputs=inputs)
-```
-
-Or override a node's value at runtime without rebuilding the DAG, which is useful when re-running with different parameters:
+`dr.execute()` takes the node names you want; `get_final_vars()` lists the ones the outputs need.
+You can request any node, which is handy for inspecting intermediates, and override a node's value without rebuilding:
 
 ```python
 results = dr.execute(
@@ -123,86 +116,9 @@ results = dr.execute(
 )
 ```
 
-## 7. Inspect and save
+### 6–7. Collect and write
 
-`dr.execute()` returns a flat dict of `DataArray`s.
-`get_outputs()` merges them into per-section `Dataset`s (the form most plotting/analysis expects):
+`get_outputs()` merges the flat results into one `Dataset` per output section, ready for plotting or analysis.
+`save_outputs()` writes them and returns the path written for each section; skip it if you only need the datasets in memory.
 
-```python
-datasets = get_outputs(results, parsed.output_specs)
-# datasets["climate"] -> xr.Dataset
-```
-
-Write them with `save_outputs()`, which returns the path it wrote for each section:
-
-```python
-paths = save_outputs(datasets, parsed.output_specs)
-# paths["climate"] -> PosixPath('results/climate.nc')
-```
-
-!!! tip "Skipping disk writes"
-
-    In a notebook you can skip `save_outputs()` — the Datasets from `get_outputs()` are ready for xarray's plotting methods, matplotlib, or any other library.
-
-## Putting it together
-
-```python
-from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
-from conduit.config import Config
-
-parsed = Config(config_data).parse()  # 1–2. build + parse
-parsed.annotations.apply()  # 3. contract policy
-dr = build_driver(  # 4.
-    modules=parsed.modules,
-    config=parsed.driver_config,
-    node_specs=parsed.node_specs,
-)
-inputs = load_inputs(parsed.input_specs)  # 5.
-results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 6.
-datasets = get_outputs(results, parsed.output_specs)  # 7.
-save_outputs(datasets, parsed.output_specs)
-```
-
-## The whole thing in one call
-
-`conduit.run` does every step above, so when you want the outputs and nothing else, call it directly.
-It takes a path to a TOML config, or a `ParsedConfig` you have already adjusted in Python:
-
-```python
-import conduit
-
-report = conduit.run("config.toml")  # writes each [outputs.*] section
-report.outputs["climate"]  # the Dataset that went into that section
-report.written  # where each one landed, and how big it is
-
-parsed = conduit.load_config("config.toml")
-parsed.driver_config["scaling_factor"] = 2.0
-report = conduit.run(parsed)  # same run, with the spec tweaked first
-```
-
-A [`RunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.RunReport) holds the datasets, one `WrittenOutput` per destination, and the elapsed time.
-Take the paths from `written` rather than from the config: a `[subset]` run suffixes them, so the file on disk is not always the one the config asked for.
-
-Progress is logged to the `conduit.pipeline` logger at `INFO` as each stage completes.
-The library installs no handler, so nothing is printed until you ask for it:
-
-```python
-import logging
-
-logging.basicConfig(level=logging.INFO)
-```
-
-`conduit.dry_run` validates the same pipeline without executing it and returns a [`DryRunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.DryRunReport) — the stage list `conduit run --dry-run` prints.
-`conduit.build_graph` returns the styled `graphviz.Digraph` that `conduit graph` writes to disk, which renders inline in a notebook.
-
-!!! info "Provenance"
-
-    A run from a config *path* stamps the config text and its SHA-256 onto every output, so the store says how it was made.
-    A run from a `ParsedConfig` has no text to stamp, so it stamps nothing.
-
-## Where next
-
-- [Python API](../../reference/python-api.md) — an index of every name used here, linking to its signature.
-- [Run and visualise](run-from-the-cli.md) — the CLI equivalent.
-- [Test your pipeline](../validate/test-your-pipeline.md) — these same calls, from a test.
-- [Configuration reference](../../reference/configuration.md) — the config schema.
+The [Python API](../../reference/python-api.md) page links every name used here to its signature.

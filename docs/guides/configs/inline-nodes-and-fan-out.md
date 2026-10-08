@@ -5,14 +5,12 @@ icon: lucide/braces
 
 # Inline nodes & fan-out
 
-The `[[node]]` section defines DAG nodes directly in the config, with no separate Python module.
-It suits glue — renames, arithmetic, simple derivations — and, with `for_each`, generating many similar nodes from one spec.
-This guide covers the two node forms, declaring contracts, fan-out templating, and the `[[resample]]` preset.
+A `[[node]]` entry defines a node directly in the config, with no Python module.
+It suits glue — renames, arithmetic, simple derivations — and, with `for_each`, generating many similar nodes from one entry.
 
 ## Inline expressions
 
-The simplest node is a Python `expression`, evaluated with the listed `inputs` in scope.
-The `xr` (xarray) module is also in the expression namespace.
+The simplest node is a Python `expression`, evaluated with the listed `inputs` and `xr` (xarray) in scope.
 
 ```toml
 [[node]]
@@ -21,12 +19,12 @@ inputs = ["tmax_daily", "tmin_daily"]
 expression = "tmax_daily - tmin_daily"
 ```
 
-Input names must match the node names they refer to (including any frequency/section suffix).
+`inputs` are node names, suffix included.
 `name` is the node this entry produces, which downstream nodes and `[outputs.*]` can reference.
 
 ## Calling an external function
 
-For anything beyond a one-liner, point at a function in an importable module with `_import_path` + `function` instead of `expression`:
+To call a function instead, give `_import_path` and `function` in place of `expression`:
 
 ```toml
 [[node]]
@@ -37,18 +35,12 @@ function = "compute_custom_index"
 ```
 
 The function must accept keyword arguments matching `inputs` and return an `xarray.DataArray`.
-Each entry uses **either** `expression` **or** (`_import_path` + `function`) — never both.
-
-!!! tip "When to reach for a module instead"
-
-    `[[node]]` calling a function is fine for a single derivation.
-    Once you have several related functions, shared parameters, or want unit annotations on a signature, write a [proper module](../nodes/bring-your-own-module.md) instead.
-    It is easier to test and reuse.
+This suits a single derivation; once you have several related functions, shared parameters, or annotated signatures, [write a module](../nodes/bring-your-own-module.md) instead.
 
 ## Declaring contracts on a node
 
-A node transforms its inputs, so conduit cannot infer its output contract.
-Declare any of `units`, `dims`, `dtype`, `coords` to make the node a *typed producer*: its output is stamped and validated at run time, and the [build-time contract check](../nodes/contracts.md) can check downstream consumers against it.
+conduit cannot infer what an expression produces, so declare it.
+Any of `units`, `dims`, `dtype`, `coords` or `freq` makes the node a *typed producer*: its output is stamped and validated at run time, and the [contract check](../nodes/contracts.md) checks downstream consumers against it.
 
 ```toml
 [[node]]
@@ -59,8 +51,8 @@ units = "1"                 # dimensionless ratio
 dims = ["time", "pixel"]    # optional dimension contract
 ```
 
-`units` must be a valid UDUNITS/pint string and `dtype` a valid dtype; both are checked when the config is parsed.
-Omit them and the node is a contract-unknown pass-through (no static coverage for its output).
+`units` and `dtype` are validated when the config is parsed.
+A node that declares nothing has no output contract, so edges leaving it go unchecked.
 
 ## Fan-out with `for_each`
 
@@ -79,9 +71,8 @@ This expands to three nodes, `temperature_anomaly_daily`, `precipitation_anomaly
 
 ## The `[[resample]]` preset
 
-`[[resample]]` is a thin preset over the same fan-out machinery.
-It desugars to one annotation-preserving passthrough node per variable, each applying `conduit.transforms.resample`.
-Use it to aggregate one temporal frequency to a coarser one.
+`[[resample]]` aggregates to a coarser time frequency.
+It expands to one [passthrough](../nodes/contracts.md#contracts-across-a-passthrough-node) node per variable, each applying `conduit.transforms.resample`.
 
 ```toml
 [[resample]]
@@ -92,13 +83,10 @@ freq = "7D"
 aggfunc = "mean"          # mean | sum | max | min | first | last (default: mean)
 ```
 
-This produces `temperature_weekly` and `precipitation_weekly` from their daily counterparts.
-Resampling preserves units and dims, so the contract check carries each source's declared contract across the resample edge.
-It does *not* preserve frequency, so the node declares `freq` as its own output contract.
+This produces `temperature_weekly` and `precipitation_weekly` from their daily counterparts, carrying each source's units and dims across, with `freq` as the declared output frequency.
+Choose `aggfunc` with care: [no check can tell a wrong one](../nodes/resampling-and-units.md).
 
-`from` and `to` are only the node-name suffixes to read from and write to.
-The pandas offset alias in `freq` is what sets the frequency.
-Nothing is inferred from the labels, so any pair works:
+`from` and `to` are just the node-name suffixes to read and write; `freq` alone sets the frequency, so any pair of labels works:
 
 ```toml
 [[resample]]
@@ -109,9 +97,4 @@ freq = "1D"
 aggfunc = "max"
 ```
 
-## Where next
-
-- [Bring your own module](../nodes/bring-your-own-module.md) — for logic that outgrows an inline node.
-- [Declaring contracts](../nodes/contracts.md) — the facets a `[[node]]` can declare.
-- [Resampling and units](../nodes/resampling-and-units.md) — choosing `aggfunc` correctly, which no check can do for you.
-- [Configuration reference](../../reference/configuration.md) — the full `[[node]]` and `[[resample]]` key list.
+Every key is in the [configuration reference](../../reference/configuration.md#nodes).

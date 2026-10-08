@@ -22,11 +22,8 @@ def aridity_index_daily(
 ) -> Annotated[xr.DataArray, "1"]: ...
 ```
 
-The decorators and the markers below are [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated)'s, and its [API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) documents them in full.
-What conduit adds is checking every such claim across the whole graph before any node runs.
-This page is about writing them.
-For the pre-flight that runs the checks against your real files, see [Validate before running](../validate/validate-before-running.md).
-[Contracts and the whole-graph check](../../concepts/contracts.md) covers why a before-compute check is possible at all.
+The decorators and markers come from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), whose [API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) documents them in full.
+conduit checks every such claim across the whole graph before any node runs; [Contracts and the whole-graph check](../../concepts/contracts.md) explains how.
 
 ## The five facets
 
@@ -57,8 +54,7 @@ def weekly_mean(
 ```
 
 An *unanchored* frequency compares spacing only, so `Freq("7D")` accepts any weekly axis.
-An *anchored* one also pins the phase, so `Freq("W-SUN")` rejects an axis landing on Wednesdays.
-That is what catches a resample offset by a day.
+An *anchored* one also pins the phase, so `Freq("W-SUN")` rejects an axis landing on Wednesdays, catching a resample offset by a day.
 
 !!! warning "Decorator order matters"
 
@@ -69,7 +65,7 @@ An inline `[[node]]` declares the same facets with `units`, `dims`, `coords`, `d
 
 ## Producers and consumers
 
-Declaring a unit on a node's **output** makes it a typed producer, and conduit knows that unit statically:
+Declaring a unit on a node's **output** makes it a typed producer, whose unit conduit knows without running it:
 
 ```toml
 [[node]]
@@ -99,7 +95,7 @@ Suppose your file stores pressure in hectopascals and the node above wants pasca
 conduit converts the data before the function runs, so you never hand-write `* 100`.
 A unit that is only spelled differently, `"pascal"` for `"Pa"`, is relabelled without touching the values.
 
-Incompatible units are another matter.
+Incompatible units are an error.
 Change that annotation to metres:
 
 ```python
@@ -110,7 +106,7 @@ def pressure_anomaly_climate(
 ```
 
 Length and pressure do not interconvert, so conduit rejects the edge when the driver is built, naming both nodes and the facet that failed.
-Nothing has been computed at that point, and `conduit run config.toml --dry-run` will show you the same failure without executing anything.
+Nothing has been computed at that point, and `conduit run config.toml --dry-run` shows the same failure.
 
 ## Choosing the strictness
 
@@ -122,38 +118,26 @@ mode = "warn"           # "strict" | "warn" (default) | "off"
 on_inexact = "convert"  # "convert" (default) | "warn" | "error"
 ```
 
-`mode` decides whether a unit problem raises, reports, or is ignored entirely.
+`mode` decides whether a unit problem raises, is reported, or is ignored.
 
-`on_inexact` governs implicit conversion, and only a *value-changing* conversion consults it.
-`"convert"` scales silently, `"warn"` scales and tells you, `"error"` refuses.
-Set it to `"warn"` when you want every conversion in the run to be visible.
-The flux recipe does this, on the grounds that a kelvin-to-Celsius conversion is worth seeing.
-Its `flux.nc` stores air temperature in kelvin, while `partition_fluxes` declares `tair` in `degC` because its respiration term is a $Q_{10}$ relation written for Celsius.
-Handed kelvin, that term returns respiration around $10^8$ rather than $4$, and nothing downstream would look obviously wrong.
-The declaration is what makes the conversion happen; a bare `tair` parameter would have quietly used kelvin.
+`on_inexact` applies only to *value-changing* conversions: `"convert"` scales silently, `"warn"` scales and tells you, `"error"` refuses.
+Use `"warn"` to see every conversion in a run.
+The flux recipe does this because its one conversion matters: `flux.nc` stores air temperature in kelvin, while `partition_fluxes` declares `tair` in `degC` because its respiration term is a $Q_{10}$ relation written for Celsius.
+Given kelvin, that term returns respiration around $10^8$ rather than $4$, and nothing downstream would look obviously wrong.
+Without the declaration, a bare `tair` parameter would have used kelvin without complaint.
 
-Every policy key, `on_uninferable` included, is in the [`[annotations]` reference](../../reference/configuration.md#annotations).
+Every policy key is in the [`[annotations]` reference](../../reference/configuration.md#annotations).
 
 ## Contracts across a passthrough node
 
-Some nodes transform data while preserving its facets.
+Some nodes transform data while preserving most of its facets.
 Resampling is the usual case: `temperature_weekly` should inherit whatever `temperature_daily` declared.
-These nodes are tagged **passthrough**, and the checker carries the upstream contract across them, so an edge running through a resample is still covered end to end.
+These nodes are **passthroughs**, and the checker carries the upstream contract across them, so an edge through a resample is still checked end to end.
 
-That happens per facet, since a passthrough preserves some and changes others.
-A resample preserves units.
-It does not preserve frequency, since frequency is what it changes, so a `[[resample]]` declares its own output frequency and becomes an ordinary checkable producer for that facet.
+This works per facet.
+A resample preserves units but changes frequency, so a `[[resample]]` declares its own output frequency and is an ordinary typed producer for that facet.
 Declare `Freq("W-SUN")` downstream and a mistyped `W-WED` offset fails when the driver is built.
 
-`[[resample]]` produces passthrough nodes; you can mark your own inline `[[node]]` passthrough too.
+Every `[[resample]]` is a passthrough, and an inline `[[node]]` can be marked as one with `passthrough = true`.
 
-## What contracts will not catch
-
-Anything that leaves the shape and units of an edge unchanged.
-[Contracts and the whole-graph check](../../concepts/contracts.md#what-contracts-cannot-catch) sets out where the line falls, and [Resampling and units](resampling-and-units.md) works through the trap you are most likely to hit.
-
-## Where next
-
-- [Bring your own module](bring-your-own-module.md) — the rest of the authoring conventions.
-- [Validate before running](../validate/validate-before-running.md) — running the checks against real files.
-- [Test your pipeline](../validate/test-your-pipeline.md) — for everything contracts cannot cover.
+Contracts cannot catch anything that leaves units and shape unchanged, such as summing a rate you meant to average; see [Resampling and units](resampling-and-units.md).

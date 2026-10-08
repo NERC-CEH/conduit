@@ -5,19 +5,9 @@ icon: lucide/download
 
 # Installation
 
-conduit is installed from GitHub; it is not on PyPI.
+conduit needs Python 3.12 or later, and is installed from GitHub rather than PyPI.
 
-!!! warning "Alpha status"
-
-    `conduit` is an early-stage project under active development.
-    Things will change without warning.
-
-## Prerequisites
-
-- **Python 3.12** or later.
-  CI tests 3.12, 3.13 and 3.14.
-
-## Install into an existing project
+## Install
 
 === "pip"
 
@@ -31,26 +21,21 @@ conduit is installed from GitHub; it is not on PyPI.
     uv add git+https://github.com/NERC-CEH/conduit
     ```
 
-This installs the `conduit` library: the core engine (Hamilton, xarray, contract checking, the config parser) and its Python API, `conduit.run`, `conduit.dry_run` and `conduit.build_graph`.
+This installs the library and its Python API.
+The `conduit` command, geospatial support and graph rendering are optional extras.
 
-The `conduit` command is an optional wrapper over that API.
-It lives in the `cli` extra, alongside geospatial and DAG-visualisation support (see below).
-Install `conduit[cli]` if you want to drive pipelines from a terminal.
-
-## Optional features (extras)
-
-conduit groups its optional dependencies into installable extras:
+## Extras
 
 | Extra | Installs | Needed for |
 | --- | --- | --- |
 | `cli` | `typer` | the `conduit` command (`conduit run`, `conduit graph`, `conduit gridded`) |
 | `geo` | `rioxarray`, `pyproj` | CRS-aware gridded inputs (`(y, x)` → `pixel` stacking, computed `latitude`/`longitude`) |
 | `viz` | `apache-hamilton[visualization]` | rendering the DAG with `conduit graph` |
-| `all` | everything above | convenience — installs every optional feature |
+| `all` | everything above | every optional feature |
 
-conduit imports the `geo` dependencies lazily, and only when an input carries CRS metadata, so non-gridded pipelines never need them.
+Non-gridded pipelines never need `geo`: it is imported only when an input carries CRS metadata.
 
-Append the extra(s) in square brackets:
+Name extras in square brackets:
 
 === "pip"
 
@@ -66,11 +51,9 @@ Append the extra(s) in square brackets:
     uv add "conduit[all] @ git+https://github.com/NERC-CEH/conduit"
     ```
 
-## System dependencies
+## Graphviz
 
-### Graphviz (for pipeline visualisation)
-
-The `viz` extra installs the Python `graphviz` bindings, but `conduit graph` also needs the Graphviz system binaries:
+`conduit graph` also needs the Graphviz system binaries, which the `viz` extra cannot install:
 
 ```sh
 # Ubuntu/Debian
@@ -82,17 +65,10 @@ brew install graphviz
 
 ## Verify installation
 
-```python
-python -c "import conduit; print(conduit.__version__)"
-```
-
-With the `cli` extra:
-
 ```sh
-conduit --version
+python -c "import conduit; print(conduit.__version__)"
+conduit --version  # with the cli extra
 ```
 
-## Next steps
-
-- Build your first pipeline with [Pipeline 101](../recipes/pipeline-101.md).
-- Contributors setting up a development checkout should follow the [`CONTRIBUTING.md`](https://github.com/NERC-CEH/conduit/blob/main/CONTRIBUTING.md) guide instead (`git clone` + `uv sync`).
+Then try [Pipeline 101](../recipes/pipeline-101.md).
+To set up a development checkout, see [`CONTRIBUTING.md`](https://github.com/NERC-CEH/conduit/blob/main/CONTRIBUTING.md).

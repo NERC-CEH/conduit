@@ -5,20 +5,9 @@ icon: lucide/square-function
 
 # Python API
 
-The CLI is an optional wrapper over the library, so everything `conduit run` does is available from Python with nothing extra installed.
-
 ## What most pipelines need
 
-`conduit.run` takes a path to a TOML config, or a `ParsedConfig` you have adjusted in Python, and does the lot:
-
-```python
-import conduit
-
-report = conduit.run("config.toml")
-```
-
-Taking the steps yourself lets you inspect individual nodes, override values between runs, or skip writing to disk.
-[Drive conduit from Python](../guides/run/drive-from-python.md) walks through them in order; these are the names it uses.
+These are the names used in [Drive conduit from Python](../guides/run/drive-from-python.md), in the order a run uses them.
 
 | Name | Step |
 | --- | --- |
@@ -39,8 +28,7 @@ See [its API reference](https://jmarshrossney.github.io/xarray-annotated/api/pac
 
 ## Everything else
 
-Each module's docstring, rendered in full, along with the signatures of everything public in it.
-Read here when you are building on conduit rather than with it — writing a check, driving Hamilton yourself, adding a file format, or working out what a spec holds.
+Each module's page renders its docstring and the signatures of everything public in it.
 
 ### Config and data
 
@@ -83,8 +71,7 @@ Everything that touches a Hamilton `Driver` or graph object.
 
 ### Gridded
 
-Optional, installed with the `geo` extra and imported lazily.
-Nothing in the core assumes a CRS or a pixel axis; it all lives here.
+Installed with the `geo` extra, and imported only when needed.
 
 | Module | Contents |
 | --- | --- |

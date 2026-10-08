@@ -3,9 +3,7 @@ title: Troubleshooting
 icon: lucide/wrench
 ---
 
-# Troubleshooting & FAQ
-
-Things that go wrong, and what to do about them.
+# Troubleshooting
 
 ## Installation
 
@@ -21,8 +19,7 @@ sudo dnf install graphviz     # Fedora
 
 ### `conduit gridded` reports a missing extra
 
-The gridded (parallel-Zarr) commands need the optional `geo` extra (`rioxarray`/`pyproj`).
-Install it with `pip install "conduit[geo]"`.
+Install the `geo` extra; see [Installation](install.md#extras).
 
 ## Wiring and contracts
 
@@ -31,23 +28,27 @@ Install it with `pip install "conduit[geo]"`.
 A node needs an input that nothing produces.
 Usually one of:
 
-1. **Not listed in config** — check the variable appears in the `vars` of the right `[inputs.*]` section.
-2. **Name/suffix mismatch** — node names combine the file variable with the section suffix (`{var}{suffix}`); a parameter named `temperature_daily` needs a `temperature` variable under a `daily`-suffixed section (or a `vars` mapping alias).
-3. **Wrong frequency** — the variable may exist at another resolution; add a [`[[resample]]`](../reference/configuration.md#resample) step.
-
-Run [`conduit run --dry-run`](validate/validate-before-running.md) to surface this before executing.
+1. **Not listed in config** — the variable is missing from the `vars` of the right `[inputs.*]` section.
+2. **Suffix mismatch** — a parameter named `temperature_daily` needs a `temperature` variable under `[inputs.daily]`, or a `vars` mapping alias.
+3. **Wrong resolution** — the variable exists only at another frequency; add a [`[[resample]]`](../reference/configuration.md#resample).
 
 ### A unit / dimension mismatch error
 
-A node's declared contract disagrees with its producer's.
-See [Validate before running › reading a contract failure](validate/validate-before-running.md#reading-a-contract-failure).
-To relax an over-strict check, adjust the [`[annotations]`](../reference/configuration.md#annotations) policy.
+A node's declared contract disagrees with its producer's; see [Reading a contract failure](validate/validate-before-running.md#reading-a-contract-failure).
+To relax the check, adjust the [`[annotations]`](../reference/configuration.md#annotations) policy.
 
 ### `[[resample]]` entry is missing required key `freq`
 
-Every `[[resample]]` needs an explicit `freq` (a pandas offset alias such as `"7D"`, `"1ME"` or `"W-SUN"`).
-`from` and `to` only name the nodes to read from and write to — no frequency is inferred from labels like `daily`/`weekly`.
-You cannot upsample to a finer resolution; provide finer data as input instead.
+Every `[[resample]]` needs an explicit `freq`, a pandas offset alias such as `"7D"`, `"1ME"` or `"W-SUN"`, because no frequency is inferred from labels like `daily`.
+Resampling only aggregates; for a finer resolution, provide finer input data.
+
+### Time index frequency mismatch
+
+`frequency mismatch on 'time': expected '7D', got 'D'` means the data contradicts a declared `Freq` contract.
+Either the declaration or the data is wrong; fix whichever, or drop the declaration.
+
+`frequency of 'time' is uninferable` means the axis has fewer than three timestamps or irregular spacing, so the declaration could not be tested.
+This warns by default; set `on_uninferable` in [`[annotations]`](../reference/configuration.md#annotations) to `"error"` to make it fatal, or `"ignore"` for short test fixtures.
 
 ## Data
 
@@ -74,56 +75,45 @@ ds = ds.rio.write_crs("EPSG:4326")  # or your CRS
 ds.to_netcdf("data_with_crs.nc")
 ```
 
-### Time index frequency mismatch
-
-`frequency mismatch on 'time': expected '7D', got 'D'` means a consumer declared a `Freq` contract the data contradicts.
-Section labels are not involved — nothing is inferred from a section being called `daily` — so either the declaration or the data is wrong.
-Fix whichever, or drop the declaration to opt that node out.
-
-`frequency of 'time' is uninferable` means the axis has fewer than three timestamps or irregular spacing, so the declaration could not be *tested*.
-It warns by default; set `on_uninferable` in [`[annotations]`](../reference/configuration.md#annotations) to `"error"` to make an untested contract fatal, or `"ignore"` to silence it (short test fixtures).
-
 ## Running pipelines
 
 ### `'time' coordinate does not match Zarr store`
 
-A subset run produced data whose time axis differs from the shared store's.
-Region writes do not write coordinates, so conduit catches this rather than let it silently mislabel the store.
-
-The store's axes are computed from the pipeline when it is created, so the config has changed since: a different `[[resample]]` `freq`, a different input file, or a different date range.
+A subset run produced a time axis that differs from the shared store's, so the config has changed since the store was created: a different `[[resample]]` `freq`, input file, or date range.
 Re-create the store from the current config:
 
 ```sh
 conduit gridded create-store config.toml --overwrite
 ```
 
-Note `--overwrite` erases data already written into the store by other subset runs, so re-run them all afterwards.
+`--overwrite` erases what other subset runs have written, so re-run them all afterwards.
 
 ### Empty or missing output
 
-Check that:
-
-1. The `[outputs.*].vars` are actually produced by an active node.
-2. The output's parent directory exists.
-3. The input data covers the range you expect.
+Check that the `[outputs.*]` `vars` name nodes that exist, that the output's parent directory exists, and that the input data covers the range you expect.
+`--dry-run` checks the first two.
 
 ### Slow on large grids
 
 - Validate on a small [`[subset]`](../reference/configuration.md#subset) first.
 - Bound memory with [`[blocking]`](../reference/configuration.md#blocking).
 - Enable [`[cache]`](../reference/configuration.md#cache) for iterative re-runs.
-- Parallelise across shards — see [Scale up](run/scale-up.md).
+- Parallelise across shards; see [Scale up](run/scale-up.md).
 
 ## Visualisation
 
 ### The graph is too large to read
 
-Pass a `--style` file to `conduit graph` with Graphviz sizing attributes, or inspect a sub-DAG in Python:
+Pass `conduit graph` a `--style` file with Graphviz sizing attributes, or draw part of the DAG in Python:
 
 ```python
 from conduit import build_driver, load_config
 
 parsed = load_config("config.toml")
-dr = build_driver(modules=parsed.modules, config=parsed.driver_config)
+dr = build_driver(
+    modules=parsed.modules,
+    config=parsed.driver_config,
+    node_specs=parsed.node_specs,
+)
 dr.visualize_path_between("temperature_daily", "aridity_index_daily")
 ```

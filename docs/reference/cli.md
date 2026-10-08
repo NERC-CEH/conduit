@@ -3,8 +3,8 @@ title: CLI
 icon: lucide/square-terminal
 ---
 
-The `conduit` command ships in the `cli` extra (`pip install conduit[cli]`).
-Every subcommand wraps a function from the Python API — [`conduit.run`](modules/conduit.pipeline.md), [`conduit.dry_run`](modules/conduit.pipeline.md) and [`conduit.build_graph`](modules/conduit.graph.md) — so anything below can be done from Python instead, with no extra installed.
+The `conduit` command ships in the `cli` extra.
+Each subcommand wraps a [Python API](python-api.md) function, so anything below can also be done from Python.
 
 ## `conduit run`
 
@@ -28,9 +28,8 @@ Every subcommand wraps a function from the Python API — [`conduit.run`](module
 
 ## `conduit gridded`
 
-Parallel-Zarr commands for gridded pipelines, needing the `geo` extra.
-They bracket a set of independent `[subset]` runs: create the shared store once, run the subsets concurrently, then stitch the parts back together.
-See [Scale up](../guides/run/scale-up.md) for the whole workflow.
+Commands that bracket a set of parallel `[subset]` runs (needs the `geo` extra): create the shared store, then merge the parts.
+See [Scale up](../guides/run/scale-up.md#parallel-subset-runs) for the workflow.
 
 ### `conduit gridded create-store`
 

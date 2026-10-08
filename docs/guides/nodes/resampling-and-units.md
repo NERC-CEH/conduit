@@ -3,18 +3,15 @@ title: Resampling & units
 icon: lucide/timer
 ---
 
-# Resampling & units: choosing `aggfunc`
+# Resampling & units
 
-Resampling reduces along the time axis, and that reduction is dimensionally homogeneous: both `mean` and `sum` leave the units unchanged, so conduit copies the input's attributes (including CF `units`) straight through to the result.
-This matches `pint-xarray`, which also does not multiply by the timestep on a sum.
-
-Which means:
+A resample keeps the input's units whether it takes a `mean` or a `sum`: conduit copies the attributes, CF `units` included, straight to the result.
+This matches `pint-xarray`, which does not multiply by the timestep on a sum either.
 
 !!! warning "Unit validation cannot catch a wrong `aggfunc`"
 
-    The units are the same either way, so **no contract check will save you here**.
+    The units are the same either way, so **no contract check will catch this**.
     A wrong `aggfunc` gives a result that is dimensionally consistent and physically meaningless.
-    Choosing it correctly is on you.
 
 ## Match `aggfunc` to the *kind* of quantity
 
@@ -23,19 +20,16 @@ Which means:
 | **Rate** (intensive) | `g C m-2 day-1`, `mm hr-1`, `W m-2` | `mean` | the mean rate over the window, same units |
 | **Amount per period** (extensive) | `g C m-2` accumulated that day, `mm` fallen that day | `sum` | the window total, same units |
 
-## The footgun
+## The trap: summing a rate
 
-Summing a **rate** to get a window total.
-
-The correct operation for that is an integral — Σ rateᵢ · Δt — which cancels the time dimension in the units (`g C m-2 day-1` × `day` → `g C m-2`).
+To get a window total from a rate, the correct operation is an integral — Σ rateᵢ · Δt — which cancels the time dimension in the units (`g C m-2 day-1` × `day` → `g C m-2`).
 But xarray's `.sum()` omits the Δt factor, so you get:
 
 ```
 7 × (g C m-2 day-1)  ->  still labelled "g C m-2 day-1"
 ```
 
-a number seven times too large, wearing the units of a rate.
-It is dimensionally consistent, which is why the units check passes, and it is wrong.
+a number seven times too large, labelled with the units of a rate.
 
 ```toml
 # WRONG: gpp is a rate (g C m-2 day-1); summing it does not integrate it.
@@ -65,10 +59,4 @@ expression = "gpp_weekly * 7.0"
 units = "g C m-2"
 ```
 
-Now the declared units say what the number is, and the contract check has something to check it against.
-
-## Where next
-
-- [Configuration › Resample](../../reference/configuration.md#resample) — the `[[resample]]` keys.
-- [Declaring contracts](contracts.md) — what the checks can and cannot catch.
-- [Test your pipeline](../validate/test-your-pipeline.md) — how to catch this one, since contracts will not.
+Now the declared units say what the number is, and the contract check has something to check against.

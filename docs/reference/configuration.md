@@ -9,13 +9,11 @@ A conduit pipeline is described by a [TOML](https://toml.io/en/) file.
 Each section switches on one part of the pipeline; leave a section out and that part is not there.
 
 Recognised top-level sections are listed below.
-**Any section not listed here is treated as your own module**, named either by an `_import_path` key or by an installed package that has registered it (see [Modules](#modules)), so a mistyped section name is an error rather than a silently ignored one.
-Gridding comes from the inputs' CRS, and graph styling from a `conduit graph --style` file.
+**Any other section is treated as your own module**, named by an `_import_path` key or registered by an installed package (see [Modules](#modules)), so a misspelt section name is an error.
 
 !!! note "Paths are resolved relative to the config file"
 
-    Every relative path in a config — `path` in `[inputs.*]`, `[outputs.*]` and `[cache]`, and a `.py` `_import_path` — is resolved against the directory containing the config file, never the current working directory.
-    A config and the files beside it therefore travel together, and run the same from anywhere.
+    Every relative path in a config — `path` in `[inputs.*]`, `[outputs.*]` and `[cache]`, and a `.py` `_import_path` — is resolved against the config file's directory, not the working directory.
 
 ## Inputs
 
@@ -72,9 +70,8 @@ Format is inferred from the extension.
 
 ## Modules
 
-Compose the pipeline from modules.
-There is one built-in addressable by short name — `[[node]]` (with the `[[resample]]` preset) — and any other section is **your own module**.
-A module's keyword-only parameters can be supplied in its section body.
+Apart from the built-in `[[node]]` and `[[resample]]`, any section is **your own module**.
+A module's keyword-only parameters are set in its section.
 
 ```toml
 # A .py file beside the config
@@ -95,8 +92,7 @@ floor = 1e-4
 | `"/shared/nodes.py"` | a file, at an absolute path |
 | `"mypackage.indices"` | a dotted module name, imported from the environment |
 
-A module named by a `.py` path is loaded on its own: it can import installed packages, but not another loose `.py` file beside it.
-Code that spans several files has to be an installed package, named by a dotted path.
+A `.py` module can import installed packages but [not a sibling file](../guides/nodes/bring-your-own-module.md#two-ways-to-name-a-module); code spanning several files must be an installed package.
 
 ### How a section finds its module
 
@@ -111,23 +107,16 @@ Without one, it has to name a module that an installed package registers.
 
 An explicit `_import_path` always wins, so installing a package can never redirect a config that already says where its code lives.
 
-See [Bring your own module](../guides/nodes/bring-your-own-module.md) for the authoring conventions, and [Register modules from a package](../extending/register-modules.md) for the other side of registration, written for the author of the package doing the registering.
+Package authors: see [Register modules from a package](../extending/register-modules.md).
 
-!!! note "Parameter namespacing"
+Parameters from every section share [one flat namespace](../guides/nodes/bring-your-own-module.md#parameter-names-share-one-namespace), so two sections defining `threshold` is a parse-time error:
 
-    Module parameters from **every** section are merged into a single flat dictionary, the Hamilton driver config.
-    A parameter's config key and the function's argument name are therefore the same string.
+```
+Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
+share one flat namespace, so give the two parameters distinct names ...
+```
 
-    Parameter names must be unique across active sections.
-    Two sections defining `threshold` is a parse-time error naming both:
-
-    ```
-    Parameter 'threshold' is defined by both [modela] and [modelb]. Module parameters
-    share one flat namespace, so give the two parameters distinct names ...
-    ```
-
-    To fix it, rename the parameter in the config *and* the keyword argument in the module that reads it (e.g. `aridity_floor`).
-    Sections that are not both active never collide.
+Rename the parameter in the config *and* in the function that reads it (e.g. `aridity_floor`).
 
 ## Nodes
 
@@ -163,7 +152,8 @@ An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; 
 
 ## Resample
 
-`[[resample]]` is a preset that desugars to fan-out passthrough `[[node]]`s applying `conduit.transforms.resample` — aggregating a temporal frequency to a coarser one while preserving units and dims.
+`[[resample]]` aggregates to a coarser time frequency, preserving units and dims.
+It expands to one passthrough `[[node]]` per variable, applying `conduit.transforms.resample`.
 
 ```toml
 [[resample]]
@@ -182,20 +172,13 @@ aggfunc = "mean"
 | `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 
-!!! note "`from` and `to` are node-name suffixes"
-
-    `from = "daily"` reads `{var}_daily` and `to = "weekly"` writes `{var}_weekly`.
-    They are free-form, so `from = "raw"`, `to = "smoothed"` works just as well.
-    `freq` is what sets the time axis.
-
-`freq` also becomes the generated node's **declared output frequency**, so every resample carries a checkable frequency contract: a downstream consumer declaring `Freq("W-SUN")` against a `freq = "W-WED"` resample fails at build time.
-
+`from` and `to` are free-form labels, so `from = "raw"`, `to = "smoothed"` works just as well; `freq` alone sets the time axis, and becomes the node's declared output frequency.
 The time axis is detected from the data, so it need not be called `time`.
 
-!!! warning "Choosing `aggfunc` is not something the checks can help with"
+!!! warning "No check can catch a wrong `aggfunc`"
 
-    Resampling preserves units, so `mean` and `sum` are equally valid *dimensionally*, and a wrong choice gives a meaningless number that no contract check will flag.
-    Use `mean` for a rate and `sum` for an amount-per-period; see [Resampling & units](../guides/nodes/resampling-and-units.md).
+    `mean` and `sum` give the same units, so the wrong one passes every contract check.
+    Use `mean` for a rate and `sum` for an amount per period; see [Resampling & units](../guides/nodes/resampling-and-units.md).
 
 ## Cache
 
@@ -227,10 +210,8 @@ It does two things:
 point_dim = "location"   # optional; defaults to "pixel"
 ```
 
-The two must agree.
-If a table input were given a `pixel` axis while `[subset]` partitioned over `location`, the subset would skip that input entirely and leave a stray `pixel` axis in the outputs, which is why one key drives both.
-
-Gridded pipelines should leave this at its default: the geospatial layer stacks `(y, x)` into `pixel` by name.
+One key drives both so they cannot disagree; otherwise a `[subset]` over `location` would skip a table input given a `pixel` axis.
+Gridded pipelines should keep the default, because the geospatial layer stacks `(y, x)` into `pixel`.
 
 ## Blocking
 
@@ -266,19 +247,12 @@ dim   = "pixel"      # optional; the default
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
 | `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
 
-`dim` mirrors [`[blocking]`](#blocking): the two mechanisms partition the same way and differ only in *who* runs the parts — one process sequentially (`[blocking]`) versus many processes concurrently (`[subset]`).
-A non-gridded pipeline can subset over `location` or `site` just as it can block over it, and each part is written to its own suffixed file (`out_location0-500.nc`).
-
-!!! warning "Zarr stores are pixel-only"
-
-    The one place `pixel` is still special is the shared Zarr store built by `conduit gridded create-store`: the store's layout *is* the stacked pixel grid, which `merge` unstacks back to `(y, x)`.
-    Configuring `dim` — or `point_dim` — as anything else alongside a Zarr output is an error.
-    Use a NetCDF output instead — its subset parts are separate files and need no pre-created store.
+Each NetCDF part is written to its own suffixed file (`out_location0-500.nc`).
+A Zarr output requires `dim = "pixel"`, because the shared store's layout is the stacked pixel grid; use NetCDF to subset over any other dimension.
 
 ## Validation
 
-`[validation]` is where you declare properties you expect and want checked, as opposed to the DAG's structure, which conduit works out on its own.
-Its `checks` array runs a set of input-Dataset compatibility checks before compute, and as a stage of [`--dry-run`](../guides/validate/validate-before-running.md).
+`[validation]` declares relationships the input files must satisfy, checked before compute and as a stage of [`--dry-run`](../guides/validate/validate-before-running.md).
 
 ```toml
 [validation]
@@ -308,9 +282,8 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks are an importable library ([`conduit.input_checks`](modules/conduit.input_checks.md)), so the [notebook-driven path](../guides/run/drive-from-python.md) can call them directly.
-They are **opt-in**: conduit cannot know which inputs are *meant* to align, so declare the ones that must.
-Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than a single shard.
+The checks live in [`conduit.input_checks`](modules/conduit.input_checks.md) and can be called directly from Python.
+Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than one shard.
 
 ## Annotations
 
@@ -332,27 +305,11 @@ on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
 | `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
 | `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
 
-Validation happens at two points:
-
-- **Build time** — every internal edge where both ends declare a contract is checked when the driver is built, so a mismatch is caught before compute.
-  Contracts propagate through passthrough nodes (e.g. resampling), so those edges are covered too.
-- **Run time** — as each node executes, every `DataArray` input is validated against its declaration.
-  Under `on_inexact = "convert"` a compatible input is converted; under `"error"` it must already match.
-  Dimensionally-incompatible inputs always raise.
-  A `units` attribute that is missing or unparseable follows `mode`.
-
-Run the run-time input checks against your real data *without* executing the pipeline with [`conduit run --dry-run`](../guides/validate/validate-before-running.md).
+Contracts are checked between nodes when the driver is built, and against each node's actual inputs when it runs; [`--dry-run`](../guides/validate/validate-before-running.md) brings the second forward without executing anything.
+Incompatible units always raise, and a missing or unparseable `units` attribute follows `mode`.
 
 !!! warning "Affine units (temperature)"
 
     Converting between offset units such as `degC` and `K` applies the offset (`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a *difference* or anomaly.
     Declare such quantities in the unit they are stored in, so no conversion happens, or set `on_inexact = "error"` to forbid implicit temperature conversions.
-    `on_inexact = "warn"` is the middle course: the conversion still happens, but each one is reported by name, so an unintended one cannot pass unnoticed.
-
-## See also
-
-- [Write a config](../guides/configs/write-a-config.md) — the shape of a config, and the edits you are most likely to make.
-- [Validate before running](../guides/validate/validate-before-running.md) — the `--dry-run` pre-flight, the wiring check, and the `[validation]` input checks.
-- [Data formats](data-formats.md) — supported file types and spatial/temporal handling.
-- [Inline nodes & fan-out](../guides/configs/inline-nodes-and-fan-out.md) — the `[[node]]` and `[[resample]]` guide.
-- [Bring your own module](../guides/nodes/bring-your-own-module.md) — external module conventions.
+    `on_inexact = "warn"` is the middle course: each conversion still happens, but is reported by name.
