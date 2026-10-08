@@ -1,8 +1,7 @@
-"""Hamilton nodes for the documented eddy-covariance flux pipeline.
+"""Hamilton nodes for the eddy-covariance flux recipe.
 
-The functions in this module are ordinary xarray functions.  Their annotations
-describe the units and temporal frequency that conduit checks across the whole
-DAG before any computation runs.
+Ordinary xarray functions, annotated with the units and time frequencies that
+conduit checks across the whole DAG before anything runs.
 """
 
 from typing import Annotated, TypedDict
@@ -89,39 +88,27 @@ def gpp_weekly(
     return gpp_daily.resample(time="W-SUN").mean()
 
 
+# Each daily mean is weighted by one day, so a year's sum is a total per year.
+# `keep_attrs` would carry the daily unit through the sum, so each annual node
+# sets the unit it declares.
 def annual_nee(
     nee_daily: Annotated[xr.DataArray, Freq("D")],
 ) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
-    """Calculate the annual NEE total from daily mean fluxes.
-
-    Each daily mean is weighted by one day, so summing a year of them gives a
-    total per year. ``keep_attrs`` would otherwise carry the daily unit through
-    the sum, leaving the written file disagreeing with the declaration above.
-    """
+    """Calculate the annual NEE total from daily mean fluxes."""
     return nee_daily.sum().assign_attrs(units="g m-2 yr-1")
 
 
 def annual_gpp(
     gpp_daily: Annotated[xr.DataArray, Freq("D")],
 ) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
-    """Calculate the annual GPP total from daily mean fluxes.
-
-    Each daily mean is weighted by one day, so summing a year of them gives a
-    total per year. ``keep_attrs`` would otherwise carry the daily unit through
-    the sum, leaving the written file disagreeing with the declaration above.
-    """
+    """Calculate the annual GPP total from daily mean fluxes."""
     return gpp_daily.sum().assign_attrs(units="g m-2 yr-1")
 
 
 def annual_reco(
     reco_daily: Annotated[xr.DataArray, Freq("D")],
 ) -> Annotated[xr.DataArray, Unit("g m-2 yr-1")]:
-    """Calculate the annual respiration total from daily mean fluxes.
-
-    Each daily mean is weighted by one day, so summing a year of them gives a
-    total per year. ``keep_attrs`` would otherwise carry the daily unit through
-    the sum, leaving the written file disagreeing with the declaration above.
-    """
+    """Calculate the annual respiration total from daily mean fluxes."""
     return reco_daily.sum().assign_attrs(units="g m-2 yr-1")
 
 

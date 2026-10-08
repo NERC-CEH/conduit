@@ -37,18 +37,15 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(config_path, mo, rel):
-    mo.md(f"""
+def _(mo):
+    mo.md("""
     # A flux-processing pipeline with conduit
 
     This example adapts the eddy-covariance flux workflow from the [xarray-annotated worked example](https://github.com/jmarshrossney/xarray-annotated/blob/main/examples/notebook.py).
     It keeps the scientific functions in a Python module and moves the pipeline wiring into TOML.
 
     The pipeline produces annual carbon totals, weekly GPP, and a comparison with a synthetic satellite product.
-    Every stage is checked before it runs.
-
-    Everything below drives the library directly, so nothing here needs the `conduit` command installed.
-    Configuration: `{rel(config_path)}`.
+    It uses the same Python API as [Pipeline 101](pipeline-101.md); this page focuses on the pipeline itself.
     """)
     return
 
@@ -57,8 +54,6 @@ def _(config_path, mo, rel):
 def _(data_dir, recipe_dir, rel):
     from conduit.importing import import_user_module
 
-    # make_data.py sits next to this notebook. This is the same loader conduit uses
-    # for an `_import_path` naming a .py file, so nothing goes on sys.path.
     make_data = import_user_module(str(recipe_dir / "make_data.py"))
 
     [rel(written) for written in make_data.write_inputs(data_dir)]
@@ -70,8 +65,7 @@ def _(config_path, mo):
     mo.md(f"""
     ## The TOML configuration
 
-    The `[flux_nodes]` section imports the Hamilton node module.
-    Inputs and outputs are ordinary conduit file sections; the function parameter names provide the wiring between them.
+    The `[flux_nodes]` section imports the node module below, and the function parameter names wire it to the inputs and outputs.
 
     ```toml
     {config_path.read_text()}
@@ -85,8 +79,7 @@ def _(mo, nodes_path):
     mo.md(f"""
     ## The Python module
 
-    The pipeline nodes are ordinary annotated Python functions.
-    Their annotations describe the units and frequencies that conduit checks across the DAG.
+    The annotations declare the units and time frequencies that conduit checks across the DAG.
 
     ```python
     {nodes_path.read_text()}
@@ -98,10 +91,7 @@ def _(mo, nodes_path):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## The generated DAG
-
-    `conduit.build_graph` returns a `graphviz.Digraph` without running anything, so it renders inline.
-    Node labels carry the declared units, which makes a wiring mistake visible before a dry run reports it.
+    ## The DAG
     """)
     return
 
@@ -119,9 +109,6 @@ def _(config_path):
 def _(mo):
     mo.md("""
     ## Validate before running
-
-    `conduit.dry_run` parses the config, opens the input headers, builds the DAG and checks every contract, without executing a node.
-    It returns a `DryRunReport`, one `Stage` per thing it checked.
     """)
     return
 
@@ -161,8 +148,7 @@ def _(mo):
     mo.md("""
     ## Run the pipeline
 
-    `conduit.run` takes the same config and returns a `RunReport`: the datasets it produced, and one `WrittenOutput` per destination.
-    The conversion reported above happens here, so it is silenced rather than repeated.
+    The conversion reported above happens here, so its warning is silenced rather than repeated.
     """)
     return
 
