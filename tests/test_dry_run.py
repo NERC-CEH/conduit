@@ -297,6 +297,14 @@ class TestDryRunReport:
         with pytest.raises(FileNotFoundError):
             dry_run(cfg)
 
+    def test_missing_input_file_is_a_conduit_error(self, tmp_path):
+        """The CLI shows a ConduitError without a traceback, so this must be one."""
+        from conduit.errors import ConduitFileNotFoundError
+
+        cfg = _config(tmp_path, tmp_path / "no_such_dir")
+        with pytest.raises(ConduitFileNotFoundError, match=r"\[inputs\.daily\]"):
+            dry_run(cfg)
+
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
         out = tmp_path / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["not_a_real_variable"]\n'

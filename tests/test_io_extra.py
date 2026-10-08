@@ -454,3 +454,29 @@ class TestMissingVars:
     def test_present_vars_still_load(self, input_path):
         inputs = self._load(input_path, ["var_a"])
         assert "var_a_daily" in inputs
+
+
+class TestMissingInputFile:
+    """A missing input file is a conduit error naming every absent path."""
+
+    def test_raises_conduit_file_not_found(self, tmp_path):
+        from conduit.errors import ConduitFileNotFoundError
+
+        specs = {"daily": IOSpec(path=str(tmp_path / "absent.nc"), vars=["var_a"])}
+        with pytest.raises(ConduitFileNotFoundError, match=r"\[inputs\.daily\]"):
+            load_inputs(specs)
+
+    def test_all_missing_files_are_reported_at_once(self, tmp_path):
+        present = tmp_path / "present.nc"
+        _simple_ds().to_netcdf(present)
+        specs = {
+            "one": IOSpec(path=str(tmp_path / "one.nc"), vars=["var_a"]),
+            "present": IOSpec(path=str(present), vars=["var_a"]),
+            "two": IOSpec(path=str(tmp_path / "two.zarr"), vars=["var_a"]),
+        }
+        with pytest.raises(FileNotFoundError) as excinfo:
+            load_inputs(specs)
+        message = str(excinfo.value)
+        assert "one.nc" in message
+        assert "two.zarr" in message
+        assert "present.nc" not in message

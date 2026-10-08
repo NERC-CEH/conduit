@@ -10,11 +10,15 @@ A recipe is a complete pipeline you can read end to end: the data, the node modu
 Each lives in its own directory under [`recipes/`](https://github.com/NERC-CEH/conduit/tree/main/recipes), with a node module, a `config.toml`, a synthetic-data generator, and a marimo notebook that runs the pipeline.
 The tests and the docs build both execute every recipe, so they stay in step with the library.
 
-To run one without cloning the repository:
+To run one, clone the repository (or download the recipe's directory) and open its notebook with [marimo](https://marimo.io):
 
 ```sh
-uvx marimo edit --sandbox recipes/pipeline_101/demo.py
+git clone https://github.com/NERC-CEH/conduit.git
+cd conduit
+marimo edit --sandbox recipes/pipeline_101/demo.py
 ```
+
+`--sandbox` (which needs [uv](https://docs.astral.sh/uv/)) installs the notebook's dependencies, conduit included, from the header at the top of `demo.py`; drop it to use your current environment instead.
 
 ## Available
 

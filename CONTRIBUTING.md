@@ -80,7 +80,7 @@ A recipe is a complete worked pipeline in `recipes/<name>/`, containing:
 - `nodes.py` — the node functions
 - `config.toml` — the pipeline
 - `make_data.py` — a deterministic generator for synthetic inputs, exposing `write_inputs(data_dir)`
-- `demo.py` — a marimo notebook that runs it, with a PEP 723 header so `uvx marimo edit --sandbox` works without a checkout
+- `demo.py` — a marimo notebook that runs it, with a PEP 723 header so `marimo edit --sandbox` installs its dependencies
 - a page in `docs/recipes/`, plus a `docs-recipes` line in the `justfile` exporting the notebook
 
 Add it to `tests/test_recipes.py` as well.

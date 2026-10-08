@@ -168,7 +168,18 @@ def load_raw_datasets(
 
     ``point_dim`` names the synthetic axis given to single-point ``table``/``scalar``
     inputs; see `conduit.formats`.
+
+    Raises `ConduitFileNotFoundError` listing every input path that does not exist.
     """
+    missing = [
+        f"  [inputs.{label}] {spec.path}"
+        for label, spec in input_specs.items()
+        if not Path(spec.path).exists()
+    ]
+    if missing:
+        raise ConduitFileNotFoundError(
+            "input file(s) not found:\n" + "\n".join(missing)
+        )
     return {
         label: _load_raw(spec.path, point_dim) for label, spec in input_specs.items()
     }
