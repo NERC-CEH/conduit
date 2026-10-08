@@ -5,14 +5,14 @@ icon: lucide/terminal
 
 # Run from the CLI
 
-The `conduit` command runs pipelines from the terminal. The usual workflow is:
+The `conduit` command runs pipelines from the terminal.
+The usual workflow is:
 
 ```
 write a config.toml  →  conduit graph  →  conduit run --dry-run  →  conduit run
 ```
 
-For a full reference of every command and flag, see the
-[CLI reference](../../reference/cli.md).
+For a full reference of every command and flag, see the [CLI reference](../../reference/cli.md).
 
 ## Run the pipeline
 
@@ -20,28 +20,25 @@ For a full reference of every command and flag, see the
 conduit run config.toml
 ```
 
-conduit reads the config, builds the DAG, executes the nodes needed for your
-`[outputs.*]` sections in dependency order, and writes the output files. Each output is
-stamped with the config used to produce it, so the file records how it was made.
+conduit reads the config, builds the DAG, executes the nodes needed for your `[outputs.*]` sections in dependency order, and writes the output files.
+Each output is stamped with the config used to produce it, so the file records how it was made.
 
-It reports each stage as it reaches it — inputs loaded, checks passed, nodes to execute —
-then one line per file written, with the number of variables in it and its size on disk,
-and the elapsed time. A run that writes nothing says so rather than exiting quietly.
+It reports each stage as it reaches it — inputs loaded, checks passed, nodes to execute — then one line per file written, with the number of variables in it and its size on disk, and the elapsed time.
+A run that writes nothing says so rather than exiting quietly.
 
-Only the nodes your requested outputs depend on ever run. Trim `[outputs.*]` to one
-variable and unrelated branches are never touched.
+Only the nodes your requested outputs depend on ever run.
+Trim `[outputs.*]` to one variable and unrelated branches are never touched.
 
 ### Pre-flight without running
 
-Before committing to a long run, validate everything with `--dry-run`. It checks the
-config, inputs, DAG, wiring and contracts without executing a node:
+Before committing to a long run, validate everything with `--dry-run`.
+It checks the config, inputs, DAG, wiring and contracts without executing a node:
 
 ```sh
 conduit run config.toml --dry-run
 ```
 
-See [Validate before running](../validate/validate-before-running.md) for what each stage
-checks, and [Visualise the graph](../validate/visualise-the-graph.md) for the picture.
+See [Validate before running](../validate/validate-before-running.md) for what each stage checks, and [Visualise the graph](../validate/visualise-the-graph.md) for the picture.
 
 ### Overriding config from the CLI
 
@@ -53,12 +50,12 @@ A few flags override the config per invocation, without editing the file:
 | `--cache-dir <path>` | Directory for the cache store (implies `--cache`). |
 | `--allow-overrides` | Permit a later module to override an earlier one's node. |
 
-Caching, memory-bounded execution and parallel runs are covered in
-[Scale up a pipeline](scale-up.md).
+Caching, memory-bounded execution and parallel runs are covered in [Scale up a pipeline](scale-up.md).
 
 ## Inspecting results
 
-Output files are NetCDF (or whatever the extension implies). Load them in Python:
+Output files are NetCDF (or whatever the extension implies).
+Load them in Python:
 
 ```python
 import xarray as xr

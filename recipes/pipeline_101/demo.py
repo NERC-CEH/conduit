@@ -41,15 +41,11 @@ def _(mo):
     mo.md("""
     # Pipeline 101
 
-    The smallest pipeline that still has every moving part: an input file, a
-    node function imported from a Python module, a node defined inline in the
-    config, and an output file.
+    The smallest pipeline that still has every moving part: an input file, a node function imported from a Python module, a node defined inline in the config, and an output file.
 
-    It derives a temperature anomaly from 90 days of daily temperature at three
-    sites, then reduces the anomaly to a per-site range.
+    It derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces the anomaly to a per-site range.
 
-    Everything below drives the library directly, so nothing here needs the
-    `conduit` command installed.
+    Everything below drives the library directly, so nothing here needs the `conduit` command installed.
     """)
     return
 
@@ -59,9 +55,8 @@ def _(mo):
     mo.md("""
     ## The input
 
-    `make_data.py` writes a deterministic NetCDF file next to this notebook. The
-    `units` attribute on the variable is what lets conduit check the pipeline's
-    unit contracts against the file before running anything.
+    `make_data.py` writes a deterministic NetCDF file next to this notebook.
+    The `units` attribute on the variable is what lets conduit check the pipeline's unit contracts against the file before running anything.
     """)
     return
 
@@ -83,9 +78,8 @@ def _(mo, nodes_path):
     mo.md(f"""
     ## The node module
 
-    An ordinary xarray function is an ordinary DAG node. The function name is
-    the node name, each parameter name is the node it consumes, and the
-    annotations declare the units.
+    An ordinary xarray function is an ordinary DAG node.
+    The function name is the node name, each parameter name is the node it consumes, and the annotations declare the units.
 
     ```python
     {nodes_path.read_text()}
@@ -113,9 +107,8 @@ def _(mo):
     mo.md("""
     ## The graph conduit builds
 
-    `conduit.build_graph` returns a `graphviz.Digraph` without running anything, so
-    it renders inline. Node labels carry the declared units, so a wiring mistake is
-    often visible before a dry run reports it.
+    `conduit.build_graph` returns a `graphviz.Digraph` without running anything, so it renders inline.
+    Node labels carry the declared units, so a wiring mistake is often visible before a dry run reports it.
     """)
     return
 
@@ -134,9 +127,9 @@ def _(mo):
     mo.md("""
     ## Validate, then run
 
-    `conduit.dry_run` parses the config, opens the input headers, builds the DAG and
-    checks every contract, without executing a node. Only then is it worth spending
-    compute. It returns a `DryRunReport`, one `Stage` per thing it checked.
+    `conduit.dry_run` parses the config, opens the input headers, builds the DAG and checks every contract, without executing a node.
+    Only then is it worth spending compute.
+    It returns a `DryRunReport`, one `Stage` per thing it checked.
     """)
     return
 
@@ -187,15 +180,12 @@ def _(mo, rel, result, run):
     mo.md(f"""
     ## The output
 
-    `run.outputs` holds the datasets in memory, carrying the units declared on the
-    nodes:
+    `run.outputs` holds the datasets in memory, carrying the units declared on the nodes:
 
     - `temperature_anomaly` — {result["temperature_anomaly"].attrs.get("units")}
     - `anomaly_range` — {result["anomaly_range"].attrs.get("units")}
 
-    Provenance is stamped as the file is written rather than onto the returned
-    dataset, so it is read back from `{rel(written)}`: the config text, and
-    `conduit_config_sha256 = {sha256[:16]}…`
+    Provenance is stamped as the file is written rather than onto the returned dataset, so it is read back from `{rel(written)}`: the config text, and `conduit_config_sha256 = {sha256[:16]}…`
     """)
     return
 

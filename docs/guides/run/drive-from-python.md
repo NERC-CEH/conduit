@@ -21,8 +21,8 @@ This guide walks through the same steps `run` takes; [the whole thing in one cal
 
 ## 1. Build a config
 
-A pipeline is described by a config — a Python dict with the same structure as a
-[TOML config](../../reference/configuration.md) file. Pass it straight to `Config`:
+A pipeline is described by a config — a Python dict with the same structure as a [TOML config](../../reference/configuration.md) file.
+Pass it straight to `Config`:
 
 ```python
 config_data = {
@@ -45,37 +45,30 @@ config_data = {
 
 !!! note "Loading from a file"
 
-    Already have a file? Use `Config.load("config.toml")` (paths resolve relative to the
-    file) or `Config.loads(toml_string)`. The convenience function
-    `conduit.load_config("config.toml")` does load-and-parse in one call, returning the
-    `ParsedConfig` from the next step.
+    Already have a file?
+    Use `Config.load("config.toml")` (paths resolve relative to the file) or `Config.loads(toml_string)`.
+    The convenience function `conduit.load_config("config.toml")` does load-and-parse in one call, returning the `ParsedConfig` from the next step.
 
 ## 2. Parse it
 
-`.parse()` validates the config and returns a `ParsedConfig` dataclass with everything
-the pipeline needs:
+`.parse()` validates the config and returns a `ParsedConfig` dataclass with everything the pipeline needs:
 
 ```python
 parsed = Config(config_data).parse()
 ```
 
-Key fields: `modules` (module identifiers), `driver_config` (parameters for the driver
-and modules), `node_specs` (the `[[node]]` / `[[resample]]` specs), `input_specs` /
-`output_specs` (per-section `IOSpec`s), plus the parsed `cache_spec`, `blocking_spec`,
-`subset_spec` and `annotations` (an `AnnotationPolicySpec`).
+Key fields: `modules` (module identifiers), `driver_config` (parameters for the driver and modules), `node_specs` (the `[[node]]` / `[[resample]]` specs), `input_specs` / `output_specs` (per-section `IOSpec`s), plus the parsed `cache_spec`, `blocking_spec`, `subset_spec` and `annotations` (an `AnnotationPolicySpec`).
 
 ## 3. Apply the contract policy
 
-Apply the `[annotations]` policy yourself before building, exactly as the CLI does. It
-sets `xarray-annotated`'s process-global policy, which the build-time contract check
-reads:
+Apply the `[annotations]` policy yourself before building, exactly as the CLI does.
+It sets `xarray-annotated`'s process-global policy, which the build-time contract check reads:
 
 ```python
 parsed.annotations.apply()
 ```
 
-Skip this and your DAG is checked under the default policy rather than the one your
-config asked for.
+Skip this and your DAG is checked under the default policy rather than the one your config asked for.
 
 ## 4. Build the driver
 
@@ -89,30 +82,26 @@ dr = build_driver(
 )
 ```
 
-`node_specs` is required whenever the config defines `[[node]]` or `[[resample]]`
-entries — it is what the built-in `node` module is generated from.
+`node_specs` is required whenever the config defines `[[node]]` or `[[resample]]` entries — it is what the built-in `node` module is generated from.
 
 The driver is the DAG runtime: it resolves dependencies and executes nodes in order.
-You can inspect it now with `dr.display_all_functions()` or
-`dr.visualize_path_between(...)`.
+You can inspect it now with `dr.display_all_functions()` or `dr.visualize_path_between(...)`.
 
 ## 5. Load inputs
 
-`load_inputs()` reads the files in `input_specs` and returns a flat dict of named
-`DataArray`s, keyed by node name:
+`load_inputs()` reads the files in `input_specs` and returns a flat dict of named `DataArray`s, keyed by node name:
 
 ```python
 inputs = load_inputs(parsed.input_specs)
 ```
 
-Node names follow the config's naming: `{var}{suffix}` for list-form `vars`, or the
-explicit `{node_name: file_var}` alias for mapping-form. Grid coordinates
-(`latitude`, `longitude`) are computed automatically when inputs carry a CRS.
+Node names follow the config's naming: `{var}{suffix}` for list-form `vars`, or the explicit `{node_name: file_var}` alias for mapping-form.
+Grid coordinates (`latitude`, `longitude`) are computed automatically when inputs carry a CRS.
 
 ## 6. Execute
 
-Call `dr.execute()` with the node names you want. `get_final_vars()` turns
-`output_specs` into that flat list:
+Call `dr.execute()` with the node names you want.
+`get_final_vars()` turns `output_specs` into that flat list:
 
 ```python
 results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)
@@ -124,8 +113,7 @@ You can also request any node by name, which is handy for inspecting intermediat
 anomaly = dr.execute(["temperature_anomaly_climate"], inputs=inputs)
 ```
 
-Or override a node's value at runtime without rebuilding the DAG, which is useful when
-re-running with different parameters:
+Or override a node's value at runtime without rebuilding the DAG, which is useful when re-running with different parameters:
 
 ```python
 results = dr.execute(
@@ -137,8 +125,8 @@ results = dr.execute(
 
 ## 7. Inspect and save
 
-`dr.execute()` returns a flat dict of `DataArray`s. `get_outputs()` merges them into
-per-section `Dataset`s (the form most plotting/analysis expects):
+`dr.execute()` returns a flat dict of `DataArray`s.
+`get_outputs()` merges them into per-section `Dataset`s (the form most plotting/analysis expects):
 
 ```python
 datasets = get_outputs(results, parsed.output_specs)
@@ -154,8 +142,7 @@ paths = save_outputs(datasets, parsed.output_specs)
 
 !!! tip "Skipping disk writes"
 
-    In a notebook you can skip `save_outputs()` — the Datasets from `get_outputs()` are
-    ready for xarray's plotting methods, matplotlib, or any other library.
+    In a notebook you can skip `save_outputs()` — the Datasets from `get_outputs()` are ready for xarray's plotting methods, matplotlib, or any other library.
 
 ## Putting it together
 
@@ -178,9 +165,8 @@ save_outputs(datasets, parsed.output_specs)
 
 ## The whole thing in one call
 
-`conduit.run` does every step above, so when you want the outputs and nothing else, call
-it directly. It takes a path to a TOML config, or a `ParsedConfig` you have already
-adjusted in Python:
+`conduit.run` does every step above, so when you want the outputs and nothing else, call it directly.
+It takes a path to a TOML config, or a `ParsedConfig` you have already adjusted in Python:
 
 ```python
 import conduit
@@ -194,10 +180,8 @@ parsed.driver_config["scaling_factor"] = 2.0
 report = conduit.run(parsed)  # same run, with the spec tweaked first
 ```
 
-A [`RunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.RunReport) holds the datasets, one
-`WrittenOutput` per destination, and the elapsed time. Take the paths from `written`
-rather than from the config: a `[subset]` run suffixes them, so the file on disk is not
-always the one the config asked for.
+A [`RunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.RunReport) holds the datasets, one `WrittenOutput` per destination, and the elapsed time.
+Take the paths from `written` rather than from the config: a `[subset]` run suffixes them, so the file on disk is not always the one the config asked for.
 
 Progress is logged to the `conduit.pipeline` logger at `INFO` as each stage completes.
 The library installs no handler, so nothing is printed until you ask for it:
@@ -208,16 +192,13 @@ import logging
 logging.basicConfig(level=logging.INFO)
 ```
 
-`conduit.dry_run` validates the same pipeline without executing it and returns a
-[`DryRunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.DryRunReport) — the stage list `conduit run --dry-run`
-prints. `conduit.build_graph` returns the styled `graphviz.Digraph` that
-`conduit graph` writes to disk, which renders inline in a notebook.
+`conduit.dry_run` validates the same pipeline without executing it and returns a [`DryRunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.DryRunReport) — the stage list `conduit run --dry-run` prints.
+`conduit.build_graph` returns the styled `graphviz.Digraph` that `conduit graph` writes to disk, which renders inline in a notebook.
 
 !!! info "Provenance"
 
-    A run from a config *path* stamps the config text and its SHA-256 onto every output, so
-    the store says how it was made. A run from a `ParsedConfig` has no text to stamp, so it
-    stamps nothing.
+    A run from a config *path* stamps the config text and its SHA-256 onto every output, so the store says how it was made.
+    A run from a `ParsedConfig` has no text to stamp, so it stamps nothing.
 
 ## Where next
 

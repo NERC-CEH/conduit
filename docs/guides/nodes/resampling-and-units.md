@@ -5,17 +5,15 @@ icon: lucide/timer
 
 # Resampling & units: choosing `aggfunc`
 
-Resampling reduces along the time axis, and that reduction is dimensionally homogeneous:
-both `mean` and `sum` leave the units unchanged, so conduit copies the input's attributes
-(including CF `units`) straight through to the result. This matches `pint-xarray`, which
-also does not multiply by the timestep on a sum.
+Resampling reduces along the time axis, and that reduction is dimensionally homogeneous: both `mean` and `sum` leave the units unchanged, so conduit copies the input's attributes (including CF `units`) straight through to the result.
+This matches `pint-xarray`, which also does not multiply by the timestep on a sum.
 
 Which means:
 
 !!! warning "Unit validation cannot catch a wrong `aggfunc`"
 
-    The units are the same either way, so **no contract check will save you here**. A wrong
-    `aggfunc` gives a result that is dimensionally consistent and physically meaningless.
+    The units are the same either way, so **no contract check will save you here**.
+    A wrong `aggfunc` gives a result that is dimensionally consistent and physically meaningless.
     Choosing it correctly is on you.
 
 ## Match `aggfunc` to the *kind* of quantity
@@ -29,16 +27,15 @@ Which means:
 
 Summing a **rate** to get a window total.
 
-The correct operation for that is an integral — Σ rateᵢ · Δt — which cancels the time
-dimension in the units (`g C m-2 day-1` × `day` → `g C m-2`). But xarray's `.sum()` omits
-the Δt factor, so you get:
+The correct operation for that is an integral — Σ rateᵢ · Δt — which cancels the time dimension in the units (`g C m-2 day-1` × `day` → `g C m-2`).
+But xarray's `.sum()` omits the Δt factor, so you get:
 
 ```
 7 × (g C m-2 day-1)  ->  still labelled "g C m-2 day-1"
 ```
 
-a number seven times too large, wearing the units of a rate. It is dimensionally
-consistent, which is why the units check passes, and it is wrong.
+a number seven times too large, wearing the units of a rate.
+It is dimensionally consistent, which is why the units check passes, and it is wrong.
 
 ```toml
 # WRONG: gpp is a rate (g C m-2 day-1); summing it does not integrate it.
@@ -58,9 +55,7 @@ freq = "7D"
 aggfunc = "mean"
 ```
 
-If you genuinely want the weekly *amount* from a daily *rate*, do the multiplication
-explicitly — resample with `mean`, then scale by the window length in a `[[node]]`, and
-declare the resulting units:
+If you genuinely want the weekly *amount* from a daily *rate*, do the multiplication explicitly — resample with `mean`, then scale by the window length in a `[[node]]`, and declare the resulting units:
 
 ```toml
 [[node]]
@@ -70,8 +65,7 @@ expression = "gpp_weekly * 7.0"
 units = "g C m-2"
 ```
 
-Now the declared units say what the number is, and the contract check has something to
-check it against.
+Now the declared units say what the number is, and the contract check has something to check it against.
 
 ## Where next
 
