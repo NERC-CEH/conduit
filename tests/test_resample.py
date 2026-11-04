@@ -56,9 +56,7 @@ class TestResampleTransform:
     def test_monthly_frequency(self):
         out = resample(_daily_da(365, 1), freq="1ME")
         assert out.sizes["time"] == 12
-        inferred = pd.infer_freq(out.coords["time"].values)
-        assert inferred is not None
-        assert inferred.startswith(("ME", "MS"))
+        assert pd.infer_freq(out.coords["time"].values) in ("ME", "MS")
 
 
 class TestResampleTimeDim:
