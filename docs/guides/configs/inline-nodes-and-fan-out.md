@@ -39,7 +39,7 @@ This suits a single derivation; once you have several related functions, shared 
 
 ## Declaring contracts on a node
 
-conduit cannot infer what an expression produces, so declare it.
+catena cannot infer what an expression produces, so declare it.
 Any of `units`, `dims`, `dtype`, `coords` or `freq` makes the node a *typed producer*: its output is stamped and validated at run time, and the [contract check](../nodes/contracts.md) checks downstream consumers against it.
 
 ```toml
@@ -72,7 +72,7 @@ This expands to three nodes, `temperature_anomaly_daily`, `precipitation_anomaly
 ## The `[[resample]]` preset
 
 `[[resample]]` aggregates to a coarser time frequency.
-It expands to one [passthrough](../nodes/contracts.md#contracts-across-a-passthrough-node) node per variable, each applying `conduit.transforms.resample`.
+It expands to one [passthrough](../nodes/contracts.md#contracts-across-a-passthrough-node) node per variable, each applying `catena.transforms.resample`.
 
 ```toml
 [[resample]]

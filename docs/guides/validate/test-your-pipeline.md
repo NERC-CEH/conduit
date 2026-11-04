@@ -42,16 +42,16 @@ This is where the science belongs: assert on known analytic cases, conservation 
 
 ## 2. The config, without computing anything
 
-`conduit.dry_run` runs every check against your real input files without executing a node, so it is fast enough for every commit:
+`catena.dry_run` runs every check against your real input files without executing a node, so it is fast enough for every commit:
 
 ```python
 from pathlib import Path
 
-import conduit
+import catena
 
 
 def test_config_is_valid():
-    report = conduit.dry_run(Path("config.toml"))
+    report = catena.dry_run(Path("config.toml"))
 
     # A hard failure raises, so reaching here means the pipeline is valid.
     # Assert on findings too if you want soft issues to fail the build.
@@ -67,11 +67,11 @@ If your inputs are large or absent in CI, point the test at a small synthetic fi
 ## 3. The pipeline end to end
 
 Run the whole pipeline over small synthetic inputs and assert on the outputs.
-conduit tests its own recipes this way; see [`tests/test_recipes.py`](https://github.com/NERC-CEH/conduit/blob/main/tests/test_recipes.py).
+catena tests its own recipes this way; see [`tests/test_recipes.py`](https://github.com/NERC-CEH/catena/blob/main/tests/test_recipes.py).
 
 ```python
 def test_pipeline_writes_expected_variables():
-    conduit.run(Path("config.toml"))
+    catena.run(Path("config.toml"))
 
     with xr.open_dataset("results/anomaly.nc") as result:
         assert {"temperature_anomaly", "anomaly_range"} <= set(result)

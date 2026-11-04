@@ -14,9 +14,9 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 from xarray_annotated.schema import Coords, Dims, Dtype, SchemaError
 from xarray_annotated.units import declare_units, policy
 
-from conduit.build import build_driver
-from conduit.config import NodeSpec, ResampleSpec
-from conduit.contract_check import (
+from catena.build import build_driver
+from catena.config import NodeSpec, ResampleSpec
+from catena.contract_check import (
     check_dag_contracts,
     check_input_contracts,
 )
@@ -372,7 +372,7 @@ class TestBuildDriverIntegration:
 
 def _resample_node_specs(*specs):
     """Desugar ResampleSpecs into fan-out passthrough node specs (as config does)."""
-    from conduit.config import expand_node_entries, resample_to_node_entry
+    from catena.config import expand_node_entries, resample_to_node_entry
 
     entries = [resample_to_node_entry(s) for s in specs]
     return [NodeSpec.from_config(e) for e in expand_node_entries(entries)]
@@ -468,7 +468,7 @@ class TestNodePropagation:
 class TestUnitsWarningQualname:
     """The node function's qualname appears in UnitsWarning messages emitted by
     the @declare_units runtime wrapper, making the source of the warning clear
-    without requiring the user to inspect the conduit call stack."""
+    without requiring the user to inspect the catena call stack."""
 
     def test_missing_units_warning_includes_qualname(self):
         from typing import Annotated

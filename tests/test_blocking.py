@@ -8,15 +8,15 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from conduit.blocking import (
+from catena.blocking import (
     _block_input_names,
     _concat_results,
     _make_blocks,
     execute_blocked,
 )
-from conduit.build import build_driver
-from conduit.config import BlockingSpec, Config, IOSpec
-from conduit.io import get_final_vars
+from catena.build import build_driver
+from catena.config import BlockingSpec, Config, IOSpec
+from catena.io import get_final_vars
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -234,7 +234,7 @@ class TestCachingWithBlocking:
     def test_blocked_cached_matches_unblocked(
         self, pipeline_config, pipeline_inputs, tmp_path
     ):
-        from conduit import CacheSpec
+        from catena import CacheSpec
 
         spec = BlockingSpec(block_size=2)
         cache = CacheSpec(path=str(tmp_path / "cache"))
@@ -262,7 +262,7 @@ class TestCachingWithBlocking:
 
 
 class TestCLIEndToEnd:
-    """conduit run with a [blocking] section exits zero and writes outputs."""
+    """catena run with a [blocking] section exits zero and writes outputs."""
 
     @pytest.fixture
     def blocking_config_toml(self, tmp_path, synthetic_data_dir):
@@ -291,7 +291,7 @@ block_size = 2
     def test_exits_zero(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         config_path, _ = blocking_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -300,7 +300,7 @@ block_size = 2
     def test_output_file_written(self, blocking_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         config_path, out_path = blocking_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -310,7 +310,7 @@ block_size = 2
         import xarray as xr
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         config_path, out_path = blocking_config_toml
         # Run with blocking.
@@ -318,9 +318,9 @@ block_size = 2
         blocked_ds = xr.open_dataset(out_path)
 
         # Run without blocking for reference.
-        from conduit.build import build_driver
-        from conduit.config import load_config
-        from conduit.io import get_outputs, load_inputs
+        from catena.build import build_driver
+        from catena.config import load_config
+        from catena.io import get_outputs, load_inputs
 
         parsed = load_config(config_path)
         parsed.blocking_spec = None

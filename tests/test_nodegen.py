@@ -1,4 +1,4 @@
-"""Tests for conduit.nodegen — runtime-generated Hamilton modules."""
+"""Tests for catena.nodegen — runtime-generated Hamilton modules."""
 
 import sys
 import types
@@ -6,9 +6,9 @@ import types
 import xarray as xr
 from xarray_annotated.units import policy, units_from_signature
 
-from conduit.config import NodeSpec
-from conduit.nodegen import _build_fn_code, _node_namespace, make_node_module
-from conduit.specs import RESERVED_NODE_NAMES
+from catena.config import NodeSpec
+from catena.nodegen import _build_fn_code, _node_namespace, make_node_module
+from catena.specs import RESERVED_NODE_NAMES
 
 
 def test_reserved_names_match_generated_namespace():
@@ -92,10 +92,10 @@ class TestMakeNodeModule:
         # A random per-build name leaked one sys.modules entry per build, which is
         # unbounded in a long-lived process (a calibration loop, a test session).
         specs = [_expr_spec("acc_probe", ["a"], "a * 2")]
-        before = {n for n in sys.modules if n.startswith("conduit_node_generated")}
+        before = {n for n in sys.modules if n.startswith("catena_node_generated")}
         for _ in range(5):
             make_node_module(specs)
-        after = {n for n in sys.modules if n.startswith("conduit_node_generated")}
+        after = {n for n in sys.modules if n.startswith("catena_node_generated")}
         assert len(after - before) <= 1
 
     def test_different_specs_get_different_modules(self):

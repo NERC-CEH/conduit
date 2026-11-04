@@ -11,9 +11,9 @@ import sys
 
 import pytest
 
-from conduit.config import Config
-from conduit.errors import ConduitFileNotFoundError, ConduitValueError
-from conduit.importing import _module_name, import_user_module, is_file_form
+from catena.config import Config
+from catena.errors import CatenaFileNotFoundError, CatenaValueError
+from catena.importing import _module_name, import_user_module, is_file_form
 
 
 def _write_nodes(directory, marker):
@@ -45,11 +45,11 @@ class TestFileForm:
         assert import_user_module(str(path)).MARKER == "shared"
 
     def test_relative_path_without_a_base_is_an_error(self):
-        with pytest.raises(ConduitValueError, match="no file to resolve it against"):
+        with pytest.raises(CatenaValueError, match="no file to resolve it against"):
             import_user_module("nodes.py")
 
     def test_missing_file_names_where_it_looked(self, tmp_path):
-        with pytest.raises(ConduitFileNotFoundError, match=str(tmp_path)):
+        with pytest.raises(CatenaFileNotFoundError, match=str(tmp_path)):
             import_user_module("nodes.py", base=tmp_path)
 
     def test_same_file_twice_is_one_module(self, tmp_path):
@@ -101,22 +101,22 @@ class TestSiblingImportsAreUnsupported:
         (tmp_path / "nodes.py").write_text("import helpers\n")
         return tmp_path
 
-    def test_raises_a_conduit_error(self, pipeline_with_sibling):
-        with pytest.raises(ConduitValueError):
+    def test_raises_a_catena_error(self, pipeline_with_sibling):
+        with pytest.raises(CatenaValueError):
             import_user_module("nodes.py", base=pipeline_with_sibling)
 
     def test_error_names_the_missing_module(self, pipeline_with_sibling):
-        with pytest.raises(ConduitValueError, match="'helpers'"):
+        with pytest.raises(CatenaValueError, match="'helpers'"):
             import_user_module("nodes.py", base=pipeline_with_sibling)
 
     def test_error_points_at_packaging(self, pipeline_with_sibling):
-        with pytest.raises(ConduitValueError, match="installed package"):
+        with pytest.raises(CatenaValueError, match="installed package"):
             import_user_module("nodes.py", base=pipeline_with_sibling)
 
     def test_failed_module_is_not_left_in_sys_modules(self, pipeline_with_sibling):
         """A half-executed module must not be handed to the next caller."""
         name = _module_name((pipeline_with_sibling / "nodes.py").resolve())
-        with pytest.raises(ConduitValueError):
+        with pytest.raises(CatenaValueError):
             import_user_module("nodes.py", base=pipeline_with_sibling)
         assert name not in sys.modules
 
@@ -127,10 +127,10 @@ class TestSiblingImportsAreUnsupported:
 
 class TestDottedForm:
     def test_importable_module_loads(self):
-        assert import_user_module("conduit.transforms").resample is not None
+        assert import_user_module("catena.transforms").resample is not None
 
     def test_missing_module_suggests_the_file_form(self):
-        with pytest.raises(ConduitValueError, match="give its path"):
+        with pytest.raises(CatenaValueError, match="give its path"):
             import_user_module("no_such_package_anywhere")
 
 
@@ -170,7 +170,7 @@ class TestAChangedFileIsReloaded:
 
         Two writes in one test can share an mtime, and CPython's own __pycache__
         is keyed on mtime and size, so without this the stale *bytecode* is
-        executed no matter what conduit decides.
+        executed no matter what catena decides.
         """
         path.write_text(text)
         stamp = path.stat().st_mtime_ns + 1_000_000_000

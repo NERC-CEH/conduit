@@ -5,7 +5,7 @@ icon: lucide/timer
 
 # Resampling & units
 
-A resample keeps the input's units whether it takes a `mean` or a `sum`: conduit copies the attributes, CF `units` included, straight to the result.
+A resample keeps the input's units whether it takes a `mean` or a `sum`: catena copies the attributes, CF `units` included, straight to the result.
 This matches `pint-xarray`, which does not multiply by the timestep on a sum either.
 
 !!! warning "Unit validation cannot catch a wrong `aggfunc`"

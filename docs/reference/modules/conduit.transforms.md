@@ -1,3 +1,0 @@
-# `transforms`
-
-::: conduit.transforms

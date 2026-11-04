@@ -1,0 +1,3 @@
+# `errors`
+
+::: catena.errors

@@ -1,35 +1,35 @@
 ---
-title: Drive conduit from Python
+title: Drive catena from Python
 icon: lucide/code-2
 ---
 
-# Drive conduit from Python
+# Drive catena from Python
 
 Everything the CLI does is available from Python, with no extras installed.
 
 ## In one call
 
-`conduit.run` takes a path to a TOML config, or a `ParsedConfig` you have adjusted in Python:
+`catena.run` takes a path to a TOML config, or a `ParsedConfig` you have adjusted in Python:
 
 ```python
-import conduit
+import catena
 
-report = conduit.run("config.toml")  # writes each [outputs.*] section
+report = catena.run("config.toml")  # writes each [outputs.*] section
 report.outputs["climate"]  # the Dataset that went into that section
 report.written  # where each one landed, and how big it is
 
-parsed = conduit.load_config("config.toml")
+parsed = catena.load_config("config.toml")
 parsed.driver_config["scaling_factor"] = 2.0
-report = conduit.run(parsed)  # same run, with a parameter changed first
+report = catena.run(parsed)  # same run, with a parameter changed first
 ```
 
-A [`RunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.RunReport) holds the datasets, one `WrittenOutput` per destination, and the elapsed time.
+A [`RunReport`](../../reference/modules/catena.pipeline.md#catena.pipeline.RunReport) holds the datasets, one `WrittenOutput` per destination, and the elapsed time.
 Take paths from `written` rather than from the config, because a `[subset]` run adds a suffix to them.
 A run from a `ParsedConfig` has no config text, so its outputs carry no [provenance stamp](../../reference/data-formats.md#output-provenance).
 
-`conduit.dry_run` runs the same checks without executing anything and returns a [`DryRunReport`](../../reference/modules/conduit.pipeline.md#conduit.pipeline.DryRunReport), and `conduit.build_graph` returns the graph as a `graphviz.Digraph`.
+`catena.dry_run` runs the same checks without executing anything and returns a [`DryRunReport`](../../reference/modules/catena.pipeline.md#catena.pipeline.DryRunReport), and `catena.build_graph` returns the graph as a `graphviz.Digraph`.
 
-Progress is logged to the `conduit.pipeline` logger at `INFO`.
+Progress is logged to the `catena.pipeline` logger at `INFO`.
 The library installs no handler, so to see it:
 
 ```python
@@ -41,11 +41,11 @@ logging.basicConfig(level=logging.INFO)
 ## Step by step
 
 Taking the steps yourself lets you inspect individual nodes, plot intermediate results, override values between runs, or skip writing to disk.
-These are the steps `conduit.run` takes:
+These are the steps `catena.run` takes:
 
 ```python
-from conduit import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
-from conduit.config import Config
+from catena import build_driver, get_final_vars, get_outputs, load_inputs, save_outputs
+from catena.config import Config
 
 parsed = Config(config_data).parse()  # 1. parse
 parsed.annotations.apply()  # 2. contract policy
@@ -84,8 +84,8 @@ config_data = {
 parsed = Config(config_data).parse()
 ```
 
-For a file, use `Config.load("config.toml")`, which resolves paths relative to the file, or `conduit.load_config("config.toml")`, which also parses it.
-The resulting `ParsedConfig` holds one spec per config section; see [its reference](../../reference/modules/conduit.specs.md#conduit.specs.ParsedConfig).
+For a file, use `Config.load("config.toml")`, which resolves paths relative to the file, or `catena.load_config("config.toml")`, which also parses it.
+The resulting `ParsedConfig` holds one spec per config section; see [its reference](../../reference/modules/catena.specs.md#catena.specs.ParsedConfig).
 
 ### 2. Apply the contract policy
 
@@ -127,7 +127,7 @@ A config and its file I/O are optional.
 `build_driver()` returns a plain Hamilton `Driver`, so give it your modules and pass the inputs in memory:
 
 ```python
-from conduit import build_driver
+from catena import build_driver
 
 dr = build_driver(modules=["mypackage.indices"], config={"floor": 1e-4})
 results = dr.execute(

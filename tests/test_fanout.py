@@ -3,9 +3,9 @@
 import xarray as xr
 from xarray_annotated.schema import Dims, Dtype, schema_from_signature
 
-from conduit.build import build_driver
-from conduit.config import Config, NodeSpec, expand_node_entries
-from conduit.nodegen import PASSTHROUGH_TAG, make_node_module
+from catena.build import build_driver
+from catena.config import Config, NodeSpec, expand_node_entries
+from catena.nodegen import PASSTHROUGH_TAG, make_node_module
 
 
 def _node(name, inputs, expression, **kw):

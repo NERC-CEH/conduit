@@ -1,0 +1,3 @@
+# `nodegen`
+
+::: catena.nodegen

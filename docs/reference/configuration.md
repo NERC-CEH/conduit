@@ -5,7 +5,7 @@ icon: lucide/settings
 
 # Configuration reference
 
-A conduit pipeline is described by a [TOML](https://toml.io/en/) file.
+A catena pipeline is described by a [TOML](https://toml.io/en/) file.
 Each section switches on one part of the pipeline; leave a section out and that part is not there.
 
 Recognised top-level sections are listed below.
@@ -101,7 +101,7 @@ A `.py` module can import installed packages but [not a sibling file](../guides/
 A section header is a free-form label wherever `_import_path` is present.
 Without one, it has to name a module that an installed package registers.
 
-| The section | What conduit does |
+| The section | What catena does |
 | --- | --- |
 | carries `_import_path` | imports that, whatever else the environment offers under the same name |
 | carries no `_import_path`, and an installed package registers a module under the section name | imports the registered module, and reports which package supplied it |
@@ -155,7 +155,7 @@ An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; 
 ## Resample
 
 `[[resample]]` aggregates to a coarser time frequency, preserving units and dims.
-It expands to one passthrough `[[node]]` per variable, applying `conduit.transforms.resample`.
+It expands to one passthrough `[[node]]` per variable, applying `catena.transforms.resample`.
 
 ```toml
 [[resample]]
@@ -189,13 +189,13 @@ See [Scale up › caching](../guides/run/scale-up.md#caching-results).
 
 ```toml
 [cache]
-path = ".conduit_cache"
+path = ".catena_cache"
 recompute = ["my_calibrated_node"]
 ```
 
 | Key | Description |
 |-----|-------------|
-| `path` | Cache directory (default `.conduit_cache`). |
+| `path` | Cache directory (default `.catena_cache`). |
 | `enabled` | Set `false` to keep the section but disable caching. |
 | `recompute` | `true` or a list of node names — force recompute even on a hit. |
 | `disable` | `true` or a list of node names — bypass the cache for those nodes. |
@@ -284,7 +284,7 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks live in [`conduit.input_checks`](modules/conduit.input_checks.md) and can be called directly from Python.
+The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python.
 Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than one shard.
 
 ## Annotations

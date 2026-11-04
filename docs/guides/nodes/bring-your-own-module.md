@@ -10,7 +10,7 @@ Inline `[[node]]` expressions are fine for glue, but anything worth testing belo
 
 ## The conventions
 
-A node is a plain function, and conduit reads its signature to wire it in:
+A node is a plain function, and catena reads its signature to wire it in:
 
 | In your function | Becomes |
 |---|---|
@@ -67,8 +67,8 @@ def aridity_index_daily(
 ```
 
 At call time, the decorator validates and converts the inputs' units and stamps the output's.
-Before anything runs, conduit reads the same annotations to check this node's edges against its neighbours.
-A pipeline runs without contracts, but they are most of what conduit adds.
+Before anything runs, catena reads the same annotations to check this node's edges against its neighbours.
+A pipeline runs without contracts, but they are most of what catena adds.
 [Declaring contracts](contracts.md) covers the other facets and the decorator-ordering rule.
 
 ## 3. Multiple outputs
@@ -109,7 +109,7 @@ floor = 1e-4          # overrides the function's default
 
 Everything else is wired by name.
 
-conduit treats any section it does not recognise as one of your modules, so a section without an `_import_path` is an error, unless an installed package has [registered a module](#modules-an-installed-package-provides) under that name.
+catena treats any section it does not recognise as one of your modules, so a section without an `_import_path` is an error, unless an installed package has [registered a module](#modules-an-installed-package-provides) under that name.
 A misspelt section name is therefore never silently skipped.
 
 ## Two ways to name a module
@@ -132,11 +132,11 @@ _import_path = "nodes.py"
 
 ```bash
 cd /anywhere
-conduit run ~/work/aridity/config.toml   # still works
+catena run ~/work/aridity/config.toml   # still works
 ```
 
 A dotted name is an ordinary Python import, so the package must be installed in the environment you run in.
-Either way, whatever your module imports must be installed there too; conduit does not manage your dependencies.
+Either way, whatever your module imports must be installed there too; catena does not manage your dependencies.
 
 !!! warning "A single-file module cannot import a sibling file"
 
@@ -145,19 +145,19 @@ Either way, whatever your module imports must be installed there too; conduit do
 
     ```python
     # nodes.py, next to config.toml
-    import helpers  # ✗ ModuleNotFoundError under `conduit run`
+    import helpers  # ✗ ModuleNotFoundError under `catena run`
     import xarray as xr  # ✓ installed
     ```
 
     This can appear to work in a notebook started from the same directory, because Python puts the working directory on the path.
-    It will fail under `conduit run` and from anywhere else.
+    It will fail under `catena run` and from anywhere else.
 
     Code spread across several files should be an installed package, named by a dotted `_import_path`.
     With [uv](https://docs.astral.sh/uv/), that means a `pyproject.toml` and `uv pip install -e .`; see the [Python Packaging User Guide](https://packaging.python.org/en/latest/tutorials/packaging-projects/).
 
 ## Modules an installed package provides
 
-A package built on conduit can register its modules, and a config then names one by its section header alone:
+A package built on catena can register its modules, and a config then names one by its section header alone:
 
 ```toml
 # `science` is installed, and registers a module called `diagnostics`

@@ -1,4 +1,4 @@
-# Contributing to conduit
+# Contributing to catena
 
 This guide covers setting up a development checkout and the conventions we follow.
 
@@ -10,8 +10,8 @@ This guide covers setting up a development checkout and the conventions we follo
 ## Set up for development
 
 ```bash
-git clone https://github.com/NERC-CEH/conduit.git
-cd conduit
+git clone https://github.com/NERC-CEH/catena.git
+cd catena
 uv sync
 ```
 
@@ -61,10 +61,10 @@ The docs are structured under six tabs:
 | Tab | Holds |
 | --- | --- |
 | Home | the pitch and one worked example |
-| Concepts | how conduit works and why: the pipeline model, contracts, execution |
+| Concepts | how catena works and why: the pipeline model, contracts, execution |
 | Guides | how to do things: write nodes, write configs, validate, run and scale |
 | Recipes | complete worked pipelines |
-| Extending | building a package on conduit |
+| Extending | building a package on catena |
 | Reference | config schema, data formats, Python API, CLI, module docstrings |
 
 Each fact has one home, and other pages link to it rather than restating it.
@@ -98,7 +98,7 @@ Please consider the following design principles:
 
 - **Expose Hamilton and xarray rather than wrapping them.** Strongly prefer a thin passthrough to a new abstraction.
 - **The core should remain domain-agnostic.** Don't build in assumptions about data structure or attributes (e.g. requiring a time axis).
-  - The exception to this rule: geospatial and parallel-Zarr code lives in `conduit.gridded` behind lazy imports.
+  - The exception to this rule: geospatial and parallel-Zarr code lives in `catena.gridded` behind lazy imports.
 - **The CLI should stay a thin wrapper.** Don't build functionality _into_ the CLI.
 - **Contract checks should run at build time.** A feature that only works by deferring validation to runtime needs a different design.
 - **Minimise dependency bloat.** Self-explanatory.

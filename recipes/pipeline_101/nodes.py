@@ -2,7 +2,7 @@
 
 An ordinary xarray function is an ordinary DAG node: the function name is the
 node name, and each parameter name is the node it consumes. The annotations
-declare the units conduit checks across the whole DAG before anything runs.
+declare the units catena checks across the whole DAG before anything runs.
 """
 
 from typing import Annotated

@@ -1,4 +1,4 @@
-"""End-to-end integration tests for the full conduit pipeline.
+"""End-to-end integration tests for the full catena pipeline.
 
 These tests call load_inputs() with the test config and synthetic data,
 then execute pipeline nodes to verify the full stack — config → load_inputs
@@ -7,8 +7,8 @@ then execute pipeline nodes to verify the full stack — config → load_inputs
 
 import numpy as np
 
-from conduit.config import IOSpec
-from conduit.io import get_final_vars
+from catena.config import IOSpec
+from catena.io import get_final_vars
 
 N_PIXELS = 4  # 2x2 grid
 N_DAYS = 365

@@ -23,7 +23,7 @@ def aridity_index_daily(
 ```
 
 The decorators and markers come from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), whose [API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) documents them in full.
-conduit checks every such claim across the whole graph before any node runs; [Contracts and the whole-graph check](../../concepts/contracts.md) explains how.
+catena checks every such claim across the whole graph before any node runs; [Contracts and the whole-graph check](../../concepts/contracts.md) explains how.
 
 ## The five facets
 
@@ -65,7 +65,7 @@ An inline `[[node]]` declares the same facets with `units`, `dims`, `coords`, `d
 
 ## Producers and consumers
 
-Declaring a unit on a node's **output** makes it a typed producer, whose unit conduit knows without running it:
+Declaring a unit on a node's **output** makes it a typed producer, whose unit catena knows without running it:
 
 ```toml
 [[node]]
@@ -92,7 +92,7 @@ An edge is checked wherever both ends declare a contract.
 ## Compatible units are converted for you
 
 Suppose your file stores pressure in hectopascals and the node above wants pascals.
-conduit converts the data before the function runs, so you never hand-write `* 100`.
+catena converts the data before the function runs, so you never hand-write `* 100`.
 A unit that is only spelled differently, `"pascal"` for `"Pa"`, is relabelled without touching the values.
 
 Incompatible units are an error.
@@ -105,8 +105,8 @@ def pressure_anomaly_climate(
 ) -> Annotated[xr.DataArray, "m"]: ...
 ```
 
-Length and pressure do not interconvert, so conduit rejects the edge when the driver is built, naming both nodes and the facet that failed.
-Nothing has been computed at that point, and `conduit run config.toml --dry-run` shows the same failure.
+Length and pressure do not interconvert, so catena rejects the edge when the driver is built, naming both nodes and the facet that failed.
+Nothing has been computed at that point, and `catena run config.toml --dry-run` shows the same failure.
 
 ## Choosing the strictness
 

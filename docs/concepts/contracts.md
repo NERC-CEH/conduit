@@ -18,12 +18,12 @@ def aridity_index_daily(
 That guarantee arrives late: by the time a mismatched array reaches the function, everything upstream of it has already run.
 
 Checking every edge *before* the graph runs needs the annotations and the graph together.
-conduit has both, and lifting the per-function check to a DAG-wide one is what it adds.
+catena has both, and lifting the per-function check to a DAG-wide one is what it adds.
 [Declaring contracts](../guides/nodes/contracts.md) covers the syntax; this page is about what the checks do with it.
 
 ## How edges are checked
 
-An annotation on a node's return value makes it a **typed producer**, whose output contract conduit knows without running it.
+An annotation on a node's return value makes it a **typed producer**, whose output contract catena knows without running it.
 An annotation on a parameter declares what the node **requires**.
 An edge is checked wherever both ends declare the same facet.
 
@@ -44,10 +44,10 @@ The contract check is one of several checks, each asking a different question at
 
 All but the last happen before any array is computed.
 Input contracts compare against real file metadata rather than declarations, so a normal run defers them until the consuming node is called.
-`conduit run --dry-run` runs every layer, input contracts included, and executes nothing.
+`catena run --dry-run` runs every layer, input contracts included, and executes nothing.
 
 Input compatibility is the only opt-in layer.
-Different time axes across inputs are normal, so conduit does not guess which relationships must hold; you declare them in a `[validation]` block.
+Different time axes across inputs are normal, so catena does not guess which relationships must hold; you declare them in a `[validation]` block.
 
 ## Strictness is a policy
 

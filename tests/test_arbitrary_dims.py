@@ -14,9 +14,9 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from conduit.build import build_driver
-from conduit.config import IOSpec, SubsetSpec, load_config
-from conduit.io import effective_suffix, get_final_vars, get_outputs, load_inputs
+from catena.build import build_driver
+from catena.config import IOSpec, SubsetSpec, load_config
+from catena.io import effective_suffix, get_final_vars, get_outputs, load_inputs
 
 
 def _write_scene(path) -> None:
@@ -92,8 +92,8 @@ class TestNonTemporalPipeline:
 
 class TestBlockingArbitraryDim:
     def test_blocked_matches_unblocked_over_location(self, tmp_path):
-        from conduit.blocking import execute_blocked
-        from conduit.config import BlockingSpec
+        from catena.blocking import execute_blocked
+        from catena.config import BlockingSpec
 
         _write_scene(tmp_path / "scene.nc")
         cfg = tmp_path / "config.toml"
@@ -146,8 +146,8 @@ class TestSubsetArbitraryDim:
 
     def test_subset_over_non_pixel_dim(self, tmp_path):
         """Subset parts over `location` merge back to the full run, exactly."""
-        from conduit.gridded.io import merge_subset_outputs
-        from conduit.io import save_outputs
+        from catena.gridded.io import merge_subset_outputs
+        from catena.io import save_outputs
 
         # Reference: the whole thing in one go.
         parsed = load_config(self._config(tmp_path))
@@ -186,7 +186,7 @@ class TestSubsetArbitraryDim:
         """A Zarr store *is* the pixel grid, so it cannot be partitioned otherwise."""
         import pytest
 
-        from conduit.gridded.io import create_output_store
+        from catena.gridded.io import create_output_store
 
         cfg = self._config(
             tmp_path, subset='\n[subset]\nstart = 0\nstop = 2\ndim = "location"\n'
@@ -206,8 +206,8 @@ def test_no_geospatial_deps_imported_without_crs(tmp_path):
     path = str(tmp_path / "scene.nc")
     script = f"""\
 import sys
-from conduit.config import IOSpec
-from conduit.io import load_inputs
+from catena.config import IOSpec
+from catena.io import load_inputs
 load_inputs({{"scene": IOSpec(path={path!r}, vars=["reflectance"])}})
 assert "rioxarray" not in sys.modules, "rioxarray was imported"
 assert "pyproj" not in sys.modules, "pyproj was imported"

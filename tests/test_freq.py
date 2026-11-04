@@ -25,9 +25,9 @@ from hamilton.settings import ENABLE_POWER_USER_MODE
 from xarray_annotated.temporal import Freq, FreqError, FreqWarning
 from xarray_annotated.units import policy
 
-from conduit.build import build_driver
-from conduit.config import Config, NodeSpec, ResampleSpec, resample_to_node_entry
-from conduit.contract_check import check_dag_contracts, check_input_contracts
+from catena.build import build_driver
+from catena.config import Config, NodeSpec, ResampleSpec, resample_to_node_entry
+from catena.contract_check import check_dag_contracts, check_input_contracts
 
 
 def _series(freq: str, periods: int = 10, start: str = "2020-01-01") -> xr.DataArray:
@@ -259,7 +259,7 @@ class TestNodeFreq:
 
 
 def _resample_specs(*specs):
-    from conduit.config import expand_node_entries
+    from catena.config import expand_node_entries
 
     entries = [resample_to_node_entry(s) for s in specs]
     return [NodeSpec.from_config(e) for e in expand_node_entries(entries)]
@@ -366,7 +366,7 @@ class TestPolicyFromConfig:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: `conduit run --dry-run` flags a mis-declared input frequency
+# End-to-end: `catena run --dry-run` flags a mis-declared input frequency
 # ---------------------------------------------------------------------------
 
 
@@ -416,7 +416,7 @@ class TestDryRunEndToEnd:
     def _invoke(self, register, tmp_path, declared: Freq, module: str):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         register(module, _model(declared))
         with policy(enabled=True):

@@ -9,12 +9,12 @@ import pytest
 import xarray as xr
 from hamilton.caching import fingerprinting
 
-import conduit.caching  # noqa: F401  (registers the xarray fingerprint)
-from conduit import CacheSpec
-from conduit.build import build_driver
-from conduit.config import Config, IOSpec, load_config
-from conduit.io import get_final_vars
-from conduit.pipeline import _resolve_cache
+import catena.caching  # noqa: F401  (registers the xarray fingerprint)
+from catena import CacheSpec
+from catena.build import build_driver
+from catena.config import Config, IOSpec, load_config
+from catena.io import get_final_vars
+from catena.pipeline import _resolve_cache
 
 
 class TestCacheConfig:
@@ -141,7 +141,7 @@ class TestDataArrayFingerprint:
 
 def _make_counting_module(counter: list) -> types.ModuleType:
     """Build a one-node Hamilton module that records each real computation."""
-    mod = types.ModuleType("conduit_test_cache_mod")
+    mod = types.ModuleType("catena_test_cache_mod")
 
     def expensive(source: xr.DataArray) -> xr.DataArray:
         counter.append(1)
@@ -269,8 +269,8 @@ vars = ["scaled"]
         """What Hamilton needs in order to version the node at all."""
         import inspect
 
-        from conduit.nodegen import make_node_module
-        from conduit.specs import NodeSpec
+        from catena.nodegen import make_node_module
+        from catena.specs import NodeSpec
 
         spec = NodeSpec.from_config(
             {"name": "a", "inputs": ["b"], "expression": "b * 2"}
@@ -280,14 +280,14 @@ vars = ["scaled"]
     def test_a_changed_expression_recomputes(self, tmp_path, synthetic_data_dir):
         import xarray as xr
 
-        import conduit
+        import catena
 
         nc = synthetic_data_dir / "daily.nc"
-        conduit.run(self._config(tmp_path, nc, 2))
+        catena.run(self._config(tmp_path, nc, 2))
         with xr.open_dataset(tmp_path / "out.nc") as ds:
             doubled = ds.scaled.values.copy()
 
-        conduit.run(self._config(tmp_path, nc, 3))
+        catena.run(self._config(tmp_path, nc, 3))
         with xr.open_dataset(tmp_path / "out.nc") as ds:
             tripled = ds.scaled.values.copy()
 

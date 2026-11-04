@@ -31,11 +31,11 @@ import numpy as np
 import xarray as xr
 from hamilton.htypes import Collect, Parallelizable
 
-# Registering conduit's DataArray fingerprint is what makes a DataArray block
+# Registering catena's DataArray fingerprint is what makes a DataArray block
 # content-hashable (and therefore cacheable across runs/processes); without it
 # Hamilton assigns a random per-result version and the cache never hits. Importing
 # here ensures the registration happens in every process that imports this module.
-import conduit.caching  # noqa: F401
+import catena.caching  # noqa: F401
 
 N_BLOCKS = 3
 MARKER_ENV = "SPIKE_MARKER_DIR"

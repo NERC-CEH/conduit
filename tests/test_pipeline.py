@@ -1,6 +1,6 @@
-"""Tests for `conduit.run`, the Python entry point a pipeline actually runs through.
+"""Tests for `catena.run`, the Python entry point a pipeline actually runs through.
 
-`conduit run` is a shim over this, so the behaviour that must hold on every real
+`catena run` is a shim over this, so the behaviour that must hold on every real
 run — input checks, output pre-flight, provenance — is tested here rather than
 through the CLI.
 """
@@ -8,9 +8,9 @@ through the CLI.
 import pytest
 import xarray as xr
 
-from conduit import run
-from conduit.config import load_config
-from conduit.input_checks import InputCheckError
+from catena import run
+from catena.config import load_config
+from catena.input_checks import InputCheckError
 
 
 def _config(tmp_path, synthetic_data_dir, out, extra=""):
@@ -83,8 +83,8 @@ vars = ["temperature"]
         out = tmp_path / "out.nc"
         run(_config(tmp_path, synthetic_data_dir, out))
         with xr.open_dataset(out) as ds:
-            assert "warmth_daily" in ds.attrs["conduit_config"]
-            assert len(ds.attrs["conduit_config_sha256"]) == 64
+            assert "warmth_daily" in ds.attrs["catena_config"]
+            assert len(ds.attrs["catena_config_sha256"]) == 64
 
     def test_parsed_config_stamps_no_provenance(self, tmp_path, synthetic_data_dir):
         """An in-memory config has no text to stamp, so it stamps nothing rather
@@ -92,7 +92,7 @@ vars = ["temperature"]
         out = tmp_path / "out.nc"
         run(load_config(_config(tmp_path, synthetic_data_dir, out)))
         with xr.open_dataset(out) as ds:
-            assert "conduit_config" not in ds.attrs
+            assert "catena_config" not in ds.attrs
 
 
 class TestRunPreFlight:

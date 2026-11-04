@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from conduit.config import IOSpec, SubsetSpec
-from conduit.gridded.io import (
+from catena.config import IOSpec, SubsetSpec
+from catena.gridded.io import (
     _find_subset_parts,
     create_output_store,
     flatten_pixel_index,
@@ -17,7 +17,7 @@ from conduit.gridded.io import (
     subset_suffix,
     unstack_pixel,
 )
-from conduit.io import (
+from catena.io import (
     get_final_vars,
     get_outputs,
     load_inputs,
@@ -275,7 +275,7 @@ class TestZarrSubset:
         Region writes don't write coordinates, so without this guard the store would
         keep its own (wrong) timestamps and silently mislabel the data.
         """
-        from conduit.gridded.io import save_zarr_region
+        from catena.gridded.io import save_zarr_region
 
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
@@ -445,7 +445,7 @@ class TestCLIParallelWorkflow:
     ):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         store = tmp_path / "weekly.zarr"
         runner = CliRunner()
@@ -498,7 +498,7 @@ class TestConcurrentZarrWrites:
     """Mirror the real deployment: N OS processes writing disjoint regions at once.
 
     The sequential tests validate correctness but not concurrency safety. Here we
-    launch genuinely independent ``conduit run`` processes (as ``parallel conduit
+    launch genuinely independent ``catena run`` processes (as ``parallel catena
     run`` would) against one shared store and assert no writes are lost.
     """
 
@@ -510,7 +510,7 @@ class TestConcurrentZarrWrites:
 
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         store = tmp_path / "weekly.zarr"
 
@@ -542,7 +542,7 @@ class TestConcurrentZarrWrites:
                 [
                     sys.executable,
                     "-c",
-                    "from conduit.cli import main; main()",
+                    "from catena.cli import main; main()",
                     "run",
                     str(cfg),
                 ],

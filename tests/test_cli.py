@@ -1,6 +1,6 @@
-"""Tests for the conduit CLI: argument handling, exit codes, and what it prints.
+"""Tests for the catena CLI: argument handling, exit codes, and what it prints.
 
-The CLI is a shim over `conduit.pipeline` and `conduit.graph`, so the pipeline
+The CLI is a shim over `catena.pipeline` and `catena.graph`, so the pipeline
 behaviour itself is tested in ``test_pipeline.py`` and ``test_graph.py``. What is
 left here is the part only the command can get wrong.
 """
@@ -11,16 +11,16 @@ import sys
 import pytest
 from typer.testing import CliRunner
 
-from conduit._version import __version__
-from conduit.cli import main
-from conduit.cli.app import app
-from conduit.errors import (
-    ConduitError,
-    ConduitFileNotFoundError,
-    ConduitPermissionError,
-    ConduitValueError,
+from catena._version import __version__
+from catena.cli import main
+from catena.cli.app import app
+from catena.errors import (
+    CatenaError,
+    CatenaFileNotFoundError,
+    CatenaPermissionError,
+    CatenaValueError,
 )
-from conduit.input_checks import InputCheckError
+from catena.input_checks import InputCheckError
 
 runner = CliRunner()
 
@@ -43,7 +43,7 @@ class TestVersionFlag:
 
 
 class TestGriddedGeoExtraGuard:
-    """`conduit gridded` fails fast with an install hint when `geo` is absent."""
+    """`catena gridded` fails fast with an install hint when `geo` is absent."""
 
     def test_missing_extra_exits_with_hint(self, monkeypatch):
         import importlib.util as importutil
@@ -59,12 +59,12 @@ class TestGriddedGeoExtraGuard:
 
         result = runner.invoke(app, ["gridded", "merge", "tests/test_config.toml"])
         assert result.exit_code == 1
-        assert "conduit[geo]" in result.output
+        assert "ukceh-catena[geo]" in result.output
         assert "rioxarray" in result.output
 
 
 class TestMissingTyperExtra:
-    """Without the extra, `conduit` must explain itself, not traceback.
+    """Without the extra, `catena` must explain itself, not traceback.
 
     The import boundary itself is checked in ``test_layout.py``.
     """
@@ -79,12 +79,12 @@ class TestMissingTyperExtra:
                 raise ModuleNotFoundError("No module named 'typer'", name="typer")
             return real_import(name, *args, **kwargs)
 
-        monkeypatch.delitem(sys.modules, "conduit.cli.app", raising=False)
+        monkeypatch.delitem(sys.modules, "catena.cli.app", raising=False)
         monkeypatch.setattr(builtins, "__import__", fake_import)
         with pytest.raises(SystemExit) as excinfo:
             main()
         assert excinfo.value.code == 1
-        assert "conduit[cli]" in capsys.readouterr().err
+        assert "ukceh-catena[cli]" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -267,13 +267,13 @@ class TestModuleBesideTheConfig:
 
 
 class TestErrorRendering:
-    """`main` prints a ConduitError alone; anything else keeps its traceback."""
+    """`main` prints a CatenaError alone; anything else keeps its traceback."""
 
-    def test_conduit_error_prints_message_without_traceback(self, monkeypatch, capsys):
+    def test_catena_error_prints_message_without_traceback(self, monkeypatch, capsys):
         def _raise():
-            raise ConduitValueError("something the user can fix")
+            raise CatenaValueError("something the user can fix")
 
-        monkeypatch.setattr("conduit.cli.app.app", _raise)
+        monkeypatch.setattr("catena.cli.app.app", _raise)
         with pytest.raises(SystemExit) as excinfo:
             main()
         assert excinfo.value.code == 1
@@ -287,12 +287,12 @@ class TestErrorRendering:
         def _raise():
             raise TypeError("a bug, not a bad input")
 
-        monkeypatch.setattr("conduit.cli.app.app", _raise)
+        monkeypatch.setattr("catena.cli.app.app", _raise)
         with pytest.raises(TypeError, match="a bug"):
             main()
 
-    def test_input_check_error_is_a_conduit_error(self):
-        assert issubclass(InputCheckError, ConduitError)
+    def test_input_check_error_is_a_catena_error(self):
+        assert issubclass(InputCheckError, CatenaError)
 
 
 class TestErrorTypes:
@@ -301,15 +301,15 @@ class TestErrorTypes:
     @pytest.mark.parametrize(
         ("error", "stdlib"),
         [
-            (ConduitValueError, ValueError),
-            (ConduitFileNotFoundError, FileNotFoundError),
-            (ConduitPermissionError, PermissionError),
+            (CatenaValueError, ValueError),
+            (CatenaFileNotFoundError, FileNotFoundError),
+            (CatenaPermissionError, PermissionError),
         ],
     )
     def test_inherits_stdlib_type(self, error, stdlib):
         assert issubclass(error, stdlib)
-        assert issubclass(error, ConduitError)
+        assert issubclass(error, CatenaError)
 
     def test_base_is_not_a_value_error(self):
         """`except ValueError` must not catch a missing-file error by accident."""
-        assert not issubclass(ConduitError, ValueError)
+        assert not issubclass(CatenaError, ValueError)

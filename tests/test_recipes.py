@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import xarray as xr
 
-import conduit
+import catena
 
 RECIPES = Path(__file__).parents[1] / "recipes"
 
@@ -59,7 +59,7 @@ def test_pipeline_101_notebook_executes(tmp_path: Path) -> None:
         assert {"temperature_anomaly", "anomaly_range"} <= set(result)
         assert result.temperature_anomaly.attrs["units"] == "degC"
         assert result.anomaly_range.attrs["units"] == "degC"
-        assert "conduit_config_sha256" in result.attrs
+        assert "catena_config_sha256" in result.attrs
 
 
 def test_flux_notebook_executes(tmp_path: Path) -> None:
@@ -98,7 +98,7 @@ def test_recipe_config_dry_runs(name: str) -> None:
     recipe = RECIPES / name
     try:
         _write_inputs(recipe)
-        report = conduit.dry_run(recipe / "config.toml")
+        report = catena.dry_run(recipe / "config.toml")
         assert [stage for stage in report.stages if stage.status == "failed"] == []
     finally:
         for path in (recipe / "data").glob("*"):

@@ -1,14 +1,14 @@
-"""Tests for the :func:`conduit.dry_run` pre-flight and its building blocks.
+"""Tests for the :func:`catena.dry_run` pre-flight and its building blocks.
 
 Three layers:
 
-- direct tests of :func:`conduit.contract_check.check_input_contracts` (the runtime,
+- direct tests of :func:`catena.contract_check.check_input_contracts` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
-- direct tests of :func:`conduit.io.assert_output_paths_writable`;
+- direct tests of :func:`catena.io.assert_output_paths_writable`;
 - tests of the broader pre-flight (config / inputs / DAG plan / output paths) against
-  the :class:`conduit.DryRunReport` that ``dry_run`` returns, plus a thin layer
-  checking that ``conduit run --dry-run`` renders every stage of it.
+  the :class:`catena.DryRunReport` that ``dry_run`` returns, plus a thin layer
+  checking that ``catena run --dry-run`` renders every stage of it.
 """
 
 import os
@@ -22,13 +22,13 @@ import xarray as xr
 from typer.testing import CliRunner
 from xarray_annotated.units import UnitsWarning, policy
 
-from conduit import dry_run
-from conduit.build import build_driver
-from conduit.cli.app import app
-from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
-from conduit.contract_check import check_input_contracts
-from conduit.input_checks import InputCheckError
-from conduit.io import assert_output_paths_writable
+from catena import dry_run
+from catena.build import build_driver
+from catena.cli.app import app
+from catena.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
+from catena.contract_check import check_input_contracts
+from catena.input_checks import InputCheckError
+from catena.io import assert_output_paths_writable
 
 runner = CliRunner()
 
@@ -168,7 +168,7 @@ class TestCheckInputUnitsDirect:
 class TestCheckInputUnitsPropagation:
     def _resample_driver(self, register):
         """External ``gpp_weekly`` -> passthrough resample -> ``gpp_monthly`` (rate)."""
-        from conduit.config import expand_node_entries, resample_to_node_entry
+        from catena.config import expand_node_entries, resample_to_node_entry
 
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
         entry = resample_to_node_entry(
@@ -193,7 +193,7 @@ class TestCheckInputUnitsPropagation:
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
         declaring consumer is not validated, since a node can change units."""
-        from conduit.config import NodeSpec
+        from catena.config import NodeSpec
 
         register("dv_cons", _consumer("g m-2 d-1", in_name="flux"))
         specs = [
@@ -316,12 +316,12 @@ class TestDryRunReport:
         with pytest.raises(FileNotFoundError):
             dry_run(cfg)
 
-    def test_missing_input_file_is_a_conduit_error(self, tmp_path):
-        """The CLI shows a ConduitError without a traceback, so this must be one."""
-        from conduit.errors import ConduitFileNotFoundError
+    def test_missing_input_file_is_a_catena_error(self, tmp_path):
+        """The CLI shows a CatenaError without a traceback, so this must be one."""
+        from catena.errors import CatenaFileNotFoundError
 
         cfg = _config(tmp_path, tmp_path / "no_such_dir")
-        with pytest.raises(ConduitFileNotFoundError, match=r"\[inputs\.daily\]"):
+        with pytest.raises(CatenaFileNotFoundError, match=r"\[inputs\.daily\]"):
             dry_run(cfg)
 
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
@@ -387,8 +387,8 @@ class TestPolicyReport:
         cfg = _config(tmp_path, synthetic_data_dir)
         result = runner.invoke(app, ["run", cfg, "--dry-run"])
         assert result.exit_code == 0, result.output
-        # The header echoes the config path, whose length conduit does not
-        # control; every line conduit composes itself is indented.
+        # The header echoes the config path, whose length catena does not
+        # control; every line catena composes itself is indented.
         too_long = [
             line
             for line in result.output.splitlines()
@@ -426,7 +426,7 @@ class TestDryRunCLI:
 
 
 # ---------------------------------------------------------------------------
-# [validation] input checks (conduit.input_checks) through the dry run
+# [validation] input checks (catena.input_checks) through the dry run
 # ---------------------------------------------------------------------------
 
 

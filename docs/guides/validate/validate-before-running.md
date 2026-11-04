@@ -11,7 +11,7 @@ Loading inputs and building the DAG is cheap; computing the pipeline may not be.
 ## The `--dry-run` pre-flight
 
 ```sh
-conduit run config.toml --dry-run
+catena run config.toml --dry-run
 ```
 
 It checks, in order, and prints a summary per stage:
@@ -46,14 +46,14 @@ checks = [
 ```
 
 Each entry runs a named check over the listed `[inputs.*]` sections; `["*"]` means all of them.
-The checks run on every `conduit run`, and a failure aborts before any node executes, listing every check that failed and why.
+The checks run on every `catena run`, and a failure aborts before any node executes, listing every check that failed and why.
 They are opt-in because differing inputs are normal — a daily forcing beside a monthly boundary condition — so only you know which relationships must hold.
 The available checks and their arguments are in the [configuration reference](../../reference/configuration.md#validation).
 
 ## The wiring check
 
 The wiring check asks whether every node gets fed.
-On every run, before compute, conduit compares the inputs the DAG requires with the ones the config loaded:
+On every run, before compute, catena compares the inputs the DAG requires with the ones the config loaded:
 
 - **Unbound input → error.** A node needs `temperature_daily` but nothing produces it.
   Usually a rename that did not propagate across file, config and function signature, or a missing `[inputs.*]` entry.
@@ -77,13 +77,13 @@ python recipes/flux_pipeline/make_data.py > /dev/null
 ```
 
 ```bash exec="true" source="block" result="text" returncode="1"
-conduit run --dry-run recipes/flux_pipeline/broken.toml
+catena run --dry-run recipes/flux_pipeline/broken.toml
 ```
 
 The failure names both ends of the edge, and comes during DAG construction, before any input is read.
 
 To fix it, correct whichever annotation is wrong.
-Had the units merely differed in scale, `umol m-2 s-1` against `nmol m-2 s-1` say, conduit would have converted them and there would be nothing to fix.
+Had the units merely differed in scale, `umol m-2 s-1` against `nmol m-2 s-1` say, catena would have converted them and there would be nothing to fix.
 The check flags an edge only when the two declarations cannot be reconciled, so a partly annotated pipeline can adopt it without a wave of false positives.
 
 To run this from a test or CI, see [Test your pipeline](test-your-pipeline.md); for specific error messages, see [Troubleshooting](../troubleshooting.md).

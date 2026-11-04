@@ -7,9 +7,9 @@ icon: lucide/wrench
 
 ## Installation
 
-### `graphviz` not found when running `conduit graph`
+### `graphviz` not found when running `catena graph`
 
-`conduit graph` needs the system Graphviz binary, not just the Python package:
+`catena graph` needs the system Graphviz binary, not just the Python package:
 
 ```sh
 sudo apt install graphviz     # Ubuntu/Debian
@@ -17,7 +17,7 @@ brew install graphviz         # macOS
 sudo dnf install graphviz     # Fedora
 ```
 
-### `conduit gridded` reports a missing extra
+### `catena gridded` reports a missing extra
 
 Install the `geo` extra; see [Installation](install.md#extras).
 
@@ -83,7 +83,7 @@ A subset run produced a time axis that differs from the shared store's, so the c
 Re-create the store from the current config:
 
 ```sh
-conduit gridded create-store config.toml --overwrite
+catena gridded create-store config.toml --overwrite
 ```
 
 `--overwrite` erases what other subset runs have written, so re-run them all afterwards.
@@ -104,10 +104,10 @@ Check that the `[outputs.*]` `vars` name nodes that exist, that the output's dir
 
 ### The graph is too large to read
 
-Pass `conduit graph` a `--style` file with Graphviz sizing attributes, or draw part of the DAG in Python:
+Pass `catena graph` a `--style` file with Graphviz sizing attributes, or draw part of the DAG in Python:
 
 ```python
-from conduit import build_driver, load_config
+from catena import build_driver, load_config
 
 parsed = load_config("config.toml")
 dr = build_driver(

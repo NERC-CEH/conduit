@@ -20,7 +20,7 @@ test:
 
 # Run tests with coverage report.
 test-cov:
-  pytest --cov=conduit --cov-report=term-missing --cov-fail-under=90
+  pytest --cov=catena --cov-report=term-missing --cov-fail-under=90
 
 # Export executable notebooks and build the documentation using Zensical.
 docs: docs-recipes

@@ -51,7 +51,7 @@ Two escape hatches:
 - `suffix = ""` on an input section gives bare node names, useful for a static file that feeds everything.
 - The mapping form of `vars`, `vars = {temperature_daily = "t2m"}`, gives a file variable a different node name.
 
-To see what actually connected to what, draw it with [`conduit graph config.toml --pdf`](../validate/visualise-the-graph.md).
+To see what actually connected to what, draw it with [`catena graph config.toml --pdf`](../validate/visualise-the-graph.md).
 
 ## The edits you will actually make
 
@@ -63,7 +63,7 @@ If the new files name their variables differently, use the mapping form of `vars
 
 **Add a variable from a file you already read.**
 Add it to that section's `vars` list.
-It becomes a node; until something consumes it, conduit only warns that it is unused.
+It becomes a node; until something consumes it, catena only warns that it is unused.
 
 **Add a derived quantity.**
 If it fits in one expression, add an [inline `[[node]]`](inline-nodes-and-fan-out.md).
@@ -84,7 +84,7 @@ Add `[annotations]` with `mode = "strict"` to make a contract mismatch fail rath
 ## Before you run it
 
 ```sh
-conduit run config.toml --dry-run
+catena run config.toml --dry-run
 ```
 
 This checks everything short of computing: it catches a suffix that does not match, a renamed file variable, or an output nothing produces.

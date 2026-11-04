@@ -3,18 +3,18 @@ title: Home
 icon: lucide/house
 ---
 
-# Conduit
+# Catena
 
 An opinionated integration of [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) and [xarray](https://xarray.dev) for building configurable environmental data pipelines.
 
 1. **Write the science code.** Ordinary Python functions that take and return `xarray.DataArray`s, with optional [annotations](https://docs.python.org/3/library/typing.html#typing.Annotated) declaring what each one requires and produces: units, dimensions, coordinates, dtype, temporal frequency.
 2. **Write the config.** A TOML file names the input files, the nodes and the outputs. Assembling or adapting a pipeline from here needs no Python.
-3. **Validate.** Conduit assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
+3. **Validate.** Catena assembles the whole graph before computing anything and checks every declared edge against the claim at the other end, via [`xarray-annotated`](https://github.com/jmarshrossney/xarray-annotated) and [pint](https://pint.readthedocs.io/en/stable/). A unit mismatch fails at the terminal in a second rather than forty minutes into a run.
 4. **Run.** In memory, out-of-core with dask, memory-bounded in blocks, or sharded across processes. The choice lives in the config, and none of it changes the science code.
 
 !!! warning "Alpha status"
 
-    `conduit` is an early-stage project under active development. Things will change without warning.
+    `catena` is an early-stage project under active development. Things will change without warning.
 
 
 ## A very simple demo
@@ -52,7 +52,7 @@ python recipes/pipeline_101/make_data.py > /dev/null
     Node labels carry the declared units and requested outputs are highlighted, so a wiring mistake is often visible before anything runs.
 
     ```bash exec="true" source="block" result="text"
-    conduit graph recipes/pipeline_101/config.toml --png \
+    catena graph recipes/pipeline_101/config.toml --png \
       --output recipes/pipeline_101/pipeline
     ```
 
@@ -71,13 +71,13 @@ python recipes/pipeline_101/make_data.py > /dev/null
     `--dry-run` parses the config, opens the input headers, builds the DAG and checks every contract, without loading any data.
 
     ```bash exec="true" source="block" result="text"
-    conduit run --dry-run recipes/pipeline_101/config.toml
+    catena run --dry-run recipes/pipeline_101/config.toml
     ```
 
 === "Run"
 
     ```bash exec="true" source="block" result="text"
-    conduit run recipes/pipeline_101/config.toml
+    catena run recipes/pipeline_101/config.toml
     ```
 
 The [Pipeline 101 notebook](recipes/pipeline-101.md) runs the same pipeline through the Python API.
@@ -86,10 +86,10 @@ The [Pipeline 101 notebook](recipes/pipeline-101.md) runs the same pipeline thro
 
 <div class="grid cards" markdown>
 
-- **[Concepts](concepts/overview.md)** — how conduit works, and why.
+- **[Concepts](concepts/overview.md)** — how catena works, and why.
 - **[Guides](guides/install.md)** — how to do things. After [installing](guides/install.md), start at [Write a config](guides/configs/write-a-config.md) to adapt a pipeline, or [Bring your own module](guides/nodes/bring-your-own-module.md) to add nodes.
 - **[Recipes](recipes/index.md)** — complete pipelines as executable [marimo](https://marimo.io) notebooks.
-- **[Extending](extending/index.md)** — building a package on top of conduit.
+- **[Extending](extending/index.md)** — building a package on top of catena.
 - **[Reference](reference/configuration.md)** — every config key, file format, CLI flag and Python name.
 
 </div>
@@ -98,7 +98,7 @@ The [Pipeline 101 notebook](recipes/pipeline-101.md) runs the same pipeline thro
 
 **Upstream**
 
-Conduit offloads most of the hard work to several excellent libraries:
+Catena offloads most of the hard work to several excellent libraries:
 
 - [Apache Hamilton](https://github.com/DAGWorks-Inc/hamilton) — the DAG engine.
 - [xarray](https://docs.xarray.dev/) — labelled N-D arrays.
@@ -109,7 +109,7 @@ Conduit offloads most of the hard work to several excellent libraries:
 
 **Downstream** 
 
-The following projects are using Conduit:
+The following projects are using Catena:
 
 - [SatTerC](https://satterc.github.io/satterc/) — terrestrial carbon modelling.
 

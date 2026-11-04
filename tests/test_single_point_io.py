@@ -8,15 +8,15 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from conduit.config import IOSpec
-from conduit.formats import (
+from catena.config import IOSpec
+from catena.formats import (
     dataset_to_frame,
     read_in_group,
     write_frame,
     write_in_group,
 )
-from conduit.io import load_inputs, save_outputs
-from conduit.specs import SubsetSpec
+from catena.io import load_inputs, save_outputs
+from catena.specs import SubsetSpec
 
 # ---------------------------------------------------------------------------
 # Fixtures

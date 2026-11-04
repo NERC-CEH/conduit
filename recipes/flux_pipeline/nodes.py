@@ -1,7 +1,7 @@
 """Hamilton nodes for the eddy-covariance flux recipe.
 
 Ordinary xarray functions, annotated with the units and time frequencies that
-conduit checks across the whole DAG before anything runs.
+catena checks across the whole DAG before anything runs.
 """
 
 from typing import Annotated, TypedDict

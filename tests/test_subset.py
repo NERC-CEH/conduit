@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from conduit.build import build_driver
-from conduit.config import Config, IOSpec, SubsetSpec
-from conduit.io import get_final_vars, load_inputs
+from catena.build import build_driver
+from catena.config import Config, IOSpec, SubsetSpec
+from catena.io import get_final_vars, load_inputs
 
 _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})
 
@@ -141,13 +141,13 @@ class TestSubsetPipelineResult:
 
 
 class TestCLISubset:
-    """conduit run with [subset] exits zero and writes only the subset pixels."""
+    """catena run with [subset] exits zero and writes only the subset pixels."""
 
     @pytest.fixture
     def subset_config_toml(self, tmp_path, synthetic_data_dir):
         out_path = tmp_path / "outputs.nc"
         # Load only what the pipeline consumes (temperature_daily), so a real
-        # ``conduit run`` stays free of the unused-input WiringWarning. Broad
+        # ``catena run`` stays free of the unused-input WiringWarning. Broad
         # multi-section configs are exercised by the parser tests instead.
         content = f"""\
 [[node]]
@@ -173,7 +173,7 @@ stop = 2
 
     def _subset_path(self, out_path):
         """The auto-suffixed NetCDF path a [subset] run writes to."""
-        from conduit.gridded.io import subset_suffix
+        from catena.gridded.io import subset_suffix
 
         spec = SubsetSpec(0, 2)
         return out_path.with_name(
@@ -183,7 +183,7 @@ stop = 2
     def test_exits_zero(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         config_path, _ = subset_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -193,7 +193,7 @@ stop = 2
         """A subset run writes a uniquely-suffixed, stacked (pixel) file."""
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -206,9 +206,9 @@ stop = 2
     def test_output_values_match_full_run(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
-        from conduit.config import load_config
-        from conduit.io import get_outputs
+        from catena.cli.app import app
+        from catena.config import load_config
+        from catena.io import get_outputs
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])

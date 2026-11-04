@@ -9,10 +9,10 @@ A node operates on xarray objects, which may be backed by NumPy or dask arrays.
 Nothing in the function knows which, how much data is in flight at once, or how many processes are involved.
 
 In a hand-written script, loop bounds, chunk sizes and parallelism get tangled into the science, and scaling up means editing the code that computes the answer.
-conduit keeps them apart, which makes scale a configuration concern.
+catena keeps them apart, which makes scale a configuration concern.
 Two properties make this work:
 
-- The graph is a value, so conduit can slice the inputs, drive the whole graph over one partition, and recombine the results.
+- The graph is a value, so catena can slice the inputs, drive the whole graph over one partition, and recombine the results.
 - A run is a pure function of its config and inputs, with no shared mutable state, so disjoint shards can safely run in separate processes.
 
 ## What a run does
@@ -29,13 +29,13 @@ Two properties make this work:
 | in-memory serial | nothing | nothing | developing, testing, and every recipe here |
 | out-of-core | dask-backed inputs, from Python | memory, lazily | the data is larger than RAM but one process is enough |
 | blocked | `[blocking]` | peak memory, to roughly one block | you want a hard memory ceiling in one process |
-| sharded | `[subset]`, plus `conduit gridded` | wall-clock time | you have many cores, or a cluster |
+| sharded | `[subset]`, plus `catena gridded` | wall-clock time | you have many cores, or a cluster |
 
 The first is the default, and the rest compose: a blocked, dask-backed run over a subset is ordinary.
 
 - **Out-of-core** changes nothing about the graph. Hand a node dask-backed inputs and it streams lazily.
 - **Blocking** partitions a dimension and drives the whole graph over one block at a time, concatenating the results. Peak memory is a small multiple of one block, however large the total. Every requested output must therefore vary over the partition dimension.
-- **Sharding** partitions the same way, but many processes run the parts concurrently. Each runs an ordinary `conduit run` over its own slice, and a `merge` step reassembles the domain. For Zarr, the shards write into one store created up front.
+- **Sharding** partitions the same way, but many processes run the parts concurrently. Each runs an ordinary `catena run` over its own slice, and a `merge` step reassembles the domain. For Zarr, the shards write into one store created up front.
 
 **Caching** is independent of all four.
 `[cache]` keys each node on a fingerprint of its code and inputs, so changing one parameter recomputes that node and its descendants and reads the rest from disk.

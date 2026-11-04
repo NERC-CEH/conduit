@@ -15,9 +15,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from conduit.config import IOSpec
-from conduit.formats import read_in_group, write_in_group
-from conduit.io import (
+from catena.config import IOSpec
+from catena.formats import read_in_group, write_in_group
+from catena.io import (
     get_final_vars,
     get_outputs,
     load_inputs,
@@ -402,7 +402,7 @@ class TestSingleTimeDim:
 
 
 class TestMissingVars:
-    """A `vars` entry absent from the file is a conduit error, not an xarray one."""
+    """A `vars` entry absent from the file is a catena error, not an xarray one."""
 
     @pytest.fixture
     def input_path(self, tmp_path):
@@ -458,13 +458,13 @@ class TestMissingVars:
 
 
 class TestMissingInputFile:
-    """A missing input file is a conduit error naming every absent path."""
+    """A missing input file is a catena error naming every absent path."""
 
-    def test_raises_conduit_file_not_found(self, tmp_path):
-        from conduit.errors import ConduitFileNotFoundError
+    def test_raises_catena_file_not_found(self, tmp_path):
+        from catena.errors import CatenaFileNotFoundError
 
         specs = {"daily": IOSpec(path=str(tmp_path / "absent.nc"), vars=["var_a"])}
-        with pytest.raises(ConduitFileNotFoundError, match=r"\[inputs\.daily\]"):
+        with pytest.raises(CatenaFileNotFoundError, match=r"\[inputs\.daily\]"):
             load_inputs(specs)
 
     def test_all_missing_files_are_reported_at_once(self, tmp_path):

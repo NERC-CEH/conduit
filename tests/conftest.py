@@ -6,9 +6,9 @@ import xarray as xr
 from synthetic_data import write_synthetic_inputs
 from xarray_annotated.units import set_policy
 
-from conduit.build import build_driver
-from conduit.config import load_config
-from conduit.io import load_inputs
+from catena.build import build_driver
+from catena.config import load_config
+from catena.io import load_inputs
 
 multiprocessing.set_start_method("spawn", force=True)
 set_policy(enabled=False)
@@ -124,7 +124,7 @@ def inexact_units_module():
     import types
     from typing import Annotated
 
-    name = "conduit_test_inexact_units"
+    name = "catena_test_inexact_units"
     mod = types.ModuleType(name)
 
     def metres() -> Annotated[xr.DataArray, "m"]:

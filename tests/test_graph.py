@@ -1,4 +1,4 @@
-"""Tests for `conduit.build_graph` and the styling it applies.
+"""Tests for `catena.build_graph` and the styling it applies.
 
 The heavy post-processing (`relabel_with_units`, `color_edges_by_frequency`,
 `cluster_nodes_by_frequency`) pattern-matches Hamilton's rendered Graphviz body,
@@ -15,9 +15,9 @@ from unittest.mock import MagicMock
 import pytest
 import xarray as xr
 
-from conduit import build_graph
-from conduit.config import load_config
-from conduit.graph import (
+from catena import build_graph
+from catena.config import load_config
+from catena.graph import (
     _import_style_function,
     assign_freq_colors,
     cluster_nodes_by_frequency,
@@ -26,7 +26,7 @@ from conduit.graph import (
     make_style_function,
     relabel_with_units,
 )
-from conduit.graph_style import (
+from catena.graph_style import (
     DEFAULT_PALETTE,
     FREQ_COLOR_CYCLE,
     GraphvizSpec,

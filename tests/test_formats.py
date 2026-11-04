@@ -1,8 +1,8 @@
-"""Tests for conduit.formats — the single file-format registry."""
+"""Tests for catena.formats — the single file-format registry."""
 
 import pytest
 
-from conduit.formats import (
+from catena.formats import (
     FORMATS,
     format_for,
     group_suffixes,

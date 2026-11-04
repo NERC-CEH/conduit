@@ -2,13 +2,13 @@
 
 use_directory_urls = false
 
-site_name = "conduit"
+site_name = "catena"
 site_description = "An opinionated Hamilton + xarray + xarray-annotated foundation for building configurable data pipelines."
 site_author = "Joe Marsh Rossney"
-site_url = "https://NERC-CEH.github.io/conduit"
+site_url = "https://NERC-CEH.github.io/catena"
 
-repo_name = "NERC-CEH/conduit"
-repo_url = "https://github.com/NERC-CEH/conduit"
+repo_name = "NERC-CEH/catena"
+repo_url = "https://github.com/NERC-CEH/catena"
 
 copyright = "Copyright &copy; 2026 The authors"
 
@@ -58,26 +58,26 @@ nav = [
       "reference/cli.md",
       "reference/python-api.md",
       { "Modules" = [
-          "reference/modules/conduit.errors.md",
-          "reference/modules/conduit.config.md",
-          "reference/modules/conduit.specs.md",
-          "reference/modules/conduit.importing.md",
-          "reference/modules/conduit.io.md",
-          "reference/modules/conduit.formats.md",
-          "reference/modules/conduit.build.md",
-          "reference/modules/conduit.nodegen.md",
-          "reference/modules/conduit.transforms.md",
-          "reference/modules/conduit.caching.md",
-          "reference/modules/conduit.blocking.md",
-          "reference/modules/conduit.contract_check.md",
-          "reference/modules/conduit.wiring_check.md",
-          "reference/modules/conduit.input_checks.md",
-          "reference/modules/conduit.pipeline.md",
-          "reference/modules/conduit.graph.md",
-          "reference/modules/conduit.graph_style.md",
-          "reference/modules/conduit.gridded/io.md",
-          "reference/modules/conduit.gridded/spatial.md",
-          "reference/modules/conduit.gridded/cli.md",
+          "reference/modules/catena.errors.md",
+          "reference/modules/catena.config.md",
+          "reference/modules/catena.specs.md",
+          "reference/modules/catena.importing.md",
+          "reference/modules/catena.io.md",
+          "reference/modules/catena.formats.md",
+          "reference/modules/catena.build.md",
+          "reference/modules/catena.nodegen.md",
+          "reference/modules/catena.transforms.md",
+          "reference/modules/catena.caching.md",
+          "reference/modules/catena.blocking.md",
+          "reference/modules/catena.contract_check.md",
+          "reference/modules/catena.wiring_check.md",
+          "reference/modules/catena.input_checks.md",
+          "reference/modules/catena.pipeline.md",
+          "reference/modules/catena.graph.md",
+          "reference/modules/catena.graph_style.md",
+          "reference/modules/catena.gridded/io.md",
+          "reference/modules/catena.gridded/spatial.md",
+          "reference/modules/catena.gridded/cli.md",
       ]},
   ]},
 ]

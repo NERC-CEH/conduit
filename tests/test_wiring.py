@@ -1,4 +1,4 @@
-"""Tests for the before-compute wiring check (`conduit.wiring_check`)."""
+"""Tests for the before-compute wiring check (`catena.wiring_check`)."""
 
 import sys
 import types
@@ -8,8 +8,8 @@ import xarray as xr
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-import conduit
-from conduit.wiring_check import WiringWarning, check_wiring
+import catena
+from catena.wiring_check import WiringWarning, check_wiring
 
 
 def _da():
@@ -116,8 +116,8 @@ vars = ["scaled"]
 suffix = ""
 """
         )
-        conduit.dry_run(config)
-        report = conduit.run(config)
+        catena.dry_run(config)
+        report = catena.run(config)
         assert report.outputs["daily"]["scaled"].values.tolist() == [6.0, 6.0, 6.0]
 
 

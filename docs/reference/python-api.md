@@ -7,24 +7,24 @@ icon: lucide/square-function
 
 ## What most pipelines need
 
-These are the names used in [Drive conduit from Python](../guides/run/drive-from-python.md), in the order a run uses them.
+These are the names used in [Drive catena from Python](../guides/run/drive-from-python.md), in the order a run uses them.
 
 | Name | Step |
 | --- | --- |
-| [`Config`](modules/conduit.config.md#conduit.config.Config) | A config as a Python dict, or loaded from a file. `.parse()` validates it. |
-| [`load_config`](modules/conduit.config.md#conduit.config.load_config) | Load and parse a TOML file in one call. |
-| [`ParsedConfig`](modules/conduit.specs.md#conduit.specs.ParsedConfig) | What you get back: one spec per config section. |
-| [`build_driver`](modules/conduit.build.md#conduit.build.build_driver) | Build the Hamilton driver, and run the contract check. |
-| [`load_inputs`](modules/conduit.io.md#conduit.io.load_inputs) | Open the input files, keyed by node name. |
-| [`get_final_vars`](modules/conduit.io.md#conduit.io.get_final_vars) | The node names to ask `dr.execute` for. |
-| [`get_outputs`](modules/conduit.io.md#conduit.io.get_outputs) | Merge the executed nodes into per-section datasets. |
-| [`save_outputs`](modules/conduit.io.md#conduit.io.save_outputs) | Write those datasets where the config says. |
-| [`run`](modules/conduit.pipeline.md#conduit.pipeline.run) | All of the above, returning a [`RunReport`](modules/conduit.pipeline.md#conduit.pipeline.RunReport). |
-| [`dry_run`](modules/conduit.pipeline.md#conduit.pipeline.dry_run) | The same validation with nothing computed or written. |
-| [`build_graph`](modules/conduit.graph.md#conduit.graph.build_graph) | The styled `graphviz.Digraph` that `conduit graph` writes. |
+| [`Config`](modules/catena.config.md#catena.config.Config) | A config as a Python dict, or loaded from a file. `.parse()` validates it. |
+| [`load_config`](modules/catena.config.md#catena.config.load_config) | Load and parse a TOML file in one call. |
+| [`ParsedConfig`](modules/catena.specs.md#catena.specs.ParsedConfig) | What you get back: one spec per config section. |
+| [`build_driver`](modules/catena.build.md#catena.build.build_driver) | Build the Hamilton driver, and run the contract check. |
+| [`load_inputs`](modules/catena.io.md#catena.io.load_inputs) | Open the input files, keyed by node name. |
+| [`get_final_vars`](modules/catena.io.md#catena.io.get_final_vars) | The node names to ask `dr.execute` for. |
+| [`get_outputs`](modules/catena.io.md#catena.io.get_outputs) | Merge the executed nodes into per-section datasets. |
+| [`save_outputs`](modules/catena.io.md#catena.io.save_outputs) | Write those datasets where the config says. |
+| [`run`](modules/catena.pipeline.md#catena.pipeline.run) | All of the above, returning a [`RunReport`](modules/catena.pipeline.md#catena.pipeline.RunReport). |
+| [`dry_run`](modules/catena.pipeline.md#catena.pipeline.dry_run) | The same validation with nothing computed or written. |
+| [`build_graph`](modules/catena.graph.md#catena.graph.build_graph) | The styled `graphviz.Digraph` that `catena graph` writes. |
 
 Contracts are declared with decorators and markers from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), which you import from there.
-See [its API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) for the signatures, and [Declaring contracts](../guides/nodes/contracts.md) for how conduit uses them.
+See [its API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) for the signatures, and [Declaring contracts](../guides/nodes/contracts.md) for how catena uses them.
 
 ## Everything else
 
@@ -34,12 +34,12 @@ Each module's page renders its docstring and the signatures of everything public
 
 | Module | Contents |
 | --- | --- |
-| [`conduit.errors`](modules/conduit.errors.md) | The exceptions conduit raises on purpose, each keeping the stdlib type a caller would catch. |
-| [`conduit.config`](modules/conduit.config.md) | TOML file to `ParsedConfig`: section dispatch, fan-out expansion, path resolution. |
-| [`conduit.specs`](modules/conduit.specs.md) | One dataclass per config section, each validating itself. |
-| [`conduit.importing`](modules/conduit.importing.md) | Resolving an `_import_path` to a module: dotted names, and `.py` files relative to the config. |
-| [`conduit.io`](modules/conduit.io.md) | Loading inputs and saving outputs, outside the DAG. |
-| [`conduit.formats`](modules/conduit.formats.md) | The file-format registry: which reader, which writer, what a format supports. |
+| [`catena.errors`](modules/catena.errors.md) | The exceptions catena raises on purpose, each keeping the stdlib type a caller would catch. |
+| [`catena.config`](modules/catena.config.md) | TOML file to `ParsedConfig`: section dispatch, fan-out expansion, path resolution. |
+| [`catena.specs`](modules/catena.specs.md) | One dataclass per config section, each validating itself. |
+| [`catena.importing`](modules/catena.importing.md) | Resolving an `_import_path` to a module: dotted names, and `.py` files relative to the config. |
+| [`catena.io`](modules/catena.io.md) | Loading inputs and saving outputs, outside the DAG. |
+| [`catena.formats`](modules/catena.formats.md) | The file-format registry: which reader, which writer, what a format supports. |
 
 ### The DAG
 
@@ -47,27 +47,27 @@ Everything that touches a Hamilton `Driver` or graph object.
 
 | Module | Contents |
 | --- | --- |
-| [`conduit.build`](modules/conduit.build.md) | Building Hamilton drivers from configured module lists. |
-| [`conduit.nodegen`](modules/conduit.nodegen.md) | Generating Hamilton modules from `[[node]]` entries. |
-| [`conduit.transforms`](modules/conduit.transforms.md) | Functions that `[[node]]` and preset config can apply to a node's inputs. |
-| [`conduit.caching`](modules/conduit.caching.md) | Content-based cache keys for `xarray` objects. |
-| [`conduit.blocking`](modules/conduit.blocking.md) | Executing the driver one block of a dimension at a time. |
+| [`catena.build`](modules/catena.build.md) | Building Hamilton drivers from configured module lists. |
+| [`catena.nodegen`](modules/catena.nodegen.md) | Generating Hamilton modules from `[[node]]` entries. |
+| [`catena.transforms`](modules/catena.transforms.md) | Functions that `[[node]]` and preset config can apply to a node's inputs. |
+| [`catena.caching`](modules/catena.caching.md) | Content-based cache keys for `xarray` objects. |
+| [`catena.blocking`](modules/catena.blocking.md) | Executing the driver one block of a dimension at a time. |
 
 ### Validation
 
 | Module | Contents |
 | --- | --- |
-| [`conduit.contract_check`](modules/conduit.contract_check.md) | The whole-DAG, before-compute contract check. |
-| [`conduit.wiring_check`](modules/conduit.wiring_check.md) | Checking the required inputs against the ones the config loads. |
-| [`conduit.input_checks`](modules/conduit.input_checks.md) | Input-compatibility predicates, the `CHECKS` registry, and the runner. |
+| [`catena.contract_check`](modules/catena.contract_check.md) | The whole-DAG, before-compute contract check. |
+| [`catena.wiring_check`](modules/catena.wiring_check.md) | Checking the required inputs against the ones the config loads. |
+| [`catena.input_checks`](modules/catena.input_checks.md) | Input-compatibility predicates, the `CHECKS` registry, and the runner. |
 
 ### Running and visualising
 
 | Module | Contents |
 | --- | --- |
-| [`conduit.pipeline`](modules/conduit.pipeline.md) | `run` and `dry_run`, and the reports they return. |
-| [`conduit.graph`](modules/conduit.graph.md) | `build_graph`, and the frequency clustering and colouring it applies. |
-| [`conduit.graph_style`](modules/conduit.graph_style.md) | The `GraphvizSpec` defaults, and the TOML override `conduit graph --style` reads. |
+| [`catena.pipeline`](modules/catena.pipeline.md) | `run` and `dry_run`, and the reports they return. |
+| [`catena.graph`](modules/catena.graph.md) | `build_graph`, and the frequency clustering and colouring it applies. |
+| [`catena.graph_style`](modules/catena.graph_style.md) | The `GraphvizSpec` defaults, and the TOML override `catena graph --style` reads. |
 
 ### Gridded
 
@@ -75,6 +75,6 @@ Installed with the `geo` extra, and imported only when needed.
 
 | Module | Contents |
 | --- | --- |
-| [`conduit.gridded.io`](modules/conduit.gridded/io.md) | CRS-aware stacking, parallel Zarr stores, subset merges. |
-| [`conduit.gridded.spatial`](modules/conduit.gridded/spatial.md) | Stacking a `(y, x)` grid into a 1-D `pixel` dimension. |
-| [`conduit.gridded.cli`](modules/conduit.gridded/cli.md) | The `conduit gridded` subcommands. |
+| [`catena.gridded.io`](modules/catena.gridded/io.md) | CRS-aware stacking, parallel Zarr stores, subset merges. |
+| [`catena.gridded.spatial`](modules/catena.gridded/spatial.md) | Stacking a `(y, x)` grid into a 1-D `pixel` dimension. |
+| [`catena.gridded.cli`](modules/catena.gridded/cli.md) | The `catena gridded` subcommands. |

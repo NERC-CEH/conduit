@@ -1,11 +1,11 @@
-"""Unit tests for conduit.config."""
+"""Unit tests for catena.config."""
 
 from pathlib import Path
 
 import pytest
 
-from conduit import config as config_module
-from conduit.config import (
+from catena import config as config_module
+from catena.config import (
     AnnotationPolicySpec,
     Config,
     IOSpec,
@@ -13,7 +13,7 @@ from conduit.config import (
     ParsedConfig,
     load_config,
 )
-from conduit.errors import ConduitValueError
+from catena.errors import CatenaValueError
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -188,7 +188,7 @@ class TestPathResolution:
         cfg = tmp_path / "config.toml"
         cfg.write_text(
             '[inputs.daily]\npath = "data/daily.nc"\nvars = ["t"]\n\n'
-            '[cache]\npath = ".conduit_cache"\n'
+            '[cache]\npath = ".catena_cache"\n'
         )
         config = Config.load(cfg)
 
@@ -201,7 +201,7 @@ class TestPathResolution:
         parsed = config.parse()
         assert Path(parsed.input_specs["daily"].path) == tmp_path / "data" / "daily.nc"
         assert parsed.cache_spec is not None
-        assert Path(parsed.cache_spec.path) == tmp_path / ".conduit_cache"
+        assert Path(parsed.cache_spec.path) == tmp_path / ".catena_cache"
 
     def test_loads_leaves_paths_untouched(self):
         """Config.loads has no base directory, so relative paths stay CWD-relative."""
@@ -224,7 +224,7 @@ class TestValidation:
         config = Config({"mymodel": {"_import_path": "no_such_pkg.mod"}})
 
         def _build():
-            from conduit.build import build_driver
+            from catena.build import build_driver
 
             parsed = config.parse()
             build_driver(
@@ -972,7 +972,7 @@ class TestRecognisedSectionsStayInSync:
         import re
         from pathlib import Path
 
-        from conduit.specs import RECOGNISED_SECTIONS
+        from catena.specs import RECOGNISED_SECTIONS
 
         source = Path(config_module.__file__).read_text()
         popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
@@ -982,7 +982,7 @@ class TestRecognisedSectionsStayInSync:
         import re
         from pathlib import Path
 
-        from conduit.specs import RECOGNISED_SECTIONS
+        from catena.specs import RECOGNISED_SECTIONS
 
         source = Path(config_module.__file__).read_text()
         popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
@@ -998,9 +998,9 @@ class TestAStrayTopLevelKey:
     """
 
     def test_names_the_key(self):
-        with pytest.raises(ConduitValueError, match="n_workers"):
+        with pytest.raises(CatenaValueError, match="n_workers"):
             Config({"n_workers": 4}).parse()
 
-    def test_is_a_conduit_error(self):
-        with pytest.raises(ConduitValueError):
+    def test_is_a_catena_error(self):
+        with pytest.raises(CatenaValueError):
             Config({"point_dims": "pixel"}).parse()

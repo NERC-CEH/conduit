@@ -1,3 +1,0 @@
-# `blocking`
-
-::: conduit.blocking

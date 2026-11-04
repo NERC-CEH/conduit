@@ -1,12 +1,12 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "conduit[all] @ git+https://github.com/NERC-CEH/conduit",
+#     "ukceh-catena[all] @ git+https://github.com/NERC-CEH/catena",
 #     "marimo",
 # ]
 # ///
 
-"""Executable walkthrough of the smallest complete conduit pipeline."""
+"""Executable walkthrough of the smallest complete catena pipeline."""
 
 import marimo
 
@@ -45,7 +45,7 @@ def _(mo):
 
     It derives a temperature anomaly from 90 days of daily temperature at three sites, then reduces the anomaly to a per-site range.
 
-    Everything below drives the library directly, so nothing here needs the `conduit` command installed.
+    Everything below drives the library directly, so nothing here needs the `catena` command installed.
     """)
     return
 
@@ -56,16 +56,16 @@ def _(mo):
     ## The input
 
     `make_data.py` writes a deterministic NetCDF file next to this notebook.
-    The `units` attribute on the variable is what lets conduit check the pipeline's unit contracts against the file before running anything.
+    The `units` attribute on the variable is what lets catena check the pipeline's unit contracts against the file before running anything.
     """)
     return
 
 
 @app.cell
 def _(data_dir, recipe_dir, rel):
-    from conduit.importing import import_user_module
+    from catena.importing import import_user_module
 
-    # make_data.py sits next to this notebook. This is the same loader conduit uses
+    # make_data.py sits next to this notebook. This is the same loader catena uses
     # for an `_import_path` naming a .py file, so nothing goes on sys.path.
     make_data = import_user_module(str(recipe_dir / "make_data.py"))
 
@@ -105,9 +105,9 @@ def _(config_path, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## The graph conduit builds
+    ## The graph catena builds
 
-    `conduit.build_graph` returns a `graphviz.Digraph` without running anything, so it renders inline.
+    `catena.build_graph` returns a `graphviz.Digraph` without running anything, so it renders inline.
     Node labels carry the declared units, so a wiring mistake is often visible before a dry run reports it.
     """)
     return
@@ -115,11 +115,11 @@ def _(mo):
 
 @app.cell
 def _(config_path):
-    import conduit
+    import catena
 
-    graph = conduit.build_graph(config_path)
+    graph = catena.build_graph(config_path)
     graph
-    return (conduit,)
+    return (catena,)
 
 
 @app.cell(hide_code=True)
@@ -127,7 +127,7 @@ def _(mo):
     mo.md("""
     ## Validate, then run
 
-    `conduit.dry_run` parses the config, opens the input headers, builds the DAG and checks every contract, without executing a node.
+    `catena.dry_run` parses the config, opens the input headers, builds the DAG and checks every contract, without executing a node.
     Only then is it worth spending compute.
     It returns a `DryRunReport`, one `Stage` per thing it checked.
     """)
@@ -135,8 +135,8 @@ def _(mo):
 
 
 @app.cell
-def _(conduit, config_path, mo):
-    dry = conduit.dry_run(config_path)
+def _(catena, config_path, mo):
+    dry = catena.dry_run(config_path)
 
     mo.md(
         "| Stage | Status | Detail |\n|---|---|---|\n"
@@ -149,8 +149,8 @@ def _(conduit, config_path, mo):
 
 
 @app.cell
-def _(conduit, config_path, mo, rel):
-    run = conduit.run(config_path)
+def _(catena, config_path, mo, rel):
+    run = catena.run(config_path)
 
     mo.md(
         f"Completed in {run.elapsed:.2f}s.\n\n"
@@ -175,7 +175,7 @@ def _(mo, rel, result, run):
 
     written = run.written[0].path
     with xr.open_dataset(written) as saved:
-        sha256 = saved.attrs["conduit_config_sha256"]
+        sha256 = saved.attrs["catena_config_sha256"]
 
     mo.md(f"""
     ## The output
@@ -185,7 +185,7 @@ def _(mo, rel, result, run):
     - `temperature_anomaly` — {result["temperature_anomaly"].attrs.get("units")}
     - `anomaly_range` — {result["anomaly_range"].attrs.get("units")}
 
-    Provenance is stamped as the file is written rather than onto the returned dataset, so it is read back from `{rel(written)}`: the config text, and `conduit_config_sha256 = {sha256[:16]}…`
+    Provenance is stamped as the file is written rather than onto the returned dataset, so it is read back from `{rel(written)}`: the config text, and `catena_config_sha256 = {sha256[:16]}…`
     """)
     return
 

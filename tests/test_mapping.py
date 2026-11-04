@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from conduit.config import IOSpec
-from conduit.io import (
+from catena.config import IOSpec
+from catena.io import (
     get_final_vars,
     get_outputs,
     load_inputs,
@@ -81,7 +81,7 @@ class TestProvenance:
         ds = xr.Dataset({"v": (("x",), [1.0, 2.0])})
         specs = {"static": IOSpec(path=str(out), vars=["v"])}
         save_outputs(
-            {"static": ds}, specs, provenance={"conduit_config_sha256": "abc123"}
+            {"static": ds}, specs, provenance={"catena_config_sha256": "abc123"}
         )
         reloaded = xr.open_dataset(out)
-        assert reloaded.attrs["conduit_config_sha256"] == "abc123"
+        assert reloaded.attrs["catena_config_sha256"] == "abc123"

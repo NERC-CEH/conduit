@@ -1,9 +1,9 @@
 """Tests for modules an installed package registers by entry point.
 
-A downstream package declares its own modules under the ``conduit.modules``
+A downstream package declares its own modules under the ``catena.modules``
 entry-point group, and a config may then name one as a bare section with no
 ``_import_path``. These tests build `importlib.metadata.EntryPoint` objects
-directly rather than installing packages, so they exercise conduit's handling of
+directly rather than installing packages, so they exercise catena's handling of
 what the metadata says without a real install.
 """
 
@@ -11,10 +11,10 @@ from importlib.metadata import EntryPoint
 
 import pytest
 
-import conduit
-from conduit.config import Config
-from conduit.errors import ConduitValueError
-from conduit.importing import (
+import catena
+from catena.config import Config
+from catena.errors import CatenaValueError
+from catena.importing import (
     ENTRY_POINT_GROUP,
     clear_registry_cache,
     discover_registered_modules,
@@ -41,7 +41,7 @@ def registry(monkeypatch):
 
     def _install(*entries):
         monkeypatch.setattr(
-            "conduit.importing.entry_points", lambda group=None: list(entries)
+            "catena.importing.entry_points", lambda group=None: list(entries)
         )
         clear_registry_cache()
 
@@ -52,13 +52,13 @@ def registry(monkeypatch):
 
 class TestDiscovery:
     def test_registered_name_is_found(self, registry):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
+        registry(_entry_point("transforms", "catena.transforms", "science"))
         found = registered_module("transforms")
         assert found is not None
-        assert found.import_path == "conduit.transforms"
+        assert found.import_path == "catena.transforms"
 
     def test_records_the_distribution(self, registry):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
+        registry(_entry_point("transforms", "catena.transforms", "science"))
         found = registered_module("transforms")
         assert found is not None
         assert found.distribution == "science"
@@ -85,11 +85,11 @@ class TestCollisions:
         )
 
     def test_looking_up_the_clashing_name_is_an_error(self, clashing):
-        with pytest.raises(ConduitValueError, match="both register"):
+        with pytest.raises(CatenaValueError, match="both register"):
             registered_module("transforms")
 
     def test_the_error_names_both_packages(self, clashing):
-        with pytest.raises(ConduitValueError, match="'science' and 'other'"):
+        with pytest.raises(CatenaValueError, match="'science' and 'other'"):
             registered_module("transforms")
 
     def test_discovery_itself_does_not_raise(self, clashing):
@@ -111,7 +111,7 @@ class TestCollisions:
 
 
 class TestUnusableRegistrations:
-    """A registration conduit could never honour is dropped with a warning.
+    """A registration catena could never honour is dropped with a warning.
 
     Warned rather than raised: the mistake belongs to the package author, and
     erroring would break configs belonging to anyone who merely has it installed.
@@ -122,7 +122,7 @@ class TestUnusableRegistrations:
     )
     def test_a_recognised_section_cannot_be_registered(self, registry, name):
         registry(_entry_point(name, "science.thing", "science"))
-        with pytest.warns(UserWarning, match="conduit parses itself"):
+        with pytest.warns(UserWarning, match="catena parses itself"):
             assert discover_registered_modules() == {}
 
     def test_the_warning_names_the_package(self, registry):
@@ -149,42 +149,42 @@ class TestFailingRegisteredModule:
         registry(_entry_point("diagnostics", "package.not.installed", "science"))
         cfg = tmp_path / "config.toml"
         cfg.write_text("[diagnostics]\n")
-        with pytest.raises(ConduitValueError, match="'science'") as excinfo:
-            conduit.dry_run(cfg)
+        with pytest.raises(CatenaValueError, match="'science'") as excinfo:
+            catena.dry_run(cfg)
         assert "_import_path' in the config" not in str(excinfo.value)
 
 
 class TestThroughTheConfig:
     def test_bare_section_resolves(self, registry):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
+        registry(_entry_point("transforms", "catena.transforms", "science"))
         parsed = Config({"transforms": {}}).parse()
-        assert parsed.modules == ["conduit.transforms"]
+        assert parsed.modules == ["catena.transforms"]
 
     def test_parsed_config_records_the_source(self, registry):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
+        registry(_entry_point("transforms", "catena.transforms", "science"))
         [source] = Config({"transforms": {}}).parse().registered_modules
         assert (source.section, source.distribution) == ("transforms", "science")
 
     def test_section_params_still_become_config(self, registry):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
+        registry(_entry_point("transforms", "catena.transforms", "science"))
         parsed = Config({"transforms": {"floor": 2.0}}).parse()
         assert parsed.driver_config["floor"] == 2.0
 
     def test_explicit_import_path_wins(self, registry):
         """A config can never be silently redirected by something installed."""
         registry(_entry_point("transforms", "science.transforms", "science"))
-        parsed = Config({"transforms": {"_import_path": "conduit.io"}}).parse()
-        assert parsed.modules == ["conduit.io"]
+        parsed = Config({"transforms": {"_import_path": "catena.io"}}).parse()
+        assert parsed.modules == ["catena.io"]
         assert parsed.registered_modules == []
 
     def test_unknown_section_says_none_are_registered(self, registry):
         registry()
-        with pytest.raises(ConduitValueError, match="none is installed here"):
+        with pytest.raises(CatenaValueError, match="none is installed here"):
             Config({"mystery": {}}).parse()
 
     def test_unknown_section_lists_the_registered_names(self, registry):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
-        with pytest.raises(ConduitValueError, match="transforms \\(from science\\)"):
+        registry(_entry_point("transforms", "catena.transforms", "science"))
+        with pytest.raises(CatenaValueError, match="transforms \\(from science\\)"):
             Config({"mystery": {}}).parse()
 
 
@@ -206,33 +206,33 @@ vars = ["temperature"]
         return cfg
 
     def test_dry_run_reports_the_source(self, registry, config_toml):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
-        report = conduit.dry_run(config_toml)
+        registry(_entry_point("transforms", "catena.transforms", "science"))
+        report = catena.dry_run(config_toml)
         [config_stage] = [s for s in report.stages if s.name == "config"]
         assert "provided by science" in config_stage.detail
 
     def test_dry_run_does_not_report_it_as_a_warning(self, registry, config_toml):
         """`findings` render with a warning glyph; provenance is information."""
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
+        registry(_entry_point("transforms", "catena.transforms", "science"))
         [config_stage] = [
-            s for s in conduit.dry_run(config_toml).stages if s.name == "config"
+            s for s in catena.dry_run(config_toml).stages if s.name == "config"
         ]
         assert config_stage.findings == ()
 
     def test_run_logs_the_source(self, registry, config_toml, caplog):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
-        with caplog.at_level("INFO", logger="conduit.pipeline"):
-            conduit.run(config_toml)
+        registry(_entry_point("transforms", "catena.transforms", "science"))
+        with caplog.at_level("INFO", logger="catena.pipeline"):
+            catena.run(config_toml)
         assert any("provided by science" in r.getMessage() for r in caplog.records)
 
     def test_nothing_reported_without_a_registry(self, config_toml, registry):
-        registry(_entry_point("transforms", "conduit.transforms", "science"))
+        registry(_entry_point("transforms", "catena.transforms", "science"))
         cfg = config_toml.read_text().replace(
-            "[transforms]\n", '[transforms]\n_import_path = "conduit.transforms"\n'
+            "[transforms]\n", '[transforms]\n_import_path = "catena.transforms"\n'
         )
         config_toml.write_text(cfg)
         [config_stage] = [
-            s for s in conduit.dry_run(config_toml).stages if s.name == "config"
+            s for s in catena.dry_run(config_toml).stages if s.name == "config"
         ]
         assert config_stage.detail == "config parsed"
 
@@ -240,7 +240,7 @@ vars = ["temperature"]
 class TestARealInstalledDistribution:
     """The same thing, driven by real packaging metadata rather than a fake.
 
-    The tests above monkeypatch `entry_points`, so they check conduit's handling of
+    The tests above monkeypatch `entry_points`, so they check catena's handling of
     what the metadata says without checking that real metadata is read correctly.
     This builds a ``.dist-info`` directory on ``sys.path`` and lets
     `importlib.metadata` discover it, which is the mechanism a downstream package
@@ -255,7 +255,7 @@ class TestARealInstalledDistribution:
             "Metadata-Version: 2.1\nName: science-demo\nVersion: 0.1\n"
         )
         (dist_info / "entry_points.txt").write_text(
-            "[conduit.modules]\ndiagnostics = science_demo.diagnostics\n"
+            "[catena.modules]\ndiagnostics = science_demo.diagnostics\n"
         )
         package = tmp_path / "science_demo"
         package.mkdir()
@@ -298,5 +298,5 @@ path = "{tmp_path / "out.nc"}"
 vars = ["bias"]
 """
         )
-        report = conduit.run(cfg)
+        report = catena.run(cfg)
         assert "bias" in report.outputs["daily"]

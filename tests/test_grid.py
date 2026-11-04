@@ -3,15 +3,15 @@ Tests for grid (lat/lon) computation in load_inputs().
 
 The grid computation previously lived in pipeline/grid.py as Hamilton nodes.
 It now lives inside load_inputs() as plain function calls, using
-_compute_lat_lon() and _check_common_grid() from conduit.io.
+_compute_lat_lon() and _check_common_grid() from catena.io.
 """
 
 import numpy as np
 import pytest
 
-from conduit.config import IOSpec
-from conduit.gridded.io import MisalignedGridError, _check_common_grid
-from conduit.io import load_inputs
+from catena.config import IOSpec
+from catena.gridded.io import MisalignedGridError, _check_common_grid
+from catena.io import load_inputs
 
 
 class TestCheckCommonGrid:
