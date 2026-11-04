@@ -160,8 +160,9 @@ def assign_freq_colors(
     return colors
 
 
-# A single ``<td>name</td><td>DataArray</td>`` cell pair inside an input table.
-_INPUT_ROW_RE = re.compile(r"<td>(?P<name>[^<]+)</td><td>DataArray</td>")
+# A single ``<td>name</td><td>type</td>`` cell pair inside an input table. The type is
+# not always ``DataArray``: an untyped second consumer widens it to ``Any``.
+_INPUT_ROW_RE = re.compile(r"<td>(?P<name>[^<]+)</td><td>[^<]*</td>")
 
 
 def relabel_with_units(digraph: "graphviz.Digraph", unit_map: dict[str, str]) -> None:
@@ -169,10 +170,9 @@ def relabel_with_units(digraph: "graphviz.Digraph", unit_map: dict[str, str]) ->
 
     Hamilton renders every function node's label as ``name`` over the type string
     ``DataArray`` (it strips the ``Annotated`` wrapper), and groups inputs into
-    tables of ``name``/``DataArray`` rows.  Since virtually every node is a
-    ``DataArray``, that type text is noise; here we swap it for the declared unit
-    in both places.  Nodes with no declared unit keep their original
-    (informative) type.
+    tables of ``name``/type rows.  Since virtually every node is a ``DataArray``,
+    that type text is noise; here we swap it for the declared unit in both places.
+    Nodes with no declared unit keep their original (informative) type.
     """
 
     def _row(match: "re.Match[str]") -> str:

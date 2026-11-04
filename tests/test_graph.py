@@ -198,6 +198,42 @@ class TestGraphPostProcessing:
         # rows for inputs without a declared unit are untouched
         assert "<td>latitude</td><td>DataArray</td>" in digraph.body[0]
 
+    def test_relabel_input_row_of_a_widened_type(self):
+        """An untyped second consumer makes Hamilton render an input as ``Any``."""
+        row = "<tr><td>precipitation</td><td>Any</td></tr>"
+        other = "<tr><td>scale</td><td>Any</td></tr>"
+        digraph = SimpleNamespace(
+            body=[f'\t_inputs [label=<<table border="0">{row}{other}</table>>]\n']
+        )
+        relabel_with_units(digraph, {"precipitation": "mm"})  # type: ignore[arg-type]
+        assert "<td>precipitation</td><td>mm</td>" in digraph.body[0]
+        assert "<td>scale</td><td>Any</td>" in digraph.body[0]
+
+    @requires_dot
+    def test_input_with_an_untyped_consumer_shows_its_unit(self, tmp_path):
+        (tmp_path / "typed.py").write_text(
+            "from typing import Annotated\n\n"
+            "import xarray as xr\n"
+            "from xarray_annotated.units import declare_units\n\n\n"
+            "@declare_units\n"
+            "def wet(precipitation: Annotated[xr.DataArray, 'mm']) -> xr.DataArray:\n"
+            "    return precipitation\n"
+        )
+        config = tmp_path / "config.toml"
+        config.write_text(
+            """\
+[typed]
+_import_path = "typed.py"
+
+[[node]]
+name = "doubled"
+inputs = ["precipitation"]
+expression = "precipitation * 2"
+"""
+        )
+        source = build_graph(config).source
+        assert "<td>precipitation</td><td>mm</td>" in source
+
     def test_color_edges_by_source_frequency(self):
         digraph = SimpleNamespace(
             body=[
