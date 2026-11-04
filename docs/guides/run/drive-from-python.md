@@ -121,4 +121,25 @@ results = dr.execute(
 `get_outputs()` merges the flat results into one `Dataset` per output section, ready for plotting or analysis.
 `save_outputs()` writes them and returns the path written for each section; skip it if you only need the datasets in memory.
 
+## Without files
+
+A config and its file I/O are optional.
+`build_driver()` returns a plain Hamilton `Driver`, so give it your modules and pass the inputs in memory:
+
+```python
+from conduit import build_driver
+
+dr = build_driver(modules=["mypackage.indices"], config={"floor": 1e-4})
+results = dr.execute(
+    ["aridity_index_daily"],
+    inputs={
+        "precipitation_daily": precipitation,
+        "evapotranspiration_daily": evapotranspiration,
+    },
+)
+```
+
+`results` maps each requested node to its `DataArray`.
+The contract check still runs when the driver is built, and everything else is [Hamilton's API](https://hamilton.apache.org/reference/drivers/Driver/).
+
 The [Python API](../../reference/python-api.md) page links every name used here to its signature.
