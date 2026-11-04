@@ -44,17 +44,14 @@ ConfigSource = str | Path | ParsedConfig
 def prepare_config(config: ConfigSource) -> tuple[ParsedConfig, Path | None]:
     """Resolve a config source to a parsed config and its source path, if any.
 
-    Accepts a path to a TOML file or an already-parsed `ParsedConfig`. Applies the
-    config's ``[annotations]`` policy before returning, so every contract check
-    downstream reads the policy the config asked for. The returned path is ``None``
-    for a `ParsedConfig`, which has no file to stamp provenance from.
+    Accepts a path to a TOML file or an already-parsed `ParsedConfig`. The returned
+    path is ``None`` for a `ParsedConfig`, which has no file to stamp provenance from.
     """
     if isinstance(config, ParsedConfig):
         parsed, config_file = config, None
     else:
         config_file = Path(config)
         parsed = load_config(config_file)
-    parsed.annotations.apply()
     return parsed, config_file
 
 
@@ -236,15 +233,13 @@ class DryRunReport:
     """The outcome of a dry run.
 
     A hard failure raises out of `dry_run`, so a report exists only for a pipeline
-    that passed. ``findings`` on the individual stages are the soft issues the
-    active contract policy allowed through.
+    that passed. ``findings`` on the individual stages are soft issues, such as an
+    input no node consumes.
     """
 
     #: The config's path, or ``None`` when `dry_run` was given a `ParsedConfig`.
     config_file: Path | None
     stages: tuple[Stage, ...] = ()
-    #: One line per contract policy object, keyed by axis (units/schema/temporal).
-    policy: dict[str, str] = field(default_factory=dict)
 
 
 def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunReport:
@@ -257,9 +252,12 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     against what the DAG declares, and confirm the output destinations are
     writable.
 
-    Hard failures raise; soft issues follow the active policy and are collected
-    into `Stage.findings`. No model runs and nothing is written.
+    Hard failures raise; soft issues are collected into `Stage.findings`. Contract
+    stages report ``skipped`` when `xarray-annotated` is switched off. No model runs
+    and nothing is written.
     """
+    from xarray_annotated._config import resolve_enabled
+
     from .contract_check import check_input_contracts
 
     parsed, config_file = prepare_config(config)
@@ -310,7 +308,16 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
         base=parsed.base,
         registered=parsed.registered_modules,
     )
-    stages.append(Stage("dag", "ok", "DAG built (static contract check passed)"))
+    checking = resolve_enabled()
+    stages.append(
+        Stage(
+            "dag",
+            "ok",
+            "DAG built (static contract check passed)"
+            if checking
+            else "DAG built (contract checks switched off)",
+        )
+    )
 
     if parsed.output_specs:
         target_vars = get_final_vars(parsed.output_specs)
@@ -335,19 +342,13 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
             )
         )
 
-    # Capture warn-mode contract findings so they surface in the report rather
-    # than scattering across stderr; strict-mode findings raise straight out.
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    if checking:
         check_input_contracts(dr, inputs)
-    detail = (
-        f"input contracts checked ({len(caught)} warning(s))"
-        if caught
-        else "input contracts validated"
-    )
-    stages.append(
-        Stage("contracts", "ok", detail, tuple(str(w.message) for w in caught))
-    )
+        stages.append(Stage("contracts", "ok", "input contracts validated"))
+    else:
+        stages.append(
+            Stage("contracts", "skipped", "input contracts: skipped (switched off)")
+        )
 
     if parsed.output_specs:
         assert_output_paths_writable(parsed.output_specs, parsed.subset_spec)
@@ -367,9 +368,7 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
             )
         )
 
-    return DryRunReport(
-        config_file=config_file, stages=tuple(stages), policy=_policy_summary()
-    )
+    return DryRunReport(config_file=config_file, stages=tuple(stages))
 
 
 def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
@@ -382,28 +381,6 @@ def _registered_sources(parsed: ParsedConfig) -> tuple[str, ...]:
         f"[{mod.section}] provided by {mod.distribution}: {mod.import_path}"
         for mod in parsed.registered_modules
     )
-
-
-def _policy_summary() -> dict[str, str]:
-    """Summarise the active contract policy, one entry per policy object.
-
-    The three axes come from three separate ``get_policy()`` calls, so they are
-    reported that way rather than run together into one line. The combined form
-    ran past 110 characters and buried ``on_inexact`` in the middle of it.
-    """
-    from xarray_annotated.schema import get_policy as schema_get_policy
-    from xarray_annotated.temporal import get_policy as temporal_get_policy
-    from xarray_annotated.units import get_policy as units_get_policy
-
-    units = units_get_policy()
-    return {
-        "units": (
-            f"enabled={units.enabled}  on_missing={units.on_missing}  "
-            f"on_inexact={units.on_inexact}"
-        ),
-        "schema": f"on_mismatch={schema_get_policy().on_mismatch}",
-        "temporal": f"on_uninferable={temporal_get_policy().on_uninferable}",
-    }
 
 
 def _run_input_checks(parsed: ParsedConfig) -> int:

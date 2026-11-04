@@ -129,7 +129,7 @@ Each entry uses **either** an `expression` **or** (`_import_path` + `function`),
 [[node]]
 name = "aridity_index_daily"
 inputs = ["precipitation_daily", "evapotranspiration_daily"]
-expression = "precipitation_daily / evapotranspiration_daily"
+expression = "(precipitation_daily / evapotranspiration_daily).assign_attrs(units='1')"
 units = "1"
 ```
 
@@ -137,11 +137,11 @@ units = "1"
 |-----|-------------|
 | `name` | **Required.** The node this entry produces. |
 | `inputs` | **Required.** Node names this entry consumes (available in `expression`). |
-| `expression` | A Python/xarray expression over `inputs` (`xr` is in scope). |
+| `expression` | A Python/xarray expression over `inputs` (`xr` and `xra`, for `xarray_annotated`, are in scope). |
 | `_import_path` + `function` | Alternative to `expression`: call `function` in that module. Same two forms as a module section's. |
-| `units` | Output unit contract (validated at parse time). |
+| `units` | Output unit contract (validated at parse time). The output must already carry this unit, so an expression that changes it ends with `.assign_attrs(units=...)`. |
 | `dims` | Output dimension contract (list of names). |
-| `dtype` | Output dtype contract (validated at parse time). |
+| `dtype` | Output dtype contract (validated at parse time). A name with a width (`float64`) is exact; `float`, `int` and the like mean any width. |
 | `coords` | Output coordinate contract (list of names). |
 | `freq` | Output temporal-frequency contract: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
 | `passthrough` | Declare no fixed output contract; propagate the input's contract across the node. |
@@ -287,31 +287,10 @@ Available checks:
 The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python.
 Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than one shard.
 
-## Annotations
+## Contract checks
 
-`[annotations]` controls how contract declarations (units, schema: dims/coords/dtype, and temporal: freq) are validated.
-Omit it to keep the defaults.
-
-```toml
-[annotations]
-mode = "strict"           # "strict" | "warn" (default) | "off"
-on_inexact = "convert"    # "convert" (default) | "warn" | "error"
-on_mismatch = "error"     # "error" | "warn" | "ignore" — dims/coords/dtype/freq
-on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
-```
-
-| Key | Description |
-|-----|-------------|
-| `mode` | Units strictness. `strict` raises on a unit problem; `warn` reports and continues; `off` disables **all** contract checking (every facet). Default `warn`. |
-| `on_inexact` | What to do with a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared): `convert` it silently (default), `warn` and convert, or `error`. Two spellings of the same unit (`"pascal"` for `"Pa"`) are relabelled without consulting this. |
-| `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
-| `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
-
+No section configures contract checking, and every failed check raises.
 Contracts are checked between nodes when the driver is built, and against each node's actual inputs when it runs; [`--dry-run`](../guides/validate/validate-before-running.md) brings the second forward without executing anything.
-Incompatible units always raise, and a missing or unparseable `units` attribute follows `mode`.
 
-!!! warning "Affine units (temperature)"
-
-    Converting between offset units such as `degC` and `K` applies the offset (`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a *difference* or anomaly.
-    Declare such quantities in the unit they are stored in, so no conversion happens, or set `on_inexact = "error"` to forbid implicit temperature conversions.
-    `on_inexact = "warn"` is the middle course: each conversion still happens, but is reported by name.
+To switch off all checking, set `XARRAY_ANNOTATED_ENABLED=false`, or call catena inside `with xarray_annotated.enabled(False):`.
+The block beats the variable, and covers only the current thread or async task, so use the variable to switch off worker threads.

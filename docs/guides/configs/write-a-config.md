@@ -30,9 +30,9 @@ Three kinds of section do the work:
 `[outputs.<label>]`
 :   What gets written. One section per output file, `path` plus the nodes to put in it.
 
-The optional sections `[annotations]`, `[validation]`, `[cache]`, `[blocking]` and `[subset]` change how the pipeline is checked or executed, never what it computes.
+The optional sections `[validation]`, `[cache]`, `[blocking]` and `[subset]` change how the pipeline is checked or executed, never what it computes.
 
-Any other section is treated as one of your modules and must carry an `_import_path`, so a typo like `[anotations]` fails at parse time instead of being silently ignored.
+Any other section is treated as one of your modules and must carry an `_import_path`, so a typo like `[valdation]` fails at parse time instead of being silently ignored.
 
 ## Names are what wire it together
 
@@ -77,9 +77,6 @@ Any node can be requested, including an intermediate you want to inspect.
 **Change a parameter.**
 A module's keyword-only arguments are set in that module's section.
 They [share one namespace](../nodes/bring-your-own-module.md#parameter-names-share-one-namespace) across every section, so `floor` set under `[aridity]` is the same `floor` everywhere.
-
-**Turn the checks up.**
-Add `[annotations]` with `mode = "strict"` to make a contract mismatch fail rather than warn, and `on_inexact = "warn"` to see every unit conversion the run performs.
 
 ## Before you run it
 

@@ -9,9 +9,9 @@ A contract is a claim a node makes about the data on one of its edges — its un
 
 ```python
 def aridity_index_daily(
-    precipitation_daily: Annotated[xr.DataArray, "mm/day"],
-    evapotranspiration_daily: Annotated[xr.DataArray, "mm/day"],
-) -> Annotated[xr.DataArray, "1"]: ...
+    precipitation_daily: Annotated[xr.DataArray, Unit("mm/day")],
+    evapotranspiration_daily: Annotated[xr.DataArray, Unit("mm/day")],
+) -> Annotated[xr.DataArray, Unit("1")]: ...
 ```
 
 [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated) checks a claim like this against the arguments a function receives, when it is called.
@@ -49,12 +49,14 @@ Input contracts compare against real file metadata rather than declarations, so 
 Input compatibility is the only opt-in layer.
 Different time axes across inputs are normal, so catena does not guess which relationships must hold; you declare them in a `[validation]` block.
 
-## Strictness is a policy
+## Every failure raises
 
-The `[annotations]` section sets one policy for the whole pipeline.
-`mode` decides whether a contract problem raises, is reported, or is ignored.
-`on_inexact` decides what happens to a value-changing conversion, such as hectopascals into a node wanting pascals: scale silently, report, or refuse.
-Units that differ only in spelling are relabelled without touching the values, and incompatible units are always an error.
+There is no strictness to configure: a failed check is an error, and nothing warns.
+Nothing converts values either, so hectopascals reaching a node that wants pascals fails, and the conversion has to be [stated as a node](../guides/nodes/contracts.md#converting-units).
+Units that differ only in spelling pass without touching the values.
+
+An undeclared edge is not checked, so a partly annotated pipeline can still adopt contracts one node at a time.
+All checking can be [switched off](../guides/nodes/contracts.md#turning-the-checks-off) with `XARRAY_ANNOTATED_ENABLED=false`.
 
 ## What contracts cannot catch
 

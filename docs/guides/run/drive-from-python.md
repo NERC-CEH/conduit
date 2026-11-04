@@ -48,16 +48,15 @@ from catena import build_driver, get_final_vars, get_outputs, load_inputs, save_
 from catena.config import Config
 
 parsed = Config(config_data).parse()  # 1. parse
-parsed.annotations.apply()  # 2. contract policy
-dr = build_driver(  # 3. build, and check contracts
+dr = build_driver(  # 2. build, and check contracts
     modules=parsed.modules,
     config=parsed.driver_config,
     node_specs=parsed.node_specs,
 )
-inputs = load_inputs(parsed.input_specs)  # 4. load
-results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 5. execute
-datasets = get_outputs(results, parsed.output_specs)  # 6. collect
-save_outputs(datasets, parsed.output_specs)  # 7. write
+inputs = load_inputs(parsed.input_specs)  # 3. load
+results = dr.execute(get_final_vars(parsed.output_specs), inputs=inputs)  # 4. execute
+datasets = get_outputs(results, parsed.output_specs)  # 5. collect
+save_outputs(datasets, parsed.output_specs)  # 6. write
 ```
 
 ### 1. Parse a config
@@ -87,23 +86,18 @@ parsed = Config(config_data).parse()
 For a file, use `Config.load("config.toml")`, which resolves paths relative to the file, or `catena.load_config("config.toml")`, which also parses it.
 The resulting `ParsedConfig` holds one spec per config section; see [its reference](../../reference/modules/catena.specs.md#catena.specs.ParsedConfig).
 
-### 2. Apply the contract policy
-
-`parsed.annotations.apply()` sets the `[annotations]` policy, which is process-global in `xarray-annotated`.
-Skip it and the DAG is checked under the default policy rather than your config's.
-
-### 3. Build the driver
+### 2. Build the driver
 
 `build_driver()` constructs a Hamilton `Driver` and runs the contract check.
 Pass `node_specs` whenever the config has `[[node]]` or `[[resample]]` entries.
 The driver can be inspected with Hamilton's own methods, such as `dr.display_all_functions()` or `dr.visualize_path_between(...)`.
 
-### 4. Load inputs
+### 3. Load inputs
 
 `load_inputs()` opens the input files and returns a flat dict of `DataArray`s keyed by node name.
 When inputs carry a CRS, `latitude` and `longitude` nodes are computed too.
 
-### 5. Execute
+### 4. Execute
 
 `dr.execute()` takes the node names you want; `get_final_vars()` lists the ones the outputs need.
 You can request any node, which is handy for inspecting intermediates, and override a node's value without rebuilding:
@@ -116,7 +110,7 @@ results = dr.execute(
 )
 ```
 
-### 6–7. Collect and write
+### 5–6. Collect and write
 
 `get_outputs()` merges the flat results into one `Dataset` per output section, ready for plotting or analysis.
 `save_outputs()` writes them and returns the path written for each section; skip it if you only need the datasets in memory.

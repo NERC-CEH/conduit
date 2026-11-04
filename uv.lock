@@ -2738,6 +2738,7 @@ dependencies = [
     { name = "dask" },
     { name = "netcdf4" },
     { name = "numpy" },
+    { name = "pint" },
     { name = "pyarrow" },
     { name = "tomli-w" },
     { name = "xarray" },
@@ -2808,6 +2809,7 @@ requires-dist = [
     { name = "dask", specifier = ">=2025.1.0" },
     { name = "netcdf4", specifier = ">=1.7.4" },
     { name = "numpy", specifier = ">=2.4.2" },
+    { name = "pint", specifier = ">=0.24" },
     { name = "pyarrow", specifier = ">=10.0" },
     { name = "pyproj", marker = "extra == 'geo'", specifier = ">=3.7.2" },
     { name = "rioxarray", marker = "extra == 'geo'", specifier = ">=0.22.0" },
@@ -2815,7 +2817,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.24.1" },
     { name = "ukceh-catena", extras = ["cli", "viz", "geo"], marker = "extra == 'all'" },
     { name = "xarray", specifier = ">=2026.2.0" },
-    { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.5.2" },
+    { name = "xarray-annotated", extras = ["cf"], specifier = ">=0.7.0" },
     { name = "zarr", specifier = ">=3.2.1" },
 ]
 provides-extras = ["cli", "viz", "geo", "all"]

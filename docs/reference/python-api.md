@@ -23,7 +23,7 @@ These are the names used in [Drive catena from Python](../guides/run/drive-from-
 | [`dry_run`](modules/catena.pipeline.md#catena.pipeline.dry_run) | The same validation with nothing computed or written. |
 | [`build_graph`](modules/catena.graph.md#catena.graph.build_graph) | The styled `graphviz.Digraph` that `catena graph` writes. |
 
-Contracts are declared with decorators and markers from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), which you import from there.
+Contracts are declared with the `enforce` decorator and markers from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), which you import from there.
 See [its API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) for the signatures, and [Declaring contracts](../guides/nodes/contracts.md) for how catena uses them.
 
 ## Everything else

@@ -23,7 +23,6 @@ from .importing import (
 )
 from .input_checks import CHECKS
 from .specs import (
-    AnnotationPolicySpec,
     BlockingSpec,
     CacheSpec,
     CheckSpec,
@@ -33,7 +32,6 @@ from .specs import (
     RegisteredModule,
     ResampleSpec,
     SubsetSpec,
-    _severity,
     _validate_vars,
     assert_dim_name,
 )
@@ -95,13 +93,6 @@ def resample_to_node_entry(spec: ResampleSpec) -> dict:
 # ---------------------------------------------------------------------------
 # The parser: raw TOML dict -> ParsedConfig
 # ---------------------------------------------------------------------------
-
-
-_ON_INEXACT: frozenset[str] = frozenset({"convert", "warn", "error"})
-
-_ANNOTATION_KEYS: frozenset[str] = frozenset(
-    {"mode", "on_inexact", "on_mismatch", "on_uninferable"}
-)
 
 
 class Config:
@@ -341,73 +332,6 @@ class Config:
             specs.append(CheckSpec(check=name, inputs=inputs, kwargs=entry))
         return specs
 
-    def _parse_annotations(self, data: dict) -> AnnotationPolicySpec:
-        """Handle the [annotations] section.
-
-        Maps the section's keys to the xarray-annotated policy axes:
-
-        - ``mode`` (``strict`` / ``warn`` / ``off``) and ``on_inexact``
-          (``convert`` / ``warn`` / ``error``) drive the *units* policy
-          (``enabled`` / ``on_missing`` / ``on_inexact``). ``on_inexact`` governs a
-          *value-changing* conversion only: differently-spelled but identical units
-          ("pascal" for "Pa") are relabelled without consulting it;
-        - ``on_mismatch`` (``error`` / ``warn`` / ``ignore``) drives the *schema*
-          (dims/coords/dtype) *and* *temporal* (freq) policies — in both it means
-          "the array contradicts the declaration";
-        - ``on_uninferable`` (``error`` / ``warn`` / ``ignore``) drives the temporal
-          policy's second axis: a time axis too short or too irregular for a
-          frequency to be inferred at all, so the declaration went *untested*.
-
-        ``mode = "off"`` disables validation for *every* facet via the shared
-        master switch. ``None`` axes defer to the process-wide default. All are
-        ``None`` if there is no [annotations] section.
-
-        An unrecognised key is an error. A policy that is silently ignored is worse
-        than one that is absent, because the run looks like it honoured it.
-        """
-        entry = data.pop("annotations", None)
-        if entry is None:
-            return AnnotationPolicySpec()
-        label = "annotations"
-        enabled: bool | None = None
-        on_missing: str | None = None
-        on_inexact: str | None = None
-        mode = entry.get("mode")
-        if mode is not None:
-            if mode == "off":
-                enabled = False
-            elif mode == "strict":
-                on_missing = "error"
-            elif mode == "warn":
-                on_missing = "warn"
-            else:
-                raise CatenaValueError(
-                    f"[{label}] 'mode' must be one of 'strict', 'warn', 'off', "
-                    f"got {mode!r}."
-                )
-        on_inexact = entry.get("on_inexact")
-        if on_inexact is not None and on_inexact not in _ON_INEXACT:
-            raise CatenaValueError(
-                f"[{label}] 'on_inexact' must be one of "
-                f"{', '.join(repr(v) for v in _ON_INEXACT)}, got {on_inexact!r}."
-            )
-        unknown = sorted(set(entry) - _ANNOTATION_KEYS)
-        if unknown:
-            raise CatenaValueError(
-                f"[{label}] has unrecognised key(s) "
-                f"{', '.join(repr(k) for k in unknown)}. Recognised keys are "
-                f"{', '.join(sorted(_ANNOTATION_KEYS))}."
-            )
-        return AnnotationPolicySpec(
-            enabled=enabled,
-            on_missing=on_missing,
-            on_inexact=on_inexact,
-            on_mismatch=_severity(entry.get("on_mismatch"), label, "on_mismatch"),
-            on_uninferable=_severity(
-                entry.get("on_uninferable"), label, "on_uninferable"
-            ),
-        )
-
     def _parse_external_modules(
         self,
         data: dict,
@@ -474,7 +398,6 @@ class Config:
         - [cache]         — Hamilton result caching (path, recompute, disable)
         - [blocking]      — blocked execution over one dimension (block_size, dim)
         - [subset]        — a slice of one dimension (dim, start, stop)
-        - [annotations]   — contract validation policy (units + schema + temporal)
 
         All other top-level sections are treated as external modules and must
         include a '_import_path = "pkg.module"' key specifying the importable
@@ -496,7 +419,6 @@ class Config:
         cache_spec = self._parse_cache(data)
         blocking_spec = self._parse_blocking(data, point_dim)
         subset_spec = self._parse_subset(data, point_dim)
-        annotations = self._parse_annotations(data)
         registered: list[RegisteredModule] = []
         modules += self._parse_external_modules(data, driver_config, registered)
         return ParsedConfig(
@@ -509,7 +431,6 @@ class Config:
             blocking_spec=blocking_spec,
             subset_spec=subset_spec,
             checks=checks,
-            annotations=annotations,
             point_dim=point_dim,
             base=self._base,
             registered_modules=registered,

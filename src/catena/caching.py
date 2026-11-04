@@ -21,8 +21,8 @@ def _hash_dataarray(obj: xr.DataArray, *args, depth: int = 0, **kwargs) -> str:
     Delegates the numeric payload to Hamilton's numpy handler and folds in the
     name, dims, coordinate values and ``attrs``. Hashing ``attrs`` is what makes
     a *units* change invalidate the cache: the same numbers labelled ``kg``
-    rather than ``g`` are a different array, and a downstream node's converted
-    result must not be served from the cache computed under the old label.
+    rather than ``g`` are a different array, and a downstream node's result must
+    not be served from the cache computed under the old label.
     """
     parts = [
         fingerprinting.hash_value(obj.values, depth=depth),

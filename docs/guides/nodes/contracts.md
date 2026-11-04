@@ -11,55 +11,53 @@ A contract is a claim your node makes about the data on one of its edges, writte
 from typing import Annotated
 
 import xarray as xr
+import xarray_annotated as xra
+from xarray_annotated import Unit
 
-from xarray_annotated.units import declare_units
 
-
-@declare_units
+@xra.enforce
 def aridity_index_daily(
-    precipitation_daily: Annotated[xr.DataArray, "mm/day"],
-    evapotranspiration_daily: Annotated[xr.DataArray, "mm/day"],
-) -> Annotated[xr.DataArray, "1"]: ...
+    precipitation_daily: Annotated[xr.DataArray, Unit("mm/day")],
+    evapotranspiration_daily: Annotated[xr.DataArray, Unit("mm/day")],
+) -> Annotated[xr.DataArray, Unit("1")]: ...
 ```
 
-The decorators and markers come from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), whose [API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) documents them in full.
+The decorator and markers come from [xarray-annotated](https://github.com/jmarshrossney/xarray-annotated), whose [API reference](https://jmarshrossney.github.io/xarray-annotated/api/package.html) documents them in full.
 catena checks every such claim across the whole graph before any node runs; [Contracts and the whole-graph check](../../concepts/contracts.md) explains how.
 
 ## The five facets
 
 | Facet | Declares | Example |
 |---|---|---|
-| units | the physical unit, via pint and cf-xarray | `"mm/day"`, `"Pa"`, `"1"` for dimensionless |
+| units | the physical unit, via pint and cf-xarray | `Unit("mm/day")`, `Unit("Pa")`, `Unit("1")` for dimensionless |
 | dims | the dimension names | `Dims("time", "site")` |
 | coords | required coordinate variables | `Coords("time")` |
-| dtype | the array's element type | `Dtype("float32")` |
+| dtype | the array's element type: a width is exact, and `float`, `int` and the like mean any width | `Dtype("float32")`, `Dtype("float")` |
 | freq | how often the time axis ticks, and on what phase | `Freq("7D")`, `Freq("W-SUN")` |
 
-A bare string in the annotation metadata is always a unit.
-Every other facet uses a marker, so nothing needs disambiguating:
+One `@xra.enforce` checks every facet declared on a signature:
 
 ```python
 from typing import Annotated
 
 import xarray as xr
-from xarray_annotated.temporal import Freq, declare_freq
-from xarray_annotated.units import declare_units
+import xarray_annotated as xra
+from xarray_annotated import Freq, Unit
 
 
-@declare_units
-@declare_freq
+@xra.enforce
 def weekly_mean(
-    temperature_daily: Annotated[xr.DataArray, "degC", Freq("D")],
-) -> Annotated[xr.DataArray, "degC", Freq("W-SUN")]: ...
+    temperature_daily: Annotated[xr.DataArray, Unit("degC"), Freq("D")],
+) -> Annotated[xr.DataArray, Unit("degC"), Freq("W-SUN")]: ...
 ```
+
+!!! warning "A bare string is not a unit"
+
+    `Annotated[xr.DataArray, "Pa"]` is only a description.
+    It declares nothing, so nothing checks it and nothing raises.
 
 An *unanchored* frequency compares spacing only, so `Freq("7D")` accepts any weekly axis.
 An *anchored* one also pins the phase, so `Freq("W-SUN")` rejects an axis landing on Wednesdays, catching a resample offset by a day.
-
-!!! warning "Decorator order matters"
-
-    `declare_units` must be the outermost decorator: `declare_units(declare_freq(declare_schema(fn)))`.
-    It is the only one that may convert values rather than merely validate them, so it has to see the arguments first.
 
 An inline `[[node]]` declares the same facets with `units`, `dims`, `coords`, `dtype` and `freq` keys — see [Configuration › Nodes](../../reference/configuration.md#nodes).
 
@@ -72,61 +70,98 @@ Declaring a unit on a node's **output** makes it a typed producer, whose unit ca
 name = "temperature_anomaly_climate"
 inputs = ["temperature_climate"]
 expression = "temperature_climate - temperature_climate.mean('time')"
-units = "degC"          # the output is stamped with this
+units = "degC"          # the output must already carry this
 ```
 
 Annotating a function's **parameters** declares what it requires of its inputs.
-`@declare_units` reads those hints, validates each argument, and stamps the return value:
+`@xra.enforce` reads those hints, then checks each argument and the return value:
 
 ```python
-@declare_units
+@xra.enforce
 def pressure_anomaly_climate(
-    pressure_climate: Annotated[xr.DataArray, "Pa"],
-) -> Annotated[xr.DataArray, "Pa"]:
+    pressure_climate: Annotated[xr.DataArray, Unit("Pa")],
+) -> Annotated[xr.DataArray, Unit("Pa")]:
     """Deviation of pressure from its time mean."""
     return pressure_climate - pressure_climate.mean("time")
 ```
 
 An edge is checked wherever both ends declare a contract.
 
-## Compatible units are converted for you
+## Different units are an error
 
 Suppose your file stores pressure in hectopascals and the node above wants pascals.
-catena converts the data before the function runs, so you never hand-write `* 100`.
-A unit that is only spelled differently, `"pascal"` for `"Pa"`, is relabelled without touching the values.
+Nothing converts it for you, because whether a conversion is correct depends on the quantity, so the node raises `ValueError`.
+A unit that is only spelled differently, `"pascal"` for `"Pa"`, passes, and the values are not touched.
 
-Incompatible units are an error.
-Change that annotation to metres:
+Declarations are held to the same rule.
+Suppose the node producing `pressure_climate` declares pascals, and this one declares hectopascals:
 
 ```python
-@declare_units
+@xra.enforce
 def pressure_anomaly_climate(
-    pressure_climate: Annotated[xr.DataArray, "m"],  # length, not pressure
-) -> Annotated[xr.DataArray, "m"]: ...
+    pressure_climate: Annotated[xr.DataArray, Unit("hPa")],
+) -> Annotated[xr.DataArray, Unit("hPa")]: ...
 ```
 
-Length and pressure do not interconvert, so catena rejects the edge when the driver is built, naming both nodes and the facet that failed.
+catena rejects the edge when the driver is built, naming both nodes and the facet that failed.
 Nothing has been computed at that point, and `catena run config.toml --dry-run` shows the same failure.
 
-## Choosing the strictness
+## Converting units
 
-The `[annotations]` section sets policy for the whole pipeline:
+Where a conversion is right for the quantity, make it a node of its own with `xra.units.convert`:
 
-```toml
-[annotations]
-mode = "warn"           # "strict" | "warn" (default) | "off"
-on_inexact = "convert"  # "convert" (default) | "warn" | "error"
+```python
+@xra.enforce
+def tair_celsius(
+    tair: Annotated[xr.DataArray, Unit("K")],
+) -> Annotated[xr.DataArray, Unit("degC")]:
+    return xra.units.convert(tair, "degC")
 ```
 
-`mode` decides whether a unit problem raises, is reported, or is ignored.
+`xra` is also in scope in an inline `[[node]]` expression:
 
-`on_inexact` applies only to *value-changing* conversions: `"convert"` scales silently, `"warn"` scales and tells you, `"error"` refuses.
-Use `"warn"` to see every conversion in a run.
-The flux recipe does this because its one conversion matters: `flux.nc` stores air temperature in kelvin, while `partition_fluxes` declares `tair` in `degC` because its respiration term is a $Q_{10}$ relation written for Celsius.
+```toml
+[[node]]
+name = "tair_celsius"
+inputs = ["tair"]
+expression = "xra.units.convert(tair, 'degC')"
+units = "degC"
+```
+
+The flux recipe does this because its one conversion matters: `flux.nc` stores air temperature in kelvin, while `partition_fluxes` declares it in `degC` because its respiration term is a $Q_{10}$ relation written for Celsius.
 Given kelvin, that term returns respiration around $10^8$ rather than $4$, and nothing downstream would look obviously wrong.
-Without the declaration, a bare `tair` parameter would have used kelvin without complaint.
+Without the declaration, a bare parameter would have used kelvin without complaint.
 
-Every policy key is in the [`[annotations]` reference](../../reference/configuration.md#annotations).
+!!! warning "Affine units (temperature)"
+
+    Converting between offset units such as `degC` and `K` applies the offset (`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a *difference* or anomaly.
+
+## Changing a unit in a calculation
+
+A returned array must already carry its declared unit.
+`attrs` take no part in arithmetic, so `p * 100.0` keeps its `hPa` label, and a ratio of two arrays labelled `mm/day` is still labelled `mm/day`.
+A calculation that changes the unit states the new one:
+
+```python
+@xra.enforce
+def aridity_index_daily(
+    precipitation_daily: Annotated[xr.DataArray, Unit("mm/day")],
+    evapotranspiration_daily: Annotated[xr.DataArray, Unit("mm/day")],
+) -> Annotated[xr.DataArray, Unit("1")]:
+    ratio = precipitation_daily / evapotranspiration_daily
+    return ratio.assign_attrs(units="1")
+```
+
+The values are not inspected, so that statement is taken on trust.
+A missing label, or one that disagrees with the declaration, raises when the node runs.
+
+## Turning the checks off
+
+Every failed check raises, and there is nothing to configure.
+To tolerate something, correct or remove the declaration.
+
+To switch off all checking, including the whole-graph check, set `XARRAY_ANNOTATED_ENABLED=false`, or wrap the call in `with xarray_annotated.enabled(False):`.
+The block beats the variable, and covers only the current thread or async task, so use the variable to switch off worker threads.
 
 ## Contracts across a passthrough node
 

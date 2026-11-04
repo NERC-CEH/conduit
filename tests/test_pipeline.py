@@ -173,15 +173,6 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
             run(cfg)
         assert not out.exists()
 
-    def test_rejects_inexact_edge_under_exact_policy(self, inexact_units_config):
-        """The build-time contract check consults the *process-global* policy, so
-        an entry point that skipped `AnnotationPolicySpec.apply` would accept a
-        config that another rejects."""
-        from xarray_annotated.units import policy
-
-        with policy(enabled=True), pytest.raises(ValueError, match="exact match"):
-            run(inexact_units_config)
-
 
 class TestOutputsAreCheckedBeforeAnythingIsCreated:
     """An aborted run must not leave a cache directory behind.

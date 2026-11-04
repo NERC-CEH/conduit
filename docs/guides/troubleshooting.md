@@ -35,7 +35,7 @@ Usually one of:
 ### A unit / dimension mismatch error
 
 A node's declared contract disagrees with its producer's; see [Reading a contract failure](validate/validate-before-running.md#reading-a-contract-failure).
-To relax the check, adjust the [`[annotations]`](../reference/configuration.md#annotations) policy.
+To fix it, correct whichever declaration is wrong, or [convert the units](nodes/contracts.md#converting-units) in a node of its own.
 
 ### `[[resample]]` entry is missing required key `freq`
 
@@ -47,8 +47,8 @@ Resampling only aggregates; for a finer resolution, provide finer input data.
 `frequency mismatch on 'time': expected '7D', got 'D'` means the data contradicts a declared `Freq` contract.
 Either the declaration or the data is wrong; fix whichever, or drop the declaration.
 
-`frequency of 'time' is uninferable` means the axis has fewer than three timestamps or irregular spacing, so the declaration could not be tested.
-This warns by default; set `on_uninferable` in [`[annotations]`](../reference/configuration.md#annotations) to `"error"` to make it fatal, or `"ignore"` for short test fixtures.
+`got irregular spacing` means no declared frequency describes the axis, so a gap in the record fails.
+An axis of zero or one timestamps has no spacing, so it always passes.
 
 ## Data
 

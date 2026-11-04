@@ -40,18 +40,19 @@ This suits a single derivation; once you have several related functions, shared 
 ## Declaring contracts on a node
 
 catena cannot infer what an expression produces, so declare it.
-Any of `units`, `dims`, `dtype`, `coords` or `freq` makes the node a *typed producer*: its output is stamped and validated at run time, and the [contract check](../nodes/contracts.md) checks downstream consumers against it.
+Any of `units`, `dims`, `dtype`, `coords` or `freq` makes the node a *typed producer*: its output is validated at run time, and the [contract check](../nodes/contracts.md) checks downstream consumers against it.
 
 ```toml
 [[node]]
 name = "aridity_index_daily"
 inputs = ["precipitation_daily", "evapotranspiration_daily"]
-expression = "precipitation_daily / evapotranspiration_daily"
+expression = "(precipitation_daily / evapotranspiration_daily).assign_attrs(units='1')"
 units = "1"                 # dimensionless ratio
 dims = ["time", "pixel"]    # optional dimension contract
 ```
 
 `units` and `dtype` are validated when the config is parsed.
+The output must already carry the declared unit, so an expression that changes it ends with `.assign_attrs(units=...)`, and [`xra.units.convert`](../nodes/contracts.md#converting-units) is in scope for a real conversion.
 A node that declares nothing has no output contract, so edges leaving it go unchecked.
 
 ## Fan-out with `for_each`

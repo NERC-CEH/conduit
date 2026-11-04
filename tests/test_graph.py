@@ -60,16 +60,6 @@ class TestBuildGraph:
         style.write_text('[palette]\n"7D" = "#123456"\n')
         assert "#123456" in build_graph(config_toml, style=style).source
 
-    def test_applies_the_config_annotation_policy(self, inexact_units_config):
-        """Previously `graph` never applied the config policy, so it silently
-        accepted a DAG that a run rejected on the very same config."""
-        from xarray_annotated.units import policy
-
-        # The test session disables contract checking globally (conftest); re-enable
-        # it so the config's `on_inexact = "error"` has something to tighten.
-        with policy(enabled=True), pytest.raises(ValueError, match="exact match"):
-            build_graph(inexact_units_config)
-
 
 class TestGraphvizBodySurgery:
     """Canaries for the post-processing that rewrites Hamilton's rendered body.
@@ -214,9 +204,9 @@ class TestGraphPostProcessing:
         (tmp_path / "typed.py").write_text(
             "from typing import Annotated\n\n"
             "import xarray as xr\n"
-            "from xarray_annotated.units import declare_units\n\n\n"
-            "@declare_units\n"
-            "def wet(precipitation: Annotated[xr.DataArray, 'mm']) -> xr.DataArray:\n"
+            "import xarray_annotated as xra\n\n\n"
+            "@xra.enforce\n"
+            "def wet(precipitation: Annotated[xr.DataArray, xra.Unit('mm')]) -> xr.DataArray:\n"
             "    return precipitation\n"
         )
         config = tmp_path / "config.toml"

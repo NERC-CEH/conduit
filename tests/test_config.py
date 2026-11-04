@@ -6,7 +6,6 @@ import pytest
 
 from catena import config as config_module
 from catena.config import (
-    AnnotationPolicySpec,
     Config,
     IOSpec,
     NodeSpec,
@@ -646,61 +645,13 @@ class TestMultipleFrequencies:
         assert "monthly" in parsed.output_specs
 
 
-class TestAnnotationsSection:
-    """Tests for the [annotations] section."""
+class TestRemovedSections:
+    """A section catena no longer parses is an error, rather than being ignored."""
 
-    def test_mode_and_on_inexact(self):
-        parsed = Config(
-            {"annotations": {"mode": "strict", "on_inexact": "error"}}
-        ).parse()
-        assert parsed.annotations.on_missing == "error"
-        assert parsed.annotations.on_inexact == "error"
-        assert parsed.annotations.on_mismatch is None
-
-    def test_on_inexact_warn(self):
-        parsed = Config({"annotations": {"on_inexact": "warn"}}).parse()
-        assert parsed.annotations.on_inexact == "warn"
-
-    def test_bad_on_inexact_rejected(self):
-        with pytest.raises(ValueError, match="'on_inexact' must be one of"):
-            Config({"annotations": {"on_inexact": "maybe"}}).parse()
-
-    def test_unrecognised_key_rejected(self):
-        """A silently ignored policy is worse than an absent one."""
-        with pytest.raises(ValueError, match="unrecognised key"):
-            Config({"annotations": {"exact": True}}).parse()
-
-    def test_units_section_no_longer_recognised(self):
-        # The legacy alias is gone, so [units] falls through to the external-module
-        # path and fails for want of an _import_path.
+    @pytest.mark.parametrize("name", ["annotations", "units"])
+    def test_falls_through_to_the_external_module_path(self, name):
         with pytest.raises(ValueError, match="_import_path"):
-            Config({"units": {"mode": "strict"}}).parse()
-
-    def test_mode_off_disables(self):
-        parsed = Config({"annotations": {"mode": "off"}}).parse()
-        assert parsed.annotations.enabled is False
-
-    def test_on_mismatch_drives_schema_and_temporal(self):
-        parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
-        assert parsed.annotations.on_mismatch == "warn"
-
-    def test_on_uninferable(self):
-        parsed = Config({"annotations": {"on_uninferable": "ignore"}}).parse()
-        assert parsed.annotations.on_uninferable == "ignore"
-
-    def test_invalid_on_mismatch_raises(self):
-        with pytest.raises(ValueError, match="on_mismatch"):
-            Config({"annotations": {"on_mismatch": "explode"}}).parse()
-
-    def test_invalid_on_uninferable_raises(self):
-        with pytest.raises(ValueError, match="on_uninferable"):
-            Config({"annotations": {"on_uninferable": "explode"}}).parse()
-
-    def test_absent_section_is_all_none(self):
-        parsed = Config({}).parse()
-        assert parsed.annotations.enabled is None
-        assert parsed.annotations.on_mismatch is None
-        assert parsed.annotations.on_uninferable is None
+            Config({name: {"mode": "strict"}}).parse()
 
 
 class TestPointDim:
@@ -745,73 +696,6 @@ class TestPointDim:
         # external-module loop and dies in dict() with an opaque message.
         with pytest.raises(ValueError, match="point_dim"):
             Config({"point_dim": bad}).parse()
-
-
-class TestAnnotationPolicyApply:
-    """apply() pushes every axis into xarray-annotated's global policy."""
-
-    def test_annotation_policy_apply_sets_all_axes(self):
-        from xarray_annotated.schema import get_policy as schema_get_policy
-        from xarray_annotated.schema import policy as schema_policy
-        from xarray_annotated.temporal import get_policy as temporal_get_policy
-        from xarray_annotated.temporal import policy as temporal_policy
-        from xarray_annotated.units import get_policy as units_get_policy
-        from xarray_annotated.units import policy as units_policy
-
-        spec = AnnotationPolicySpec(
-            enabled=True,
-            on_missing="error",
-            on_inexact="error",
-            on_mismatch="warn",
-            on_uninferable="ignore",
-        )
-        # The three context managers restore the process-global policy on exit.
-        with units_policy(), schema_policy(), temporal_policy():
-            spec.apply()
-            units = units_get_policy()
-            assert units.enabled is True
-            assert units.on_missing == "error"
-            assert units.on_inexact == "error"
-            # `enabled` reaches every facet, not just units.
-            assert schema_get_policy().enabled is True
-            assert temporal_get_policy().enabled is True
-            # on_mismatch drives *both* validate-only domains.
-            assert schema_get_policy().on_mismatch == "warn"
-            assert temporal_get_policy().on_mismatch == "warn"
-            assert temporal_get_policy().on_uninferable == "ignore"
-
-    def test_mode_off_disables_every_facet(self):
-        """`mode = "off"` is a kill-switch for all contract checking, not just units.
-
-        Schema and temporal both default to ``enabled=True, on_mismatch='error'``, so
-        a units-only ``enabled=False`` would leave dims/coords/dtype and freq still
-        raising — the opposite of what the config key promises.
-        """
-        from xarray_annotated.schema import get_policy as schema_get_policy
-        from xarray_annotated.schema import policy as schema_policy
-        from xarray_annotated.temporal import get_policy as temporal_get_policy
-        from xarray_annotated.temporal import policy as temporal_policy
-        from xarray_annotated.units import get_policy as units_get_policy
-        from xarray_annotated.units import policy as units_policy
-
-        parsed = Config({"annotations": {"mode": "off"}}).parse()
-        with (
-            units_policy(enabled=True),
-            schema_policy(enabled=True),
-            temporal_policy(enabled=True),
-        ):
-            parsed.annotations.apply()
-            assert units_get_policy().enabled is False
-            assert schema_get_policy().enabled is False
-            assert temporal_get_policy().enabled is False
-
-    def test_empty_policy_applies_nothing(self):
-        from xarray_annotated.units import get_policy, policy
-
-        with policy(enabled=True, on_missing="warn"):
-            AnnotationPolicySpec().apply()
-            assert get_policy().enabled is True
-            assert get_policy().on_missing == "warn"
 
 
 class TestExternalModules:

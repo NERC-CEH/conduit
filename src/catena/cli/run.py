@@ -149,17 +149,6 @@ def _echo_report(report: DryRunReport) -> None:
             else typer.style("-", dim=True)
         )
         typer.echo(f"  {glyph} {stage.detail}")
-        if stage.name == "contracts":
-            _echo_policy(report.policy)
         for finding in stage.findings:
             typer.echo(f"      {typer.style('!', fg=typer.colors.YELLOW)} {finding}")
     typer.echo("Dry run passed.")
-
-
-def _echo_policy(policy: dict[str, str]) -> None:
-    """Print the active contract policy, one row per policy object, columns aligned."""
-    if not policy:
-        return
-    width = max(len(label) for label in policy)
-    for label, settings in policy.items():
-        typer.echo(f"      {label:<{width}}  {settings}")

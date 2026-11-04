@@ -87,8 +87,7 @@ def build_driver(
     built = dr.build()
 
     # The flagship guarantee: every declared contract on the whole DAG is checked
-    # here, before any compute. A no-op when the policy is "off", so pipelines that
-    # opt out of contract handling are unaffected.
+    # here, before any compute. A no-op when xarray-annotated is switched off.
     from .contract_check import check_dag_contracts
 
     check_dag_contracts(built)

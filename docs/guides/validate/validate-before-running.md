@@ -30,7 +30,8 @@ It checks, in order, and prints a summary per stage:
 
 A clean pre-flight exits `0`.
 A problem with the config, inputs, DAG plan, wiring or output paths always fails.
-Contract problems follow the [`[annotations]`](../../reference/configuration.md#annotations) policy: reported under `warn`, a non-zero exit under `strict`.
+A contract problem fails too, and every failing input is reported at once.
+If checks are [switched off](../nodes/contracts.md#turning-the-checks-off), the contract stages say so.
 
 ## Input compatibility checks
 
@@ -83,7 +84,7 @@ catena run --dry-run recipes/flux_pipeline/broken.toml
 The failure names both ends of the edge, and comes during DAG construction, before any input is read.
 
 To fix it, correct whichever annotation is wrong.
-Had the units merely differed in scale, `umol m-2 s-1` against `nmol m-2 s-1` say, catena would have converted them and there would be nothing to fix.
-The check flags an edge only when the two declarations cannot be reconciled, so a partly annotated pipeline can adopt it without a wave of false positives.
+Units that merely differ in scale, `umol m-2 s-1` against `nmol m-2 s-1` say, fail the same way, since nothing [converts](../nodes/contracts.md#converting-units) them between nodes.
+The check flags an edge only when both ends declare a contract, so a partly annotated pipeline can adopt it without a wave of false positives.
 
 To run this from a test or CI, see [Test your pipeline](test-your-pipeline.md); for specific error messages, see [Troubleshooting](../troubleshooting.md).

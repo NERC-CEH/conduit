@@ -10,7 +10,7 @@ time with a message naming the section, never later inside a DAG node.
 import keyword
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self, cast
+from typing import Any, Self
 
 from .errors import CatenaValueError
 
@@ -24,7 +24,7 @@ _VALID_AGGFUNCS: frozenset[str] = frozenset(
 #: `NodeSpec.from_config` rejects them at parse time; the two are kept in step by
 #: ``test_nodegen.py::test_reserved_names_match_generated_namespace``.
 RESERVED_NODE_NAMES: frozenset[str] = frozenset(
-    {"xr", "Any", "__import_module", "__transforms"}
+    {"xr", "xra", "Any", "__import_module", "__transforms"}
 )
 
 #: Top-level config sections and keys catena parses itself. A section named here is
@@ -41,7 +41,6 @@ RECOGNISED_SECTIONS: frozenset[str] = frozenset(
         "cache",
         "blocking",
         "subset",
-        "annotations",
     }
 )
 
@@ -148,7 +147,9 @@ class NodeSpec:
     """Specification for a single (already fan-out-expanded) [[node]] entry.
 
     ``units`` / ``dims`` / ``dtype`` / ``coords`` / ``freq`` declare the node's output
-    contract: validated and stamped at runtime, and read by the build-time check.
+    contract: validated at runtime, and read by the build-time check. The output must
+    already carry the declared unit, so an ``expression`` that changes it ends with
+    ``.assign_attrs(units=...)``.
     ``passthrough`` instead declares no fixed contract and tags the node so the check
     propagates its input's declaration across it — per facet, so ``freq`` may still be
     declared. See `catena.contract_check` for what propagation means.
@@ -372,16 +373,6 @@ class IOSpec:
     suffix: str | None = None
 
 
-def _severity(value: Any, label: str, key: str) -> str | None:
-    """Validate an ``error``/``warn``/``ignore`` policy key; ``None`` passes through."""
-    if value is not None and value not in ("error", "warn", "ignore"):
-        raise CatenaValueError(
-            f"[{label}] {key!r} must be one of 'error', 'warn', 'ignore', "
-            f"got {value!r}."
-        )
-    return value
-
-
 def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
     """Validate a section's ``vars`` is a list[str] or a dict[str, str]."""
     if isinstance(vars_, dict):
@@ -402,73 +393,6 @@ def _validate_vars(label: str, vars_: Any) -> list[str] | dict[str, str]:
         f"[{label}] 'vars' must be a list of names or a {{node_name = file_var}} "
         f"mapping, got {vars_!r}."
     )
-
-
-@dataclass(frozen=True)
-class AnnotationPolicySpec:
-    """The [annotations] section: contract-validation policy, for every facet.
-
-    The section's user-facing keys (``mode``, ``exact``, ``on_mismatch``,
-    ``on_uninferable``) map onto xarray-annotated's three policy objects (units,
-    schema, temporal); `apply` is what pushes them into that library's
-    process-global policy. Every axis is ``None`` when unset, meaning "defer to the
-    process-wide default".
-
-    The mapping is not one key per policy object. Two axes fan out across facets:
-    ``enabled`` (so ``mode = "off"`` is a real kill-switch — units *and*
-    dims/coords/dtype *and* freq) and ``on_mismatch`` (which means the same thing
-    in both validate-only domains). The rest are facet-specific: ``on_missing`` and
-    ``on_inexact`` are units-only, ``on_uninferable`` temporal-only.
-
-    `apply` must be called by *every* entry point that builds a DAG — the build-time
-    contract check consults the global policy, so a command that skipped it would
-    accept a config that ``catena run`` rejects.
-    """
-
-    enabled: bool | None = None
-    on_missing: str | None = None
-    on_inexact: str | None = None
-    on_mismatch: str | None = None
-    on_uninferable: str | None = None
-
-    def apply(self) -> None:
-        """Push this policy into xarray-annotated's process-global policy."""
-        # `enabled` is a kill-switch for *all* contract checking, so it reaches
-        # every facet — not just units.
-        if self.enabled is not None:
-            from xarray_annotated.schema import set_policy as set_schema_policy
-            from xarray_annotated.temporal import set_policy as set_temporal_policy
-            from xarray_annotated.units import set_policy
-
-            set_policy(enabled=self.enabled)
-            set_schema_policy(enabled=self.enabled)
-            set_temporal_policy(enabled=self.enabled)
-
-        if self.on_missing is not None:
-            from xarray_annotated.units import OnMissing, set_policy
-
-            set_policy(on_missing=cast(OnMissing, self.on_missing))
-
-        if self.on_inexact is not None:
-            from xarray_annotated.units import OnInexact, set_policy
-
-            set_policy(on_inexact=cast(OnInexact, self.on_inexact))
-
-        # `on_mismatch` means the same thing in both validate-only domains ("the
-        # array contradicts its declaration"), so one config key drives both.
-        if self.on_mismatch is not None:
-            from xarray_annotated.schema import OnMismatch
-            from xarray_annotated.schema import set_policy as set_schema_policy
-            from xarray_annotated.temporal import set_policy as set_temporal_policy
-
-            set_schema_policy(on_mismatch=cast(OnMismatch, self.on_mismatch))
-            set_temporal_policy(on_mismatch=cast(OnMismatch, self.on_mismatch))
-
-        if self.on_uninferable is not None:
-            from xarray_annotated.temporal import OnUninferable
-            from xarray_annotated.temporal import set_policy as set_temporal_policy
-
-            set_temporal_policy(on_uninferable=cast(OnUninferable, self.on_uninferable))
 
 
 @dataclass
@@ -498,9 +422,6 @@ class ParsedConfig:
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
     checks: list["CheckSpec"] = field(default_factory=list)
-    annotations: "AnnotationPolicySpec" = field(
-        default_factory=lambda: AnnotationPolicySpec()
-    )
     #: The partition/point dimension name (top-level ``point_dim``, default
     #: ``pixel``). Names the synthetic axis single-point ``table``/``scalar``
     #: inputs are given (see `catena.formats`) and supplies the default ``dim``

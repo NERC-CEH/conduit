@@ -49,8 +49,18 @@ Frequency is checked only where it is declared: by a `Freq` [contract](../guides
 
 ## Units metadata
 
-Give input variables a CF-style `units` attribute so catena can validate and convert them against your nodes' [contracts](../guides/nodes/contracts.md).
-A missing or unparseable `units` attribute is handled by the [`[annotations]` policy](configuration.md#annotations).
+Give input variables a CF-style `units` attribute so catena can validate them against your nodes' [contracts](../guides/nodes/contracts.md).
+A missing or unparseable `units` attribute fails wherever a consumer declares a unit.
+
+CSV and Parquet files have nowhere to store one, so attach it with a `[[node]]` and have the consumer read that node:
+
+```toml
+[[node]]
+name = "temperature_labelled"
+inputs = ["temperature"]
+expression = "temperature.assign_attrs(units='degC')"
+units = "degC"
+```
 
 ## Output provenance
 

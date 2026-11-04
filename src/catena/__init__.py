@@ -18,7 +18,6 @@ from .io import (
 )
 from .pipeline import DryRunReport, RunReport, Stage, WrittenOutput, dry_run, run
 from .specs import (
-    AnnotationPolicySpec,
     BlockingSpec,
     CacheSpec,
     CheckSpec,
@@ -32,7 +31,6 @@ from .specs import (
 use_cf_units()
 
 __all__ = [
-    "AnnotationPolicySpec",
     "BlockingSpec",
     "CacheSpec",
     "CheckSpec",

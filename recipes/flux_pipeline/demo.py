@@ -80,6 +80,7 @@ def _(mo, nodes_path):
     ## The Python module
 
     The annotations declare the units and time frequencies that catena checks across the DAG.
+    A node never converts its inputs for you, so `tair_celsius` converts the temperature from the kelvin in the file, and a node whose calculation changes the unit states the new one with `.assign_attrs(units=...)`.
 
     ```python
     {nodes_path.read_text()}
@@ -124,22 +125,6 @@ def _(catena, config_path, mo):
             for stage in dry.stages
         )
     )
-    return (dry,)
-
-
-@app.cell(hide_code=True)
-def _(dry, mo):
-    findings = [
-        f"- **{stage.name}** — {finding}"
-        for stage in dry.stages
-        for finding in stage.findings
-    ]
-    mo.md(
-        "catena reports the unit conversion this pipeline relies on, because "
-        '`on_inexact = "warn"` in the config asks it to:\n\n' + "\n".join(findings)
-        if findings
-        else "No findings."
-    )
     return
 
 
@@ -147,19 +132,13 @@ def _(dry, mo):
 def _(mo):
     mo.md("""
     ## Run the pipeline
-
-    The conversion reported above happens here, so its warning is silenced rather than repeated.
     """)
     return
 
 
 @app.cell
 def _(catena, config_path, mo, rel):
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        run = catena.run(config_path)
+    run = catena.run(config_path)
 
     mo.md(
         f"Completed in {run.elapsed:.2f}s.\n\n"

@@ -12,21 +12,20 @@ Three layers:
 """
 
 import os
-import pathlib
 import sys
 import types
 
-import pint
 import pytest
 import xarray as xr
+import xarray_annotated as xra
 from typer.testing import CliRunner
-from xarray_annotated.units import UnitsWarning, policy
 
 from catena import dry_run
 from catena.build import build_driver
 from catena.cli.app import app
 from catena.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
 from catena.contract_check import check_input_contracts
+from catena.errors import CatenaValueError
 from catena.input_checks import InputCheckError
 from catena.io import assert_output_paths_writable
 
@@ -65,12 +64,12 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from xarray_annotated.units import declare_units\n"
+        "import xarray_annotated as xra\n"
         "class _Out(TypedDict):\n"
-        f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
+        f"    {name}_out: Annotated[xr.DataArray, xra.Unit('t ha-1')]\n"
         "@extract_fields()\n"
-        "@declare_units\n"
-        f"def {name}({in_name}: Annotated[xr.DataArray, {unit!r}]) -> _Out:\n"
+        "@xra.enforce\n"
+        f"def {name}({in_name}: Annotated[xr.DataArray, xra.Unit({unit!r})]) -> _Out:\n"
         f"    return {{{name + '_out'!r}: {in_name}}}\n"
     )
     ns: dict = {}
@@ -98,65 +97,51 @@ class TestCheckInputUnitsDirect:
         return build_driver(["vpd_cons"], {})
 
     def test_matching_units_pass(self, dr):
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"vpd_weekly": _input("Pa")})
 
-    def test_compatible_units_convert_without_error(self, dr):
-        with policy(enabled=True, on_missing="error"):
-            check_input_contracts(dr, {"vpd_weekly": _input("hPa")})
+    def test_different_spelling_passes(self, dr):
+        with xra.enabled(True):
+            check_input_contracts(dr, {"vpd_weekly": _input("pascal")})
 
-    def test_exact_match_rejects_compatible_but_different(self, dr):
+    def test_compatible_but_unequal_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="error", on_inexact="error"),
-            pytest.raises(ValueError, match="on_inexact"),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="differs from declared"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input("hPa")})
 
     def test_incompatible_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(pint.DimensionalityError),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="'vpd_weekly' \\(units\\)"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input("kg")})
 
-    def test_missing_units_strict_raises(self, dr):
+    def test_missing_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(ValueError, match="no 'units' attribute"),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="no 'units' attribute"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input(None)})
 
-    def test_missing_units_warn_warns(self, dr):
+    def test_unparseable_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="warn"),
-            pytest.warns(UnitsWarning, match="unvalidated"),
-        ):
-            check_input_contracts(dr, {"vpd_weekly": _input(None)})
-
-    def test_unparseable_units_strict_raises(self, dr):
-        with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(ValueError, match="unparseable"),
-        ):
-            check_input_contracts(dr, {"vpd_weekly": _input("fraction")})
-
-    def test_unparseable_units_warn_warns(self, dr):
-        with (
-            policy(enabled=True, on_missing="warn"),
-            pytest.warns(UnitsWarning, match="unparseable"),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="unparseable"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input("fraction")})
 
     def test_off_mode_skips_everything(self, dr):
-        with policy(enabled=False):
+        with xra.enabled(False):
             check_input_contracts(dr, {"vpd_weekly": _input("kg")})
 
     def test_input_without_declared_consumer_ignored(self, dr):
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"some_other_var": _input("kg")})
 
     def test_non_dataarray_inputs_ignored(self, dr):
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"vpd_weekly": 3.0})
 
 
@@ -180,14 +165,14 @@ class TestCheckInputUnitsPropagation:
     def test_resample_routed_input_is_validated(self, register):
         dr = self._resample_driver(register)
         with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(pint.DimensionalityError),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="gpp_weekly"),
         ):
             check_input_contracts(dr, {"gpp_weekly": _input("kg")})
 
     def test_resample_routed_input_passes_when_correct(self, register):
         dr = self._resample_driver(register)
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"gpp_weekly": _input("g m-2 d-1")})
 
     def test_derive_routed_input_not_validated(self, register):
@@ -207,7 +192,7 @@ class TestCheckInputUnitsPropagation:
             )
         ]
         dr = build_driver(["node", "dv_cons"], {}, node_specs=specs)
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"a": _input("kg"), "b": _input("kg")})
 
 
@@ -354,33 +339,29 @@ class TestDryRunReport:
         assert any("consumed by no node" in f for f in findings)
 
 
-class TestPolicyReport:
-    """The dry run reports the active contract policy grouped by policy object.
+class TestSwitchedOff:
+    """A dry run says so when contract checking is off, rather than claiming a pass."""
 
-    The three axes come from three separate ``get_policy()`` calls in
-    ``xarray_annotated``; the report groups them that way so no line the CLI
-    composes is long enough to wrap.  Captured CLI output carries no escape
-    codes, because ``typer.echo`` strips them when stdout is not a terminal.
+    def test_contract_stages_say_they_did_not_check(self, tmp_path, synthetic_data_dir):
+        with xra.enabled(False):
+            report = dry_run(_config(tmp_path, synthetic_data_dir))
+        assert _stage(report, "contracts").status == "skipped"
+        assert "switched off" in _stage(report, "dag").detail
+
+    def test_contract_stages_report_a_check(self, tmp_path, synthetic_data_dir):
+        with xra.enabled(True):
+            report = dry_run(_config(tmp_path, synthetic_data_dir))
+        assert _stage(report, "contracts").status == "ok"
+        assert "passed" in _stage(report, "dag").detail
+
+
+class TestDryRunRendering:
+    """Captured CLI output carries no escape codes, because ``typer.echo`` strips them
+    when stdout is not a terminal.
     """
 
-    def test_all_three_axes_reported(self, tmp_path, synthetic_data_dir):
-        report = dry_run(_config(tmp_path, synthetic_data_dir))
-        assert set(report.policy) == {"units", "schema", "temporal"}
-        assert "on_inexact=" in report.policy["units"]
-        assert "on_mismatch=" in report.policy["schema"]
-        assert "on_uninferable=" in report.policy["temporal"]
-
-    def test_reports_the_configured_policy(self, tmp_path, synthetic_data_dir):
-        cfg = _config(tmp_path, synthetic_data_dir)
-        text = pathlib.Path(cfg).read_text()
-        pathlib.Path(cfg).write_text(text + '\n[annotations]\non_inexact = "warn"\n')
-        report = dry_run(cfg)
-        assert "on_inexact=warn" in report.policy["units"]
-
     def test_no_line_wraps_at_eighty_columns(self, tmp_path, synthetic_data_dir):
-        """The old single-line form ran past 110 characters.  Keep it short.
-
-        The recipe pages capture this output verbatim at documentation-build
+        """The recipe pages capture this output verbatim at documentation-build
         time, so a line long enough to wrap would wrap differently depending on
         the terminal width wherever the build ran.
         """

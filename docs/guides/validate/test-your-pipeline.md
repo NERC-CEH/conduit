@@ -35,8 +35,8 @@ def test_anomaly_is_centred():
     assert float(anomaly.mean("time")) == pytest.approx(0.0)
 ```
 
-`@declare_units` runs on the call, validating and converting the argument's `units` as it would in a pipeline, with no config or DAG needed.
-Give test arrays a `units` attribute, or you will be testing the missing-units policy rather than your function.
+`@xra.enforce` runs on the call, checking the argument's `units` as it would in a pipeline, with no config or DAG needed.
+Give test arrays a `units` attribute, or the call raises before your function runs.
 
 This is where the science belongs: assert on known analytic cases, conservation properties, limits, or whatever else tells you the calculation is the one you meant.
 
@@ -58,7 +58,7 @@ def test_config_is_valid():
     assert not [f for stage in report.stages for f in stage.findings]
 ```
 
-`Stage.findings` holds the soft issues the active `[annotations]` policy let through.
+`Stage.findings` holds the soft issues, such as an input no node consumes.
 In CI, this catches a renamed input, a mistyped section, a unit that stopped matching or an output nothing produces, in seconds.
 [Validate before running](validate-before-running.md) lists every stage.
 

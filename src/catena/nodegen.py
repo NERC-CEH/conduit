@@ -11,11 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import xarray as xr
+import xarray_annotated as xra
 from hamilton.function_modifiers import tag
-from xarray_annotated import annotate
-from xarray_annotated.schema import declare_schema
-from xarray_annotated.temporal import declare_freq
-from xarray_annotated.units import declare_units
 
 from .importing import import_user_module
 from .specs import NodeSpec
@@ -30,6 +27,7 @@ def _node_namespace(base: Path | None = None) -> dict[str, Any]:
     """Build the namespace every generated node's body is ``exec``'d in."""
     return {
         "xr": xr,
+        "xra": xra,
         "Any": Any,
         # A `[[node]]` naming '_import_path' + 'function' resolves it the same way a
         # config section does, so a relative .py path is relative to the config.
@@ -64,8 +62,8 @@ def make_node_module(
     The node's *body* is built by ``exec`` (a ``[[node]]`` expression is arbitrary
     user code), but its declared output contract is attached programmatically:
     ``xarray_annotated.annotate`` builds the ``Annotated`` return hint from the raw
-    spec values, then ``declare_units`` / ``declare_schema`` are applied as ordinary
-    decorators — no annotation/decorator source is generated.
+    spec values, then ``xarray_annotated.enforce`` is applied as an ordinary decorator
+    — no annotation/decorator source is generated.
 
     The module is registered in ``sys.modules`` under a content-derived name (see
     `_module_name`), which Hamilton requires and which keeps repeated builds of the
@@ -100,31 +98,23 @@ def _decorate(fn: Any, spec: NodeSpec) -> Any:
     # A passthrough declares no contract of its own except its frequency (the one
     # facet it does not preserve), and is tagged for the check to propagate the rest.
     if spec.passthrough:
-        fn.__annotations__["return"] = annotate(freq=spec.freq)
+        fn.__annotations__["return"] = xra.annotate(freq=spec.freq)
         if spec.freq is not None:
-            fn = declare_freq(fn)
+            fn = xra.enforce(fn)
         return tag(**{PASSTHROUGH_TAG: "true"})(fn)  # type: ignore[reportArgumentType]
 
     # Otherwise a declared unit/dims/dtype/coords/freq makes the node a typed producer:
-    # stamped/validated at runtime and read by the build-time check. Without any, the
-    # node is simply unchecked.
-    fn.__annotations__["return"] = annotate(
+    # validated at runtime and read by the build-time check. Without any, the node is
+    # simply unchecked.
+    hint = xra.annotate(
         unit=spec.units,
         dims=spec.dims or None,
         dtype=spec.dtype,
         coords=spec.coords or None,
         freq=spec.freq,
     )
-    # Apply the validate-only decorators first, then units, so the composition is
-    # ``declare_units(declare_freq(declare_schema(fn)))`` (declare_units outermost,
-    # as it is the only one that may convert).
-    if spec.dims or spec.dtype or spec.coords:
-        fn = declare_schema(fn)
-    if spec.freq is not None:
-        fn = declare_freq(fn)
-    if spec.units is not None:
-        fn = declare_units(fn)
-    return fn
+    fn.__annotations__["return"] = hint
+    return fn if hint is xr.DataArray else xra.enforce(fn)
 
 
 def _build_fn_code(spec: NodeSpec) -> str:

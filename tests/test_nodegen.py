@@ -3,8 +3,9 @@
 import sys
 import types
 
+import pytest
 import xarray as xr
-from xarray_annotated.units import policy, units_from_signature
+import xarray_annotated as xra
 
 from catena.config import NodeSpec
 from catena.nodegen import _build_fn_code, _node_namespace, make_node_module
@@ -143,32 +144,54 @@ class TestMakeNodeModule:
 
 
 class TestNodeUnits:
-    """A declared `units` makes the node a typed, stamped producer."""
+    """A declared `units` makes the node a typed producer, checked when it runs."""
 
     def test_no_units_is_plain_passthrough(self):
         mod = make_node_module([_expr_spec("f", ["a"], "a")])
         # A bare DataArray return and no declared unit.
         assert mod.f.__annotations__["return"] is xr.DataArray
-        _, out_units = units_from_signature(mod.f)
-        assert out_units is None
-
-    def test_units_annotate_return_and_decorate(self):
-        mod = make_node_module([_expr_spec("f", ["a"], "a", units="g m-2 d-1")])
-        # annotate() built the return contract, readable by the static check ...
-        _, out_units = units_from_signature(mod.f)
-        assert out_units == "g m-2 d-1"
-        # ... and declare_units stamps it on the output at runtime.
-        with policy(enabled=True):
-            out = mod.f(xr.DataArray([1.0]))
-        assert out.attrs["units"] == "g m-2 d-1"
-
-    def test_units_stamped_on_output_at_runtime(self):
-        mod = make_node_module([_expr_spec("scaled", ["a"], "a", units="t ha-1")])
-        with policy(enabled=True):
-            out = mod.scaled(xr.DataArray([1.0, 2.0]))
-        assert out.attrs["units"] == "t ha-1"
+        _, out = xra.declarations_from_signature(mod.f)
+        assert out is None
 
     def test_declared_units_reachable_for_static_check(self):
         mod = make_node_module([_expr_spec("ratio", ["a", "b"], "a / b", units="1")])
-        _, out_units = units_from_signature(mod.ratio)
-        assert out_units == "1"
+        _, out = xra.declarations_from_signature(mod.ratio)
+        assert out == xra.Declared(unit=xra.Unit("1"))
+
+    def test_output_already_in_the_declared_unit_passes(self):
+        mod = make_node_module([_expr_spec("f", ["a"], "a", units="g m-2 d-1")])
+        with xra.enabled(True):
+            out = mod.f(xr.DataArray([1.0], attrs={"units": "g m-2 d-1"}))
+        assert out.attrs["units"] == "g m-2 d-1"
+
+    def test_output_with_no_unit_raises(self):
+        mod = make_node_module([_expr_spec("f", ["a"], "a", units="t ha-1")])
+        with xra.enabled(True), pytest.raises(ValueError, match="no 'units' attribute"):
+            mod.f(xr.DataArray([1.0]))
+
+    def test_output_with_a_stale_unit_raises(self):
+        mod = make_node_module([_expr_spec("f", ["a"], "a * 0.01", units="hPa")])
+        with (
+            xra.enabled(True),
+            pytest.raises(ValueError, match="differs from declared"),
+        ):
+            mod.f(xr.DataArray([1.0], attrs={"units": "Pa"}))
+
+    def test_expression_states_a_changed_unit(self):
+        expression = "(a * 0.01).assign_attrs(units='hPa')"
+        mod = make_node_module([_expr_spec("f", ["a"], expression, units="hPa")])
+        with xra.enabled(True):
+            out = mod.f(xr.DataArray([100.0], attrs={"units": "Pa"}))
+        assert out.attrs["units"] == "hPa"
+
+    def test_expression_can_convert_with_xra(self):
+        expression = "xra.units.convert(a, 'hPa')"
+        mod = make_node_module([_expr_spec("f", ["a"], expression, units="hPa")])
+        with xra.enabled(True):
+            out = mod.f(xr.DataArray([100.0], attrs={"units": "Pa"}))
+        assert out.attrs["units"] == "hPa"
+        assert out.item() == pytest.approx(1.0)
+
+    def test_xra_is_refused_as_a_node_name(self):
+        with pytest.raises(ValueError, match="reserved"):
+            NodeSpec.from_config({"name": "xra", "inputs": [], "expression": "0"})

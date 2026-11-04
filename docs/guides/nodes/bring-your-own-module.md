@@ -45,31 +45,32 @@ def aridity_index_daily(
 
 ## 2. Declare contracts
 
-Annotate the parameters and return value, and add `@declare_units`:
+Annotate the parameters and return value, and add `@xra.enforce`:
 
 ```python
 from typing import Annotated
 
 import xarray as xr
+import xarray_annotated as xra
+from xarray_annotated import Unit
 
-from xarray_annotated.units import declare_units
 
-
-@declare_units
+@xra.enforce
 def aridity_index_daily(
-    precipitation_daily: Annotated[xr.DataArray, "mm/day"],
-    evapotranspiration_daily: Annotated[xr.DataArray, "mm/day"],
+    precipitation_daily: Annotated[xr.DataArray, Unit("mm/day")],
+    evapotranspiration_daily: Annotated[xr.DataArray, Unit("mm/day")],
     *,
     floor: float = 1e-6,
-) -> Annotated[xr.DataArray, "1"]:
+) -> Annotated[xr.DataArray, Unit("1")]:
     """Ratio of precipitation to evapotranspiration (dimensionless)."""
-    return precipitation_daily / (evapotranspiration_daily + floor)
+    ratio = precipitation_daily / (evapotranspiration_daily + floor)
+    return ratio.assign_attrs(units="1")
 ```
 
-At call time, the decorator validates and converts the inputs' units and stamps the output's.
+At call time, the decorator checks the inputs and the output against their declarations, so the body states the unit it changes.
 Before anything runs, catena reads the same annotations to check this node's edges against its neighbours.
 A pipeline runs without contracts, but they are most of what catena adds.
-[Declaring contracts](contracts.md) covers the other facets and the decorator-ordering rule.
+[Declaring contracts](contracts.md) covers the other facets, and how to convert units.
 
 ## 3. Multiple outputs
 

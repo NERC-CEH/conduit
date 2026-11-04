@@ -11,8 +11,11 @@ executing any node (the basis of ``catena run --dry-run``).
 
 **Facets.** The checks are generic over every `xarray-annotated` facet — **units**
 (pint/CF), **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and
-phase of the time axis). Each is a `_Facet` entry pairing a policy, a
-marker-vs-marker edge predicate, and a marker-vs-array runtime check.
+phase of the time axis). Each is a `_Facet` entry pairing a marker-vs-marker edge
+predicate with a marker-vs-array runtime check.
+
+**Switching off.** Both checks do nothing when `xarray-annotated` is switched off,
+with ``XARRAY_ANNOTATED_ENABLED=false`` or inside ``xarray_annotated.enabled(False)``.
 
 Two distinctions fall out of that table:
 
@@ -22,10 +25,10 @@ Two distinctions fall out of that table:
   reading a 1-D datetime coordinate executes no node, so it stays a legitimate
   ``--dry-run`` pre-flight.
 - **Provable-only.** An edge is flagged only when the two declarations are *provably*
-  inconsistent (incompatible units, disjoint dim sets, different dtype kinds).
-  Compatible-but-inexact ones are flagged only when the facet's policy demands it
-  (units ``on_inexact="error"``), which is what lets a partially-annotated pipeline
-  adopt the check without a wave of false positives.
+  inconsistent (different units, disjoint dim sets, different dtypes). An edge with a
+  declaration missing at either end is not flagged, which lets a partially-annotated
+  pipeline adopt the check without a wave of false positives. Units that could be
+  converted still count as different, since nothing converts them between nodes.
 
 **Passthrough propagation.** A node with no declared producer contract breaks the
 edge chain. A node tagged *passthrough* (`catena.nodegen.PASSTHROUGH_TAG`)
@@ -45,15 +48,21 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
 
+import pint
 import xarray as xr
 from hamilton import driver, graph_types
 from xarray_annotated import Declared, declarations_from_signature
-from xarray_annotated.schema import check_schema, dims_compatible, dtype_compatible
-from xarray_annotated.schema import get_policy as schema_get_policy
-from xarray_annotated.temporal import check_freq, freq_compatible
-from xarray_annotated.temporal import get_policy as temporal_get_policy
+
+# Private upstream: 0.7.0 has no public way to read the switch.
+from xarray_annotated._config import resolve_enabled
+from xarray_annotated.schema import (
+    SchemaError,
+    check_schema,
+    dims_compatible,
+    dtype_compatible,
+)
+from xarray_annotated.temporal import FreqError, check_freq, freq_compatible
 from xarray_annotated.units import check_units, units_compatible, units_equal
-from xarray_annotated.units import get_policy as units_get_policy
 
 from .errors import CatenaValueError
 
@@ -66,26 +75,26 @@ _FACET_NAMES = ("units", "dims", "coords", "dtype", "freq")
 # Marker-vs-marker edge predicates
 # ---------------------------------------------------------------------------
 # Each returns a short "why" string when the two declarations are *provably*
-# inconsistent, else None. `pol` is the facet's resolved policy.
+# inconsistent, else None.
 
 
-def _units_edge(a: str, b: str, pol: Any) -> str | None:
+def _units_edge(a: str, b: str) -> str | None:
     if not units_compatible(a, b):
         return "dimensionally incompatible"
-    if pol.on_inexact == "error" and not units_equal(a, b):
+    if not units_equal(a, b):
         return "units differ; exact match required"
     return None
 
 
-def _dims_edge(a: Any, b: Any, _pol: Any) -> str | None:
+def _dims_edge(a: Any, b: Any) -> str | None:
     return None if dims_compatible(a, b) else "dims incompatible"
 
 
-def _dtype_edge(a: Any, b: Any, _pol: Any) -> str | None:
+def _dtype_edge(a: Any, b: Any) -> str | None:
     return None if dtype_compatible(a, b) else "dtypes incompatible"
 
 
-def _freq_edge(a: Any, b: Any, _pol: Any) -> str | None:
+def _freq_edge(a: Any, b: Any) -> str | None:
     return None if freq_compatible(a, b) else "frequencies incompatible"
 
 
@@ -104,7 +113,8 @@ def _schema_input_check(da: xr.DataArray, decls: list, name: str) -> None:
 
 
 def _freq_input_check(da: xr.DataArray, decls: list, name: str) -> None:
-    check_freq(da, list(decls), name)
+    for declared in decls:
+        check_freq(da, declared, name)
 
 
 @dataclass(frozen=True)
@@ -112,14 +122,13 @@ class _Facet:
     """One annotation facet: how to read it, compare it, and check it at runtime."""
 
     name: str
-    get_policy: Callable[[], Any]
     #: Pull this facet's stored value out of a `Declared`, or None if undeclared.
     #: Units yields the unit *string* (`.unit.unit`); schema facets yield the
     #: marker, so downstream maps keep the same value types as before the unified
     #: reader.
     from_declared: Callable[["Declared"], Any]
     #: Marker-vs-marker edge predicate, or None to skip the build-time edge check.
-    edge: Callable[[Any, Any, Any], str | None] | None
+    edge: Callable[[Any, Any], str | None] | None
     #: Marker(s)-vs-array runtime check for `check_input_contracts`.
     runtime_check: Callable[[xr.DataArray, list, str], None]
     #: Whether a passthrough node preserves this facet (so it can be propagated).
@@ -129,7 +138,6 @@ class _Facet:
 _FACETS: tuple[_Facet, ...] = (
     _Facet(
         "units",
-        units_get_policy,
         lambda d: d.unit.unit if d.unit is not None else None,
         _units_edge,
         _units_input_check,
@@ -137,7 +145,6 @@ _FACETS: tuple[_Facet, ...] = (
     ),
     _Facet(
         "dims",
-        schema_get_policy,
         lambda d: d.dims,
         _dims_edge,
         _schema_input_check,
@@ -145,7 +152,6 @@ _FACETS: tuple[_Facet, ...] = (
     ),
     _Facet(
         "coords",
-        schema_get_policy,
         lambda d: d.coords,
         # No edge predicate: a coords declaration is a lower bound ("at least
         # these"), so two of them can never be shown inconsistent. coords takes
@@ -156,7 +162,6 @@ _FACETS: tuple[_Facet, ...] = (
     ),
     _Facet(
         "dtype",
-        schema_get_policy,
         lambda d: d.dtype,
         _dtype_edge,
         _schema_input_check,
@@ -164,7 +169,6 @@ _FACETS: tuple[_Facet, ...] = (
     ),
     _Facet(
         "freq",
-        temporal_get_policy,
         lambda d: d.freq,
         _freq_edge,
         # freq is inferred from coordinate *values* rather than metadata, but
@@ -298,11 +302,12 @@ def _propagate_backward(
 
 
 def _check_dag(dr: driver.Driver, facets: tuple[_Facet, ...]) -> None:
+    if not resolve_enabled():
+        return
     maps, passthrough_edges = _collect_contract_maps(dr)
     findings: list[str] = []
     for facet in facets:
-        pol = facet.get_policy()
-        if not pol.enabled or facet.edge is None:
+        if facet.edge is None:
             continue
         produced, consumed = maps[facet.name]
         if facet.passthrough_preserving:
@@ -320,11 +325,11 @@ def _check_dag(dr: driver.Driver, facets: tuple[_Facet, ...]) -> None:
             # compatible with everything. Dims("x","y") is compatible with both
             # Dims("x","y", ordered=True) and Dims("y","x", ordered=True), which
             # provably conflict with each other — a star check anchored on the loose
-            # one would pass. (dtype `exact` and freq anchors have the same shape;
+            # one would pass. (dtype widths and freq anchors have the same shape;
             # units alone is transitive, being an equivalence relation.) Candidates
             # are producer-first, so combinations() still leads with "output of ...".
             for (a_decl, a_src), (b_decl, b_src) in combinations(candidates, 2):
-                why = facet.edge(a_decl, b_decl, pol)
+                why = facet.edge(a_decl, b_decl)
                 if why is not None:
                     findings.append(
                         f"  {name!r}: {a_src} declares {a_decl!r} but {b_src} "
@@ -339,10 +344,11 @@ def _check_dag(dr: driver.Driver, facets: tuple[_Facet, ...]) -> None:
 def _check_inputs(
     dr: driver.Driver, inputs: dict[str, Any], facets: tuple[_Facet, ...]
 ) -> None:
+    if not resolve_enabled():
+        return
     maps, passthrough_edges = _collect_contract_maps(dr)
+    findings: list[str] = []
     for facet in facets:
-        if not facet.get_policy().enabled:
-            continue
         _, consumed = maps[facet.name]
         expected: dict[str, list] = {}
         for name, consumers in consumed.items():
@@ -356,17 +362,26 @@ def _check_inputs(
             decls = expected.get(name)
             if not decls or not isinstance(value, xr.DataArray):
                 continue
-            facet.runtime_check(value, decls, name)
+            try:
+                facet.runtime_check(value, decls, name)
+            except (
+                ValueError,
+                pint.DimensionalityError,
+                SchemaError,
+                FreqError,
+            ) as exc:
+                findings.append(f"  {name!r} ({facet.name}): {exc}")
+    if findings:
+        raise CatenaValueError("input contract mismatch(es):\n" + "\n".join(findings))
 
 
 def check_dag_contracts(dr: driver.Driver) -> None:
     """Verify declared contracts are consistent across every built-DAG edge.
 
     Runs the build-time edge check for all facets (units, dims, dtype, freq; coords
-    is skipped — its declarations are lower bounds). A provable mismatch always raises
-    `ValueError` (it is a genuine pipeline-definition error). Each facet is skipped
-    when its policy is disabled (the conftest default), so this is a no-op for
-    pipelines that opt out of contract handling.
+    is skipped — its declarations are lower bounds). A provable mismatch raises
+    `CatenaValueError` naming every offending edge. This is a no-op when
+    `xarray-annotated` is switched off.
     """
     _check_dag(dr, _FACETS)
 
@@ -381,5 +396,8 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     needs only the 1-D datetime coordinate, so — like units — this executes no node
     and is suitable as a ``run --dry-run`` pre-flight. Contracts are propagated
     backward through unit-preserving passthrough edges to a fixpoint.
+
+    Every failing input is reported in one `CatenaValueError`. This is a no-op when
+    `xarray-annotated` is switched off.
     """
     _check_inputs(dr, inputs, _FACETS)

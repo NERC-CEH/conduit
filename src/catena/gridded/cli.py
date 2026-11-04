@@ -69,7 +69,6 @@ def create_store(
     Zarr store.
     """
     parsed = load_config(config_file)
-    parsed.annotations.apply()
 
     chunk = pixel_chunk
     if chunk is None and parsed.blocking_spec is not None:
@@ -110,7 +109,6 @@ def merge(
     part filenames match what the subset runs wrote), defaulting to ``pixel``.
     """
     parsed = load_config(config_file)
-    parsed.annotations.apply()
     dim = parsed.subset_spec.dim if parsed.subset_spec is not None else "pixel"
     written = merge_subset_outputs(parsed.output_specs, out=out, dim=dim)
 

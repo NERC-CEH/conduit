@@ -1,7 +1,7 @@
 """Tests for the general fan-out [[node]] mechanism and node contract decls."""
 
 import xarray as xr
-from xarray_annotated.schema import Dims, Dtype, schema_from_signature
+from xarray_annotated import Declared, Dims, Dtype, declarations_from_signature
 
 from catena.build import build_driver
 from catena.config import Config, NodeSpec, expand_node_entries
@@ -85,19 +85,19 @@ class TestForEachExpansion:
 
 class TestSchemaOnNode:
     def test_schema_markers_annotated_and_decorated(self):
-        # annotate() builds the schema return contract and declare_schema is applied,
+        # annotate() builds the schema return contract and enforce is applied,
         # so both markers are readable off the built node's signature.
         mod = make_node_module(
             [_node("f", ["a"], "a", dims=["time", "x"], dtype="float64")]
         )
-        _, out = schema_from_signature(mod.f)
+        _, out = declarations_from_signature(mod.f)
         # annotate() emits markers in a fixed order (unit, dims, dtype, coords).
-        assert out == [Dims("time", "x"), Dtype("float64")]
+        assert out == Declared(dims=Dims("time", "x"), dtype=Dtype("float64"))
 
     def test_declared_dims_readable_from_generated_signature(self):
         mod = make_node_module([_node("f", ["a"], "a", dims=["time", "x"])])
-        _, out = schema_from_signature(mod.f)
-        assert out == [Dims("time", "x")]
+        _, out = declarations_from_signature(mod.f)
+        assert out == Declared(dims=Dims("time", "x"))
 
     def test_config_parses_and_validates_dims_dtype(self):
         spec = (
@@ -142,5 +142,5 @@ class TestPassthroughNode:
         assert tag_deco.tags[PASSTHROUGH_TAG] == "true"
         # ... and declares no contract of its own (bare DataArray return).
         assert mod.p.__annotations__["return"] is xr.DataArray
-        _, out = schema_from_signature(mod.p)
+        _, out = declarations_from_signature(mod.p)
         assert out is None
