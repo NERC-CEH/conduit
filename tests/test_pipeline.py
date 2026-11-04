@@ -140,7 +140,12 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
         run(cfg)
         assert out.exists()
 
-    def test_missing_output_dir_fails_before_compute(
+    def test_missing_output_dir_is_created(self, tmp_path, synthetic_data_dir):
+        out = tmp_path / "missing" / "nested" / "out.nc"
+        run(_config(tmp_path, synthetic_data_dir, out))
+        assert out.exists()
+
+    def test_output_blocked_by_a_file_fails_before_compute(
         self, tmp_path, synthetic_data_dir
     ):
         """Output paths are pre-flighted on the real run, not just in a dry run.
@@ -148,11 +153,11 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
         Otherwise the whole DAG executes and the bad destination only surfaces
         inside save_outputs, after all the work.
         """
-        out = tmp_path / "missing" / "out.nc"
-        cfg = _config(tmp_path, synthetic_data_dir, out)
-        with pytest.raises(FileNotFoundError, match="does not exist"):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        cfg = _config(tmp_path, synthetic_data_dir, blocker / "out.nc")
+        with pytest.raises(FileNotFoundError, match="not a directory"):
             run(cfg)
-        assert not out.parent.exists()
 
     def test_subset_zarr_without_store_fails_before_compute(
         self, tmp_path, synthetic_data_dir
@@ -189,6 +194,8 @@ class TestOutputsAreCheckedBeforeAnythingIsCreated:
     def test_no_cache_directory_after_an_unwritable_output(
         self, tmp_path, synthetic_data_dir
     ):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
         cfg = tmp_path / "config.toml"
         cfg.write_text(
             f"""\
@@ -200,7 +207,7 @@ path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]
 
 [outputs.daily]
-path = "{tmp_path / "missing" / "out.nc"}"
+path = "{blocker / "out.nc"}"
 vars = ["temperature"]
 """
         )

@@ -67,6 +67,7 @@ vars = ["temperature_anomaly", "aridity_index"]
 
 `vars` takes the same list/mapping forms as inputs — the mapping form (`{gpp_daily = "gpp"}`) writes node `gpp_daily` to file variable `gpp`.
 Format is inferred from the extension.
+Missing parent directories are created when the output is written.
 
 ## Modules
 

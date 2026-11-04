@@ -158,6 +158,8 @@ vars = ["warmth"]
 
     def test_failing_pipeline_exits_non_zero(self, tmp_path, synthetic_data_dir):
         """A hard failure from the library must reach the shell as an exit code."""
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
         cfg = tmp_path / "config.toml"
         cfg.write_text(
             f"""\
@@ -166,7 +168,7 @@ path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]
 
 [outputs.daily]
-path = "{tmp_path / "missing" / "out.nc"}"
+path = "{blocker / "out.nc"}"
 vars = ["temperature"]
 """
         )

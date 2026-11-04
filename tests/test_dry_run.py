@@ -11,6 +11,7 @@ Three layers:
   checking that ``conduit run --dry-run`` renders every stage of it.
 """
 
+import os
 import pathlib
 import sys
 import types
@@ -225,9 +226,25 @@ class TestAssertOutputPathsWritable:
         with pytest.raises(ValueError, match="Unsupported file extension"):
             assert_output_paths_writable(specs)
 
-    def test_missing_parent_dir_raises(self, tmp_path):
-        specs = {"daily": IOSpec(path=str(tmp_path / "nope" / "out.nc"), vars=["gpp"])}
-        with pytest.raises(FileNotFoundError, match="parent directory"):
+    def test_missing_parent_dir_passes_without_being_created(self, tmp_path):
+        missing = tmp_path / "nope" / "nested"
+        specs = {"daily": IOSpec(path=str(missing / "out.nc"), vars=["gpp"])}
+        assert_output_paths_writable(specs)
+        assert not (tmp_path / "nope").exists()
+
+    def test_file_in_the_way_raises(self, tmp_path):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        specs = {"daily": IOSpec(path=str(blocker / "sub" / "out.nc"), vars=["gpp"])}
+        with pytest.raises(FileNotFoundError, match="not a directory"):
+            assert_output_paths_writable(specs)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+    def test_missing_parent_under_readonly_dir_raises(self, tmp_path):
+        readonly = tmp_path / "readonly"
+        readonly.mkdir(mode=0o500)
+        specs = {"daily": IOSpec(path=str(readonly / "sub" / "out.nc"), vars=["gpp"])}
+        with pytest.raises(PermissionError, match="not writable"):
             assert_output_paths_writable(specs)
 
     def test_subset_zarr_without_store_raises(self, tmp_path):
@@ -290,8 +307,10 @@ class TestDryRunReport:
         # The dry run must not execute or save anything.
         assert not out.exists()
 
-    def test_missing_output_dir_raises(self, tmp_path, synthetic_data_dir):
-        out = tmp_path / "missing" / "out.nc"
+    def test_output_blocked_by_a_file_raises(self, tmp_path, synthetic_data_dir):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        out = blocker / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
         cfg = _config(tmp_path, synthetic_data_dir, outputs)
         with pytest.raises(FileNotFoundError):
@@ -397,7 +416,9 @@ class TestDryRunCLI:
             assert stage.detail in result.output
 
     def test_hard_failure_exits_non_zero(self, tmp_path, synthetic_data_dir):
-        out = tmp_path / "missing" / "out.nc"
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        out = blocker / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
         cfg = _config(tmp_path, synthetic_data_dir, outputs)
         result = runner.invoke(app, ["run", cfg, "--dry-run"])

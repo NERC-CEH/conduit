@@ -90,7 +90,7 @@ conduit gridded create-store config.toml --overwrite
 
 ### Empty or missing output
 
-Check that the `[outputs.*]` `vars` name nodes that exist, that the output's parent directory exists, and that the input data covers the range you expect.
+Check that the `[outputs.*]` `vars` name nodes that exist, that the output's directory can be created or written to, and that the input data covers the range you expect.
 `--dry-run` checks the first two.
 
 ### Slow on large grids

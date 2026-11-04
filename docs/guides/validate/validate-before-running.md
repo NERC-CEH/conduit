@@ -26,7 +26,7 @@ It checks, in order, and prints a summary per stage:
 6. **Wiring** — required inputs are all bound; unused inputs are reported ([below](#the-wiring-check)).
 7. **Input contracts** — each loaded input's metadata (units, dims, coords, dtype) is checked against what its consuming node declares.
    A normal run defers this to when the node is called, so this stage is how you catch a file with wrong or missing `units` without running the pipeline.
-8. **Output paths** — every destination would accept a write (supported extension, writable parent directory, and — for subset runs — a pre-created Zarr store).
+8. **Output paths** — every destination would accept a write (supported extension, a parent directory that is writable or can be created, and — for subset runs — a pre-created Zarr store).
 
 A clean pre-flight exits `0`.
 A problem with the config, inputs, DAG plan, wiring or output paths always fails.

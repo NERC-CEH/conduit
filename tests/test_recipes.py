@@ -97,7 +97,6 @@ def test_recipe_config_dry_runs(name: str) -> None:
     """Every recipe's config passes a dry run against freshly generated inputs."""
     recipe = RECIPES / name
     try:
-        (recipe / "results").mkdir(exist_ok=True)
         _write_inputs(recipe)
         report = conduit.dry_run(recipe / "config.toml")
         assert [stage for stage in report.stages if stage.status == "failed"] == []

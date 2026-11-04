@@ -371,6 +371,7 @@ def save_outputs(
         if provenance:
             ds = ds.assign_attrs(provenance)
         if subset_spec is None:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
             _save(ds, path, point_dim)
             written[label] = Path(path)
             continue
@@ -383,6 +384,7 @@ def save_outputs(
             written[label] = Path(path)
         else:
             part = subset_path(path, subset_spec)
+            Path(part).parent.mkdir(parents=True, exist_ok=True)
             write_in_group(ds, part, "dataset")
             written[label] = Path(part)
     return written
@@ -407,11 +409,11 @@ def assert_output_paths_writable(
     """Check every configured output destination would accept a write.
 
     Raises (before any computation) if a destination would fail at save time: an
-    unsupported file extension, a missing or unwritable parent directory, a subset
-    run targeting a Zarr store that has not been pre-created, or a subset run
-    targeting a format that cannot be partially written (CSV/Parquet). A clean
-    pass here means `save_outputs` will accept the path. Used by ``conduit run
-    --dry-run``.
+    unsupported file extension, a parent directory that cannot be written to or
+    created, a subset run targeting a Zarr store that has not been pre-created, or
+    a subset run targeting a format that cannot be partially written (CSV/Parquet).
+    A clean pass here means `save_outputs` will accept the path. Creates nothing:
+    `save_outputs` makes any missing directories. Used by ``conduit run --dry-run``.
     """
     for label, spec in output_specs.items():
         path = Path(spec.path)
@@ -432,10 +434,11 @@ def assert_output_paths_writable(
 
             path = subset_path(spec.path, subset_spec)
 
-        parent = path.parent
+        # Missing directories are created at save time, so test the deepest that exists.
+        parent = next(p for p in path.parents if p.exists())
         if not parent.is_dir():
             raise ConduitFileNotFoundError(
-                f"output {label!r} parent directory {str(parent)!r} does not exist "
+                f"output {label!r} parent {str(parent)!r} is not a directory "
                 f"(path {spec.path!r})."
             )
         if not os.access(parent, os.W_OK):
