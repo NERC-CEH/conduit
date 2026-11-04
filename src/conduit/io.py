@@ -323,7 +323,8 @@ def get_outputs(
             results[node].rename(file_var)
             for node, file_var in var_mapping(label, spec).items()
         ]
-        out[label] = transform(xr.merge(arrays))
+        # Explicit, so differing coordinates keep raising if xarray's defaults change.
+        out[label] = transform(xr.merge(arrays, compat="no_conflicts", join="outer"))
     return out
 
 

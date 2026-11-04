@@ -8,6 +8,7 @@ Covers:
 """
 
 import importlib.util
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -480,3 +481,27 @@ class TestMissingInputFile:
         assert "one.nc" in message
         assert "two.zarr" in message
         assert "present.nc" not in message
+
+
+class TestGetOutputsMerge:
+    """`get_outputs` pins its merge behaviour rather than inherit xarray's defaults."""
+
+    @staticmethod
+    def _results(a_coord: int, b_coord: int) -> dict[str, xr.DataArray]:
+        da = xr.DataArray([1.0, 2.0], dims="time", coords={"time": [0, 1]})
+        return {
+            "a": da.assign_coords(height=a_coord),
+            "b": da.assign_coords(height=b_coord),
+        }
+
+    def test_shared_coordinate_merges_without_a_future_warning(self):
+        specs = {"out": IOSpec(path="out.nc", vars={"a": "a", "b": "b"})}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            ds = get_outputs(self._results(2, 2), specs)["out"]
+        assert set(ds.data_vars) == {"a", "b"}
+
+    def test_conflicting_coordinate_raises(self):
+        specs = {"out": IOSpec(path="out.nc", vars={"a": "a", "b": "b"})}
+        with pytest.raises(xr.MergeError, match="height"):
+            get_outputs(self._results(2, 10), specs)
