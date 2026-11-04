@@ -27,7 +27,8 @@ def _require_geo_extra() -> None:
         typer.echo(
             f"The 'catena gridded' commands require the optional 'geo' extra "
             f"(missing: {', '.join(missing)}). Install it with "
-            f"`pip install ukceh-catena[geo]`.",
+            '`pip install "ukceh-catena[geo] @ '
+            'git+https://github.com/NERC-CEH/catena"`.',
             err=True,
         )
         raise typer.Exit(code=1)

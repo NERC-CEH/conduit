@@ -375,7 +375,8 @@ def build_graph(
 
     Attention
     ---------
-    This requires the ``viz`` extra (``pip install ukceh-catena[viz]``).
+    This requires the ``viz`` extra:
+    ``pip install "ukceh-catena[viz] @ git+https://github.com/NERC-CEH/catena"``.
     """
     parsed, _ = prepare_config(config)
     spec = load_graphviz_spec(Path(style) if style is not None else None)
@@ -410,7 +411,9 @@ def build_graph(
     if digraph is None:
         raise CatenaValueError(
             "Failed to build the graph visualisation. Is graphviz installed? "
-            "Install the visualisation extra with `pip install ukceh-catena[viz]`."
+            "Install the visualisation extra with "
+            '`pip install "ukceh-catena[viz] @ '
+            'git+https://github.com/NERC-CEH/catena"`.'
         )
 
     freq_map = infer_frequencies(digraph, freq_map)

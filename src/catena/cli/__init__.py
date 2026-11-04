@@ -23,7 +23,8 @@ __all__ = ["main"]
 
 _INSTALL_HINT = (
     "The 'catena' command requires the optional 'cli' extra. "
-    "Install it with `pip install ukceh-catena[cli]`. "
+    "Install it with "
+    '`pip install "ukceh-catena[cli] @ git+https://github.com/NERC-CEH/catena"`. '
     "The Python API (catena.run, catena.dry_run, catena.build_graph) needs no extra."
 )
 

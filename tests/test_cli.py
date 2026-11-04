@@ -59,7 +59,10 @@ class TestGriddedGeoExtraGuard:
 
         result = runner.invoke(app, ["gridded", "merge", "tests/test_config.toml"])
         assert result.exit_code == 1
-        assert "ukceh-catena[geo]" in result.output
+        assert (
+            '"ukceh-catena[geo] @ git+https://github.com/NERC-CEH/catena"'
+            in result.output
+        )
         assert "rioxarray" in result.output
 
 
@@ -84,7 +87,10 @@ class TestMissingTyperExtra:
         with pytest.raises(SystemExit) as excinfo:
             main()
         assert excinfo.value.code == 1
-        assert "ukceh-catena[cli]" in capsys.readouterr().err
+        assert (
+            '"ukceh-catena[cli] @ git+https://github.com/NERC-CEH/catena"'
+            in capsys.readouterr().err
+        )
 
 
 # ---------------------------------------------------------------------------

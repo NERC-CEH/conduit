@@ -44,7 +44,9 @@ def _ensure_rio() -> None:
     except ImportError as exc:  # pragma: no cover - only hit without the extra
         raise ImportError(
             "geospatial (CRS-bearing) inputs require the optional 'geo' extra; "
-            "install it with `pip install ukceh-catena[geo]`."
+            "install it with "
+            '`pip install "ukceh-catena[geo] @ '
+            'git+https://github.com/NERC-CEH/catena"`.'
         ) from exc
 
 
