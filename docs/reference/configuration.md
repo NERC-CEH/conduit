@@ -73,6 +73,7 @@ Missing parent directories are created when the output is written.
 
 Apart from the built-in `[[node]]` and `[[resample]]`, any section is **your own module**.
 A module's keyword-only parameters are set in its section.
+Any other value in the section is available by name as a node input, so a `[[node]]` can list it in `inputs`.
 
 ```toml
 # A .py file beside the config

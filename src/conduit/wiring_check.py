@@ -6,8 +6,8 @@ produce the requested ``final_vars``) against the inputs actually loaded from th
 config, and reports the two failure modes that otherwise only surface part way
 through a run:
 
-- **unbound** — a node requires an external input that nothing loaded (an error:
-  the run cannot proceed);
+- **unbound** — a node requires an external input that was neither loaded nor set
+  in the config (an error: the run cannot proceed);
 - **unused** — a loaded input that no node consumes (a warning: usually a
   suffix/alias typo, e.g. loading ``temperature_daily`` for a node that wants
   ``temperature_weekly``).
@@ -74,7 +74,7 @@ def check_wiring(
     Raises
     ------
     ValueError
-        If a required external input has no loaded value (unbound).
+        If a required external input has no loaded or config value (unbound).
 
     Warns
     -----
@@ -84,13 +84,13 @@ def check_wiring(
     required_external, all_external = _required_external_inputs(dr, final_vars)
     loaded = set(inputs)
 
-    unbound = required_external - loaded
+    unbound = required_external - loaded - set(dr.graph.config)
     if unbound:
         raise ConduitValueError(
             f"unbound pipeline input(s): {sorted(unbound)}. These are required by "
-            f"the DAG but no input was loaded for them. Check for a naming mismatch "
-            f"between [inputs.*] vars/suffix and the consuming function's parameter "
-            f"names."
+            f"the DAG but were neither loaded nor set in the config. Check for a "
+            f"naming mismatch between [inputs.*] vars/suffix and the consuming "
+            f"function's parameter names."
         )
 
     unused = loaded - all_external - set(exempt)

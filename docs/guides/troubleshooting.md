@@ -28,7 +28,7 @@ Install the `geo` extra; see [Installation](install.md#extras).
 A node needs an input that nothing produces.
 Usually one of:
 
-1. **Not listed in config** — the variable is missing from the `vars` of the right `[inputs.*]` section.
+1. **Not listed in config** — the variable is missing from the `vars` of the right `[inputs.*]` section, or the scalar is missing from every module section.
 2. **Suffix mismatch** — a parameter named `temperature_daily` needs a `temperature` variable under `[inputs.daily]`, or a `vars` mapping alias.
 3. **Wrong resolution** — the variable exists only at another frequency; add a [`[[resample]]`](../reference/configuration.md#resample).
 
