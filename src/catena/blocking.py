@@ -13,6 +13,7 @@ import xarray as xr
 from hamilton import driver
 
 from .errors import CatenaValueError
+from .io import assert_dim_in_inputs
 from .specs import BlockingSpec
 
 
@@ -54,10 +55,6 @@ def _make_blocks(
     Partition is deterministic and fixed-size (independent of worker count)
     so cache keys are stable across machines and restarts.
     """
-    if not block_names:
-        yield inputs
-        return
-
     n = _block_dim_size(inputs, block_names, dim)
     for start in range(0, n, block_size):
         sl = slice(start, start + block_size)
@@ -107,6 +104,7 @@ def execute_blocked(
     spec
         Blocking configuration (``block_size`` and ``dim``).
     """
+    assert_dim_in_inputs(inputs, spec.dim, "blocking")
     block_names = _block_input_names(inputs, spec.dim)
     blocks = list(_make_blocks(inputs, block_names, spec.block_size, spec.dim))
     return _concat_results(

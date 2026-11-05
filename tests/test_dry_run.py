@@ -262,6 +262,19 @@ vars = ["temperature"]
     return str(p)
 
 
+@pytest.mark.parametrize(
+    "section",
+    [
+        '[blocking]\nblock_size = 2\ndim = "locaton"\n',
+        '[subset]\nstart = 0\nstop = 2\ndim = "locaton"\n',
+    ],
+)
+def test_dry_run_rejects_a_dim_on_no_input(tmp_path, synthetic_data_dir, section):
+    config = _config(tmp_path, synthetic_data_dir, outputs=section)
+    with pytest.raises(CatenaValueError, match="dim 'locaton'"):
+        dry_run(config)
+
+
 def _stage(report, name: str):
     """The named stage of a report, so a test names what it asserts on."""
     return next(stage for stage in report.stages if stage.name == name)

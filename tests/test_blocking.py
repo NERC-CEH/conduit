@@ -16,6 +16,7 @@ from catena.blocking import (
 )
 from catena.build import build_driver
 from catena.config import BlockingSpec, Config, IOSpec
+from catena.errors import CatenaValueError
 from catena.io import get_final_vars
 
 # ---------------------------------------------------------------------------
@@ -116,12 +117,6 @@ class TestMakeBlocks:
         for b in blocks:
             assert b["scalar"] == 1.0
 
-    def test_no_pixel_names_yields_full_inputs(self):
-        inputs = {"x": 1}
-        blocks = list(_make_blocks(inputs, [], block_size=3, dim="pixel"))
-        assert len(blocks) == 1
-        assert blocks[0] is inputs
-
     def test_pixel_coords_are_preserved(self):
         da = xr.DataArray(
             np.arange(6.0),
@@ -162,6 +157,18 @@ class TestConcatResults:
         blocks = [{"x": xr.DataArray(1.0)}] * 2
         with pytest.raises(ValueError, match="pixel"):
             _concat_results(blocks, ["x"], "pixel")
+
+
+class TestMissingDim:
+    def test_dim_on_no_input_raises(self, pipeline_config, pipeline_inputs):
+        dr = build_driver(
+            pipeline_config.modules,
+            pipeline_config.driver_config,
+            node_specs=pipeline_config.node_specs,
+        )
+        spec = BlockingSpec(block_size=2, dim="locaton")
+        with pytest.raises(CatenaValueError, match=r"\[blocking\] dim 'locaton'"):
+            execute_blocked(dr, pipeline_inputs, _FINAL_VARS, spec)
 
 
 # ---------------------------------------------------------------------------

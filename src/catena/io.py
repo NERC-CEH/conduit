@@ -250,14 +250,31 @@ def load_inputs(
     return inputs
 
 
+def assert_dim_in_inputs(inputs: dict[str, Any], dim: str, section: str) -> None:
+    """Raise a catena error unless at least one input has the dimension ``dim``.
+
+    ``section`` names the config section that asked for ``dim``, for the message.
+    """
+    available = sorted(
+        {str(d) for val in inputs.values() for d in getattr(val, "dims", ())}
+    )
+    if dim not in available:
+        raise CatenaValueError(
+            f"[{section}] dim {dim!r} is not a dimension of any input. "
+            f"Input dimensions: {available}."
+        )
+
+
 def subset_inputs(
     inputs: dict[str, xr.DataArray], subset_spec: SubsetSpec
 ) -> dict[str, xr.DataArray]:
     """Slice every input carrying ``subset_spec.dim`` to that spec's range.
 
-    Inputs without the dimension pass through untouched.
+    Inputs without the dimension pass through untouched, but at least one must have
+    it (see `assert_dim_in_inputs`).
     """
     dim = subset_spec.dim
+    assert_dim_in_inputs(inputs, dim, "subset")
     sl = slice(subset_spec.start, subset_spec.stop)
     return {
         name: val.isel({dim: sl}) if dim in val.dims else val

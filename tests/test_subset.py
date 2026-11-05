@@ -8,6 +8,7 @@ import xarray as xr
 
 from catena.build import build_driver
 from catena.config import Config, IOSpec, SubsetSpec
+from catena.errors import CatenaValueError
 from catena.io import get_final_vars, load_inputs
 
 _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})
@@ -73,6 +74,14 @@ class TestSubsetSpecValidation:
     def test_absent_section_gives_none(self):
         parsed = Config.loads("").parse()
         assert parsed.subset_spec is None
+
+
+class TestMissingDim:
+    def test_dim_on_no_input_raises_and_lists_dims(self, pipeline_config):
+        spec = SubsetSpec(start=0, stop=2, dim="locaton")
+        with pytest.raises(CatenaValueError, match=r"\[subset\] dim 'locaton'") as exc:
+            load_inputs(pipeline_config.input_specs, subset_spec=spec)
+        assert "pixel" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

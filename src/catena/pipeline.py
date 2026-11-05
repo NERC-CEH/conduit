@@ -23,6 +23,7 @@ from .blocking import execute_blocked
 from .build import build_driver
 from .config import load_config
 from .io import (
+    assert_dim_in_inputs,
     assert_output_paths_writable,
     auxiliary_input_names,
     get_final_vars,
@@ -270,6 +271,8 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
         parsed.input_specs,
         subset_spec=parsed.subset_spec,
     )
+    if parsed.blocking_spec is not None:
+        assert_dim_in_inputs(inputs, parsed.blocking_spec.dim, "blocking")
     stages.append(
         Stage(
             "inputs",
