@@ -178,7 +178,6 @@ def run(
         parsed.output_specs,
         subset_spec=parsed.subset_spec,
         provenance=_config_provenance(config_file),
-        point_dim=parsed.point_dim,
     )
     written = tuple(
         WrittenOutput(

@@ -206,13 +206,13 @@ recompute = ["my_calibrated_node"]
 It does two things:
 
 - it supplies the default `dim` for [`[blocking]`](#blocking) and [`[subset]`](#subset);
-- it names the synthetic size-1 axis added to single-point CSV/Parquet/JSON/TOML inputs (see [Data formats › spatial handling](data-formats.md#spatial-handling)).
+- it names the synthetic size-1 axis added to single-point JSON/TOML inputs (see [Data formats › spatial handling](data-formats.md#spatial-handling)).
 
 ```toml
 point_dim = "location"   # optional; defaults to "pixel"
 ```
 
-One key drives both so they cannot disagree; otherwise a `[subset]` over `location` would skip a table input given a `pixel` axis.
+One key drives both so they cannot disagree; otherwise a `[subset]` over `location` would skip a scalar input given a `pixel` axis.
 Gridded pipelines should keep the default, because the geospatial layer stacks `(y, x)` into `pixel`.
 
 ## Blocking

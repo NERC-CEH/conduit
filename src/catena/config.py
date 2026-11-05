@@ -387,7 +387,7 @@ class Config:
         - point_dim       — name of the synthetic point/partition axis (default
                             "pixel"); supplies the default `dim` for [blocking]
                             and [subset], and names the axis given to single-point
-                            table/scalar inputs (see catena.formats)
+                            scalar inputs (see catena.formats)
         - [inputs.*]      — I/O specs; freq derived from subsection key
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks

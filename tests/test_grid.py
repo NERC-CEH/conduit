@@ -140,14 +140,15 @@ class TestLoadInputsNoGrid:
 
     def test_no_grid_without_crs(self, tmp_path):
         import pandas as pd
+        import xarray as xr
 
         times = pd.date_range("2020-01-01", periods=5, freq="D")
-        df = pd.DataFrame({"temp": [1.0, 2.0, 3.0, 4.0, 5.0]}, index=times)
-        df.index.name = "time"
-        csv_path = tmp_path / "daily.csv"
-        df.to_csv(csv_path)
+        path = tmp_path / "daily.nc"
+        xr.Dataset(
+            {"temp": ("time", [1.0, 2.0, 3.0, 4.0, 5.0])}, coords={"time": times}
+        ).to_netcdf(path)
 
-        specs = {"daily": IOSpec(path=str(csv_path), vars=["temp"])}
+        specs = {"daily": IOSpec(path=str(path), vars=["temp"])}
         inputs = load_inputs(specs)
 
         assert "latitude" not in inputs

@@ -24,7 +24,7 @@ import pandas as pd
 import xarray as xr
 
 from ..errors import CatenaFileNotFoundError, CatenaValueError
-from ..formats import FORMATS, format_for
+from ..formats import format_for
 from ..specs import IOSpec, ParsedConfig, SubsetSpec
 from .spatial import stack_spatial_dims
 
@@ -324,7 +324,7 @@ def create_output_store(
     For each Zarr output, build an all-NaN template with a 1D ``pixel`` layout
     matching what subset ``run`` processes region-write, then write only the
     metadata and coordinates (data arrays are dask-backed and deferred, so the
-    full grid is never materialised).  NetCDF/CSV/Parquet outputs are skipped —
+    full grid is never materialised).  NetCDF outputs are skipped —
     they don't need a shared store.  Returns the list of store paths created.
 
     The store's non-``pixel`` axes (notably ``time``) are **computed from the
@@ -509,16 +509,9 @@ def merge_subset_outputs(
         )
 
     written: list[str] = []
-    for label, spec in output_specs.items():
+    for spec in output_specs.values():
         path = Path(spec.path)
         fmt = format_for(spec.path, writable=True)
-
-        if not fmt.supports_subset:
-            raise CatenaValueError(
-                f"merge is only supported for "
-                f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
-                f"outputs, but output {label!r} has path {spec.path!r}."
-            )
 
         if fmt.needs_store:
             # One shared store, region-written by every subset run: read it whole.

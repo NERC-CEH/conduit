@@ -1,25 +1,23 @@
 """The file-format registry.
 
 Every extension-based decision catena makes — which reader to call, which writer,
-whether a format can be region-written by a ``[subset]`` run, whether it needs a
-pre-created store — is an entry in `FORMATS`, looked up through `format_for`.
+whether a format needs a pre-created store for a ``[subset]`` run — is an entry in
+`FORMATS`, looked up through `format_for`.
 
-Formats fall into three **groups**, which is what the loaders in `catena.io`
-mean by their names:
+Formats fall into two **groups**, which is what the loaders in `catena.io` mean by
+their names:
 
 - ``dataset`` — NetCDF/Zarr: an n-dimensional Dataset, read as-is;
-- ``table`` — CSV/Parquet: a single-point time series, reshaped to
-  ``(time, point_dim)``;
 - ``scalar`` — JSON/TOML: single-point static values, reshaped to ``(point_dim,)``.
 
 ``scalar`` formats are input-only (``write=None``), which is why `save_outputs`
 rejects a ``.json`` destination.
 
-**``point_dim``** is the size-1 axis the ``table`` and ``scalar`` groups invent so
-single-point inputs broadcast against the partitioned ones. Its name must match the
-dimension the pipeline blocks or subsets over, or a subset run skips these inputs
-and leaves a stray axis in the outputs, so it comes from the config's top-level
-``point_dim`` rather than being hardcoded.
+**``point_dim``** is the size-1 axis the ``scalar`` group invents so single-point
+inputs broadcast against the partitioned ones. Its name must match the dimension the
+pipeline blocks or subsets over, or a subset run skips these inputs and leaves a stray
+axis in the outputs, so it comes from the config's top-level ``point_dim`` rather than
+being hardcoded.
 """
 
 import json
@@ -30,18 +28,16 @@ from os import PathLike
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from .errors import CatenaValueError
 
-# Every reader and writer takes a keyword-only ``point_dim``, including the
-# ``dataset`` ones, which ignore it. The uniform signature is what keeps FORMATS a
-# flat table and the dispatch in read_in_group / write_in_group free of per-group
-# special cases, so do not drop the parameter from the readers that ignore it.
+# Every reader takes a keyword-only ``point_dim``, including the ``dataset`` ones,
+# which ignore it. The uniform signature is what keeps FORMATS a flat table and the
+# dispatch in read_in_group free of per-group special cases, so do not drop the
+# parameter from the readers that ignore it.
 Reader = Callable[..., xr.Dataset]
-Writer = Callable[..., None]
-FrameWriter = Callable[[pd.DataFrame, str | PathLike], None]
+Writer = Callable[[xr.Dataset, str | PathLike], None]
 
 DEFAULT_POINT_DIM = "pixel"
 
@@ -59,66 +55,12 @@ def _read_zarr(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
     return xr.open_dataset(path, engine="zarr", decode_coords="all", consolidated=False)
 
 
-def _write_netcdf(
-    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
-) -> None:
+def _write_netcdf(ds: xr.Dataset, path: str | PathLike) -> None:
     ds.to_netcdf(path, engine="netcdf4")
 
 
-def _write_zarr(
-    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
-) -> None:
+def _write_zarr(ds: xr.Dataset, path: str | PathLike) -> None:
     ds.to_zarr(path, consolidated=False)
-
-
-def _timeseries_from_frame(df: pd.DataFrame, point_dim: str) -> xr.Dataset:
-    """Shape a single-point table into a ``(time, point_dim)`` Dataset."""
-    if "time" in df.columns:
-        df = df.set_index("time")
-    if df.index.name != "time":
-        df.index.name = "time"
-    df.index = pd.to_datetime(df.index)
-    ds = df.to_xarray().expand_dims({point_dim: [0]})
-    return ds.transpose("time", point_dim)
-
-
-def _read_csv(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
-    return _timeseries_from_frame(
-        pd.read_csv(path, index_col=0, parse_dates=True), point_dim
-    )
-
-
-def _read_parquet(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
-    return _timeseries_from_frame(pd.read_parquet(path), point_dim)
-
-
-def dataset_to_frame(
-    ds: xr.Dataset, point_dim: str = DEFAULT_POINT_DIM
-) -> pd.DataFrame:
-    """Convert an output Dataset to a DataFrame, dropping a size-1 point dim."""
-    if point_dim in ds.dims:
-        ds = ds.squeeze(point_dim, drop=True)
-    return ds.to_dataframe()
-
-
-def _write_frame_csv(df: pd.DataFrame, path: str | PathLike) -> None:
-    df.to_csv(path)
-
-
-def _write_frame_parquet(df: pd.DataFrame, path: str | PathLike) -> None:
-    df.to_parquet(path)
-
-
-def _write_csv(
-    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
-) -> None:
-    _write_frame_csv(dataset_to_frame(ds, point_dim), path)
-
-
-def _write_parquet(
-    ds: xr.Dataset, path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM
-) -> None:
-    _write_frame_parquet(dataset_to_frame(ds, point_dim), path)
 
 
 def _static_from_mapping(data: dict, point_dim: str) -> xr.Dataset:
@@ -154,42 +96,20 @@ class Format:
     key: str
     #: Recognised extensions, lowercase and dot-prefixed. The first is canonical.
     suffixes: tuple[str, ...]
-    #: ``dataset`` (n-d), ``table`` (single-point time series) or ``scalar`` (static).
+    #: ``dataset`` (n-d) or ``scalar`` (static).
     group: str
     read: Reader | None
     write: Writer | None
-    #: Whether a ``[subset]`` run can write a partial result to this format.
-    supports_subset: bool
     #: Whether a subset write targets a store that must be created up front
     #: (``catena gridded create-store``) rather than a file per subset.
     needs_store: bool = False
-    #: DataFrame-level writer, for the ``table`` group only (`write_frame`).
-    write_frame: FrameWriter | None = None
 
 
 FORMATS: tuple[Format, ...] = (
-    Format("netcdf", (".nc", ".netcdf"), "dataset", _read_netcdf, _write_netcdf, True),
-    Format("zarr", (".zarr",), "dataset", _read_zarr, _write_zarr, True, True),
-    Format(
-        "csv",
-        (".csv",),
-        "table",
-        _read_csv,
-        _write_csv,
-        False,
-        write_frame=_write_frame_csv,
-    ),
-    Format(
-        "parquet",
-        (".parquet", ".pq"),
-        "table",
-        _read_parquet,
-        _write_parquet,
-        False,
-        write_frame=_write_frame_parquet,
-    ),
-    Format("json", (".json",), "scalar", _read_json, None, False),
-    Format("toml", (".toml",), "scalar", _read_toml, None, False),
+    Format("netcdf", (".nc", ".netcdf"), "dataset", _read_netcdf, _write_netcdf),
+    Format("zarr", (".zarr",), "dataset", _read_zarr, _write_zarr, True),
+    Format("json", (".json",), "scalar", _read_json, None),
+    Format("toml", (".toml",), "scalar", _read_toml, None),
 )
 
 
@@ -260,21 +180,8 @@ def read_in_group(
     return fmt.read(path, point_dim=point_dim)
 
 
-def write_in_group(
-    ds: xr.Dataset,
-    path: str | PathLike,
-    group: str,
-    *,
-    point_dim: str = DEFAULT_POINT_DIM,
-) -> None:
+def write_in_group(ds: xr.Dataset, path: str | PathLike, group: str) -> None:
     """Write ``ds`` to ``path``, requiring it to be in ``group``."""
     fmt = _in_group(path, group, writable=True)
     assert fmt.write is not None
-    fmt.write(ds, path, point_dim=point_dim)
-
-
-def write_frame(df: pd.DataFrame, path: str | PathLike) -> None:
-    """Write a DataFrame to a ``table`` format (CSV/Parquet), by extension."""
-    fmt = _in_group(path, "table", writable=True)
-    assert fmt.write_frame is not None
-    fmt.write_frame(df, path)
+    fmt.write(ds, path)

@@ -2,6 +2,7 @@
 
 import pytest
 
+from catena.errors import CatenaValueError
 from catena.formats import (
     FORMATS,
     format_for,
@@ -17,9 +18,6 @@ class TestFormatFor:
             ("a.nc", "netcdf"),
             ("a.netcdf", "netcdf"),
             ("a.zarr", "zarr"),
-            ("a.csv", "csv"),
-            ("a.parquet", "parquet"),
-            ("a.pq", "parquet"),
             ("a.json", "json"),
             ("a.toml", "toml"),
         ],
@@ -50,7 +48,12 @@ class TestFormatFor:
             format_for("out.json", writable=True)
 
     def test_writable_lookup_allows_writable_formats(self):
-        assert format_for("out.csv", writable=True).key == "csv"
+        assert format_for("out.nc", writable=True).key == "netcdf"
+
+    @pytest.mark.parametrize("path", ["a.csv", "a.parquet", "a.pq"])
+    def test_table_formats_are_not_supported(self, path):
+        with pytest.raises(CatenaValueError, match="Unsupported file extension"):
+            format_for(path)
 
 
 class TestRegistryShape:
@@ -67,20 +70,11 @@ class TestRegistryShape:
                 assert suffix.startswith(".")
                 assert suffix == suffix.lower()
 
-    def test_only_table_formats_write_frames(self):
-        for fmt in FORMATS:
-            assert (fmt.write_frame is not None) == (fmt.group == "table")
-
-    def test_subset_capable_formats_are_the_dataset_ones(self):
-        # [subset] partial writes need NetCDF (a file per part) or Zarr (regions).
-        assert {f.key for f in FORMATS if f.supports_subset} == {"netcdf", "zarr"}
-
     def test_only_zarr_needs_a_prepared_store(self):
         assert {f.key for f in FORMATS if f.needs_store} == {"zarr"}
 
     def test_groups_partition_the_registry(self):
         assert group_suffixes("dataset") == [".nc", ".netcdf", ".zarr"]
-        assert group_suffixes("table") == [".csv", ".parquet", ".pq"]
         assert group_suffixes("scalar") == [".json", ".toml"]
 
     def test_supported_suffixes_writable_excludes_input_only(self):

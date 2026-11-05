@@ -52,16 +52,6 @@ An axis of zero or one timestamps has no spacing, so it always passes.
 
 ## Data
 
-### CSV file not loading
-
-CSV inputs must have a parseable date as the **first column**, one row per time step:
-
-```csv
-time,precipitation,temperature
-2020-01-01,3.2,8.1
-2020-01-02,0.0,9.3
-```
-
 ### NetCDF file has no CRS / wrong spatial dimensions
 
 The gridded path expects a CRS attribute.

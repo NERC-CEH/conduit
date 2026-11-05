@@ -11,8 +11,6 @@ import xarray as xr
 from .errors import CatenaFileNotFoundError, CatenaPermissionError, CatenaValueError
 from .formats import (
     DEFAULT_POINT_DIM,
-    FORMATS,
-    Format,
     format_for,
     write_in_group,
 )
@@ -146,11 +144,11 @@ def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _save(ds: xr.Dataset, path: str, point_dim: str = DEFAULT_POINT_DIM) -> None:
+def _save(ds: xr.Dataset, path: str) -> None:
     """Write ``ds`` to any writable format (`catena.formats` picks the writer)."""
     fmt = format_for(path, writable=True)
     assert fmt.write is not None
-    fmt.write(ds, path, point_dim=point_dim)
+    fmt.write(ds, path)
 
 
 # ---------------------------------------------------------------------------
@@ -166,8 +164,8 @@ def load_raw_datasets(
     `load_inputs` calls this internally, and so does the input-checks pre-flight.
     Opens are lazy (metadata only), so calling it twice per run is cheap.
 
-    ``point_dim`` names the synthetic axis given to single-point ``table``/``scalar``
-    inputs; see `catena.formats`.
+    ``point_dim`` names the synthetic axis given to single-point ``scalar`` inputs;
+    see `catena.formats`.
 
     Raises `CatenaFileNotFoundError` listing every input path that does not exist.
     """
@@ -217,8 +215,8 @@ def load_inputs(
         Force the geospatial path on (``True``) or off (``False``). When ``None``
         (default) it is auto-detected from the presence of CRS metadata.
     point_dim:
-        Name of the synthetic size-1 axis given to single-point CSV/Parquet/JSON/TOML
-        inputs so they broadcast against the partitioned ones. Must match the
+        Name of the synthetic size-1 axis given to single-point JSON/TOML inputs so
+        they broadcast against the partitioned ones. Must match the
         dimension the pipeline blocks or subsets over, which is why both default to
         the config's top-level ``point_dim``. Typically ``parsed_config.point_dim``.
     """
@@ -331,7 +329,6 @@ def save_outputs(
     output_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
     provenance: dict[str, str] | None = None,
-    point_dim: str = DEFAULT_POINT_DIM,
 ) -> dict[str, Path]:
     """Write each output section's Dataset to disk, returning where each went.
 
@@ -346,15 +343,12 @@ def save_outputs(
         If provided, the datasets are partial (a stacked pixel subset) and are
         written so independent processes don't collide: NetCDF outputs go to a
         uniquely-suffixed file, and Zarr outputs are region-written into a
-        pre-created shared store.  CSV/Parquet outputs don't support subsetting.
+        pre-created shared store.
     provenance:
         Optional attributes stamped onto every written dataset (e.g. the config
         text and its hash), so a store is self-describing. Ignored for the
         subset/Zarr-region path, whose store attrs are written once by
         ``create-store``.
-    point_dim:
-        Name of the size-1 point axis to squeeze out when writing a CSV/Parquet
-        output. Typically ``parsed_config.point_dim``.
 
     Returns
     -------
@@ -370,14 +364,13 @@ def save_outputs(
             ds = ds.assign_attrs(provenance)
         if subset_spec is None:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            _save(ds, path, point_dim)
+            _save(ds, path)
             written[label] = Path(path)
             continue
 
         from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
 
-        fmt = _subset_format(path, label)
-        if fmt.needs_store:
+        if format_for(path, writable=True).needs_store:
             save_zarr_region(ds, path, subset_spec)
             written[label] = Path(path)
         else:
@@ -388,18 +381,6 @@ def save_outputs(
     return written
 
 
-def _subset_format(path: str, label: str) -> Format:
-    """Return the `Format` for a ``[subset]`` output, or raise if it cannot be one."""
-    fmt = format_for(path, writable=True)
-    if not fmt.supports_subset:
-        raise CatenaValueError(
-            f"[subset] is only supported for "
-            f"{[s for f in FORMATS if f.supports_subset for s in f.suffixes]} "
-            f"outputs, but output {label!r} has path {path!r}."
-        )
-    return fmt
-
-
 def assert_output_paths_writable(
     output_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
@@ -408,18 +389,16 @@ def assert_output_paths_writable(
 
     Raises (before any computation) if a destination would fail at save time: an
     unsupported file extension, a parent directory that cannot be written to or
-    created, a subset run targeting a Zarr store that has not been pre-created, or
-    a subset run targeting a format that cannot be partially written (CSV/Parquet).
+    created, or a subset run targeting a Zarr store that has not been pre-created.
     A clean pass here means `save_outputs` will accept the path. Creates nothing:
     `save_outputs` makes any missing directories. Used by ``catena run --dry-run``.
     """
     for label, spec in output_specs.items():
         path = Path(spec.path)
         # Raises with the full list of writable formats for an unknown extension.
-        format_for(spec.path, writable=True)
+        fmt = format_for(spec.path, writable=True)
 
         if subset_spec is not None:
-            fmt = _subset_format(spec.path, label)
             if fmt.needs_store:
                 if not Path(spec.path).exists():
                     raise CatenaFileNotFoundError(

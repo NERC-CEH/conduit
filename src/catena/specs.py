@@ -423,7 +423,7 @@ class ParsedConfig:
     subset_spec: "SubsetSpec | None" = None
     checks: list["CheckSpec"] = field(default_factory=list)
     #: The partition/point dimension name (top-level ``point_dim``, default
-    #: ``pixel``). Names the synthetic axis single-point ``table``/``scalar``
+    #: ``pixel``). Names the synthetic axis single-point ``scalar``
     #: inputs are given (see `catena.formats`) and supplies the default ``dim``
     #: for `BlockingSpec` and `SubsetSpec`.
     point_dim: str = "pixel"

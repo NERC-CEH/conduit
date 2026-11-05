@@ -282,20 +282,6 @@ class TestSaveOutputs:
         loaded = xr.open_dataset(out_path)
         assert "gpp" in loaded.data_vars
 
-    def test_saves_csv_for_non_gridded(self, tmp_path):
-        times = DAILY_TIMES
-        pixel = [0]
-        da = xr.DataArray(
-            RNG.random((N_TIMES, 1)),
-            dims=["time", "pixel"],
-            coords={"time": times, "pixel": pixel},
-        )
-        ds = xr.Dataset({"gpp": da})
-        out_path = tmp_path / "out.csv"
-        output_specs = {"daily": IOSpec(path=str(out_path), vars=["gpp"])}
-        save_outputs({"daily": ds}, output_specs)
-        assert out_path.exists()
-
 
 # ---------------------------------------------------------------------------
 # vars: omitted means "load everything"
