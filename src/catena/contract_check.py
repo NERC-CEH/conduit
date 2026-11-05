@@ -9,182 +9,67 @@ a run; `check_input_contracts` validates the metadata of the actually-loaded inp
 ``DataArray``\\ s against the contracts declared by their consumers, without
 executing any node (the basis of ``catena run --dry-run``).
 
-**Facets.** The checks are generic over every `xarray-annotated` facet — **units**
-(pint/CF), **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and
-phase of the time axis). Each is a `_Facet` entry pairing a marker-vs-marker edge
-predicate with a marker-vs-array runtime check.
+**Facets.** The checks cover every `xarray-annotated` facet — **units** (pint/CF),
+**dims** / **coords** / **dtype** (schema), and **freq** (the spacing and phase of
+the time axis) — and apply the rules `xarray_annotated.enforce` applies at run time,
+through `xarray_annotated.declaration_conflicts` for edges and
+`xarray_annotated.check_declared` for inputs.
 
 **Switching off.** Both checks do nothing when `xarray-annotated` is switched off,
 with ``XARRAY_ANNOTATED_ENABLED=false`` or inside ``xarray_annotated.enabled(False)``.
 
-Two distinctions fall out of that table:
+Two distinctions apply:
 
 - **Edge vs input.** ``coords`` declarations are lower bounds ("at least these"), so
   two of them can never be shown inconsistent; coords participates in the input
-  check only (``edge=None``). ``freq`` is inferred from coordinate *values*, but
-  reading a 1-D datetime coordinate executes no node, so it stays a legitimate
-  ``--dry-run`` pre-flight.
+  check only. ``freq`` is inferred from coordinate *values*, but reading a 1-D
+  datetime coordinate executes no node, so it stays a legitimate ``--dry-run``
+  pre-flight.
 - **Provable-only.** An edge is flagged only when the two declarations are *provably*
   inconsistent (different units, disjoint dim sets, different dtypes). An edge with a
   declaration missing at either end is not flagged, which lets a partially-annotated
   pipeline adopt the check without a wave of false positives. Units that could be
   converted still count as different, since nothing converts them between nodes.
+  An edge that passes is not proven safe: ``Freq("D", gaps_ok=True)`` is compatible
+  with ``Freq("D")``, which still raises on an axis with holes when the data arrives.
 
 **Passthrough propagation.** A node with no declared producer contract breaks the
 edge chain. A node tagged *passthrough* (`catena.nodegen.PASSTHROUGH_TAG`)
-preserves its input's contract, so a declaration is propagated across it — forward
+preserves its input's units, so a declared unit is propagated across it — forward
 for the DAG check, backward for the input check. A non-passthrough ``[[node]]`` may
 transform its input arbitrarily, so nothing is propagated and it falls back to the
 runtime check.
 
-Propagation is *per facet* (`_Facet.passthrough_preserving`): a resample preserves
-its input's units but is precisely the thing that *changes* its frequency, so
-``freq`` is never propagated across a passthrough — a ``[[resample]]`` node declares
-its own output frequency instead, making it an ordinary producer for that one facet.
+Only units are propagated: a resample preserves its input's units but is precisely
+the thing that *changes* its frequency, so a ``[[resample]]`` node declares its own
+output frequency instead, making it an ordinary producer for that one facet.
 """
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator
+from dataclasses import replace
 from itertools import combinations
 from typing import Any
 
 import pint
 import xarray as xr
 from hamilton import driver, graph_types
-from xarray_annotated import Declared, declarations_from_signature
-
-# Private upstream: 0.7.0 has no public way to read the switch.
-from xarray_annotated._config import resolve_enabled
-from xarray_annotated.schema import (
-    SchemaError,
-    check_schema,
-    dims_compatible,
-    dtype_compatible,
+from xarray_annotated import (
+    Declared,
+    Unit,
+    check_declared,
+    declaration_conflicts,
+    declarations_from_signature,
+    resolve_enabled,
 )
-from xarray_annotated.temporal import FreqError, check_freq, freq_compatible
-from xarray_annotated.units import check_units, units_compatible, units_equal
+from xarray_annotated.schema import SchemaError
+from xarray_annotated.temporal import FreqError
 
 from .errors import CatenaValueError
 
-# Facet map keys, in a stable order (units first so its messages/behaviour match
-# the original units-only checker).
-_FACET_NAMES = ("units", "dims", "coords", "dtype", "freq")
-
-
-# ---------------------------------------------------------------------------
-# Marker-vs-marker edge predicates
-# ---------------------------------------------------------------------------
-# Each returns a short "why" string when the two declarations are *provably*
-# inconsistent, else None.
-
-
-def _units_edge(a: str, b: str) -> str | None:
-    if not units_compatible(a, b):
-        return "dimensionally incompatible"
-    if not units_equal(a, b):
-        return "units differ; exact match required"
-    return None
-
-
-def _dims_edge(a: Any, b: Any) -> str | None:
-    return None if dims_compatible(a, b) else "dims incompatible"
-
-
-def _dtype_edge(a: Any, b: Any) -> str | None:
-    return None if dtype_compatible(a, b) else "dtypes incompatible"
-
-
-def _freq_edge(a: Any, b: Any) -> str | None:
-    return None if freq_compatible(a, b) else "frequencies incompatible"
-
-
-# ---------------------------------------------------------------------------
-# Runtime (input) checks — marker(s) vs a loaded DataArray
-# ---------------------------------------------------------------------------
-
-
-def _units_input_check(da: xr.DataArray, decls: list, name: str) -> None:
-    for declared in sorted(decls):
-        check_units(da, declared, name)
-
-
-def _schema_input_check(da: xr.DataArray, decls: list, name: str) -> None:
-    check_schema(da, list(decls), name)
-
-
-def _freq_input_check(da: xr.DataArray, decls: list, name: str) -> None:
-    for declared in decls:
-        check_freq(da, declared, name)
-
-
-@dataclass(frozen=True)
-class _Facet:
-    """One annotation facet: how to read it, compare it, and check it at runtime."""
-
-    name: str
-    #: Pull this facet's stored value out of a `Declared`, or None if undeclared.
-    #: Units yields the unit *string* (`.unit.unit`); schema facets yield the
-    #: marker, so downstream maps keep the same value types as before the unified
-    #: reader.
-    from_declared: Callable[["Declared"], Any]
-    #: Marker-vs-marker edge predicate, or None to skip the build-time edge check.
-    edge: Callable[[Any, Any], str | None] | None
-    #: Marker(s)-vs-array runtime check for `check_input_contracts`.
-    runtime_check: Callable[[xr.DataArray, list, str], None]
-    #: Whether a passthrough node preserves this facet (so it can be propagated).
-    passthrough_preserving: bool
-
-
-_FACETS: tuple[_Facet, ...] = (
-    _Facet(
-        "units",
-        lambda d: d.unit.unit if d.unit is not None else None,
-        _units_edge,
-        _units_input_check,
-        True,
-    ),
-    _Facet(
-        "dims",
-        lambda d: d.dims,
-        _dims_edge,
-        _schema_input_check,
-        False,
-    ),
-    _Facet(
-        "coords",
-        lambda d: d.coords,
-        # No edge predicate: a coords declaration is a lower bound ("at least
-        # these"), so two of them can never be shown inconsistent. coords takes
-        # part in the input check only.
-        None,
-        _schema_input_check,
-        False,
-    ),
-    _Facet(
-        "dtype",
-        lambda d: d.dtype,
-        _dtype_edge,
-        _schema_input_check,
-        False,
-    ),
-    _Facet(
-        "freq",
-        lambda d: d.freq,
-        _freq_edge,
-        # freq is inferred from coordinate *values* rather than metadata, but
-        # reading a 1-D datetime coordinate executes no node, so this stays a
-        # legitimate --dry-run pre-flight rather than a run-time-only check.
-        _freq_input_check,
-        # A passthrough (e.g. [[resample]]) is exactly what *changes* a frequency,
-        # so a source's declared freq is never propagated across one.
-        False,
-    ),
-)
-
-# Per-facet map: node name -> (declaration, producer/consumer label).
-_Produced = dict[str, tuple[Any, str]]
-_Consumed = dict[str, list[tuple[Any, str]]]
-_Maps = dict[str, tuple[_Produced, _Consumed]]
+# Node name -> (declaration, producer label).
+_Produced = dict[str, tuple[Declared, str]]
+# Node name -> a (declaration, consumer label) per consumer.
+_Consumed = dict[str, list[tuple[Declared, str]]]
 
 
 # ---------------------------------------------------------------------------
@@ -222,65 +107,66 @@ def _passthrough_edges(hg: graph_types.HamiltonGraph) -> dict[str, str]:
     }
 
 
-def _record(
-    maps: _Maps, name: str, decl: "Declared", label: str, *, produced: bool
-) -> None:
-    """Route each declared facet of ``decl`` into its produced/consumed map."""
-    for facet in _FACETS:
-        value = facet.from_declared(decl)
-        if value is None:
-            continue
-        prod_map, cons_map = maps[facet.name]
-        if produced:
-            prod_map[name] = (value, label)
-        else:
-            cons_map.setdefault(name, []).append((value, label))
+def _collect_declarations(
+    dr: driver.Driver,
+) -> tuple[_Produced, _Consumed, dict[str, str]]:
+    """Read declared contracts off the built DAG's node signatures.
 
-
-def _collect_contract_maps(dr: driver.Driver) -> tuple[_Maps, dict[str, str]]:
-    """Read declared contracts off the built DAG's node signatures, per facet.
-
-    Returns ``(maps, passthrough_edges)`` where ``maps[facet]`` is
-    ``(produced, consumed)`` — the shared source for both the build-time
-    (`check_dag_contracts`) and runtime (`check_input_contracts`) checks. Each
-    node's contract is read once via `declarations_from_signature` and its facets
-    routed by `_record`.
+    Returns ``(produced, consumed, passthrough_edges)``, the shared source for both
+    the build-time (`check_dag_contracts`) and runtime (`check_input_contracts`)
+    checks. Each node's contract is read once via `declarations_from_signature`.
     """
     hg = graph_types.HamiltonGraph.from_graph(dr.graph)
-    maps: _Maps = {name: ({}, {}) for name in _FACET_NAMES}
+    produced: _Produced = {}
+    consumed: _Consumed = {}
     for fn in _originating_functions(hg):
         fn_name = getattr(fn, "__name__", repr(fn))
         ins, out = declarations_from_signature(fn)
         if isinstance(out, dict):
             for name, decl in out.items():
-                _record(maps, name, decl, fn_name, produced=True)
+                produced[name] = (decl, fn_name)
         elif out is not None:
-            _record(maps, fn_name, out, fn_name, produced=True)
+            produced[fn_name] = (out, fn_name)
         for name, decl in ins.items():
-            _record(maps, name, decl, fn_name, produced=False)
-    return maps, _passthrough_edges(hg)
+            consumed.setdefault(name, []).append((decl, fn_name))
+    return produced, consumed, _passthrough_edges(hg)
 
 
 # ---------------------------------------------------------------------------
-# Propagation across (unit-preserving) passthrough edges
+# Propagation of units across passthrough edges
 # ---------------------------------------------------------------------------
 
 
-def _propagate_forward(produced: _Produced, passthrough_edges: dict[str, str]) -> None:
-    """Give each passthrough target its source's declaration (to a fixpoint)."""
+def _propagate_units_forward(
+    produced: _Produced, passthrough_edges: dict[str, str]
+) -> None:
+    """Give each passthrough target its source's declared unit (to a fixpoint)."""
     changed = True
     while changed:
         changed = False
         for target, source in passthrough_edges.items():
-            if target not in produced and source in produced:
-                produced[target] = (produced[source][0], f"passthrough of {source}")
+            source_unit = produced[source][0].unit if source in produced else None
+            if source_unit is None:
+                continue
+            if target not in produced:
+                produced[target] = (
+                    Declared(unit=source_unit),
+                    f"passthrough of {source}",
+                )
+                changed = True
+            elif produced[target][0].unit is None:
+                decl, who = produced[target]
+                produced[target] = (
+                    replace(decl, unit=source_unit),
+                    f"{who} (units from {source})",
+                )
                 changed = True
 
 
-def _propagate_backward(
-    expected: dict[str, list], passthrough_edges: dict[str, str]
+def _propagate_units_backward(
+    expected: dict[str, list[Unit]], passthrough_edges: dict[str, str]
 ) -> None:
-    """Push each passthrough target's expected declarations onto its source."""
+    """Push each passthrough target's expected units onto its source."""
     changed = True
     while changed:
         changed = False
@@ -289,90 +175,64 @@ def _propagate_backward(
                 continue
             dst = expected.setdefault(source, [])
             before = len(dst)
-            for decl in expected[target]:
-                if decl not in dst:
-                    dst.append(decl)
+            for unit in expected[target]:
+                if unit not in dst:
+                    dst.append(unit)
             if len(dst) != before:
                 changed = True
 
 
 # ---------------------------------------------------------------------------
-# The two checks (facet-parametric)
+# The two checks
 # ---------------------------------------------------------------------------
 
 
-def _check_dag(dr: driver.Driver, facets: tuple[_Facet, ...]) -> None:
-    if not resolve_enabled():
-        return
-    maps, passthrough_edges = _collect_contract_maps(dr)
-    findings: list[str] = []
-    for facet in facets:
-        if facet.edge is None:
-            continue
-        produced, consumed = maps[facet.name]
-        if facet.passthrough_preserving:
-            _propagate_forward(produced, passthrough_edges)
-        for name, consumers in consumed.items():
-            candidates: list[tuple[Any, str]] = []
-            if name in produced:
-                decl, who = produced[name]
-                candidates.append((decl, f"output of {who}"))
-            candidates.extend((decl, f"input of {who}") for decl, who in consumers)
-            if len(candidates) < 2:
-                continue
-            # All pairs, not star-wise against candidates[0]: three of the four edge
-            # predicates are *non-transitive*, because a loose declaration is
-            # compatible with everything. Dims("x","y") is compatible with both
-            # Dims("x","y", ordered=True) and Dims("y","x", ordered=True), which
-            # provably conflict with each other — a star check anchored on the loose
-            # one would pass. (dtype widths and freq anchors have the same shape;
-            # units alone is transitive, being an equivalence relation.) Candidates
-            # are producer-first, so combinations() still leads with "output of ...".
-            for (a_decl, a_src), (b_decl, b_src) in combinations(candidates, 2):
-                why = facet.edge(a_decl, b_decl)
-                if why is not None:
-                    findings.append(
-                        f"  {name!r}: {a_src} declares {a_decl!r} but {b_src} "
-                        f"declares {b_decl!r} ({why})"
-                    )
-    if findings:
-        raise CatenaValueError(
-            "contract declaration mismatch(es) in DAG:\n" + "\n".join(findings)
-        )
+def _distinct[T](markers: Iterable[T | None]) -> list[T]:
+    """Return the declared markers, without repeats, in first-seen order."""
+    seen: list[T] = []
+    for marker in markers:
+        if marker is not None and marker not in seen:
+            seen.append(marker)
+    return seen
 
 
-def _check_inputs(
-    dr: driver.Driver, inputs: dict[str, Any], facets: tuple[_Facet, ...]
-) -> None:
-    if not resolve_enabled():
-        return
-    maps, passthrough_edges = _collect_contract_maps(dr)
-    findings: list[str] = []
-    for facet in facets:
-        _, consumed = maps[facet.name]
-        expected: dict[str, list] = {}
-        for name, consumers in consumed.items():
-            dst = expected.setdefault(name, [])
-            for decl, _ in consumers:
-                if decl not in dst:
-                    dst.append(decl)
-        if facet.passthrough_preserving:
-            _propagate_backward(expected, passthrough_edges)
-        for name, value in inputs.items():
-            decls = expected.get(name)
-            if not decls or not isinstance(value, xr.DataArray):
-                continue
-            try:
-                facet.runtime_check(value, decls, name)
-            except (
-                ValueError,
-                pint.DimensionalityError,
-                SchemaError,
-                FreqError,
-            ) as exc:
-                findings.append(f"  {name!r} ({facet.name}): {exc}")
-    if findings:
-        raise CatenaValueError("input contract mismatch(es):\n" + "\n".join(findings))
+def _single_facet_declarations(
+    decls: list[Declared], units: list[Unit]
+) -> Iterator[tuple[str, list[Declared]]]:
+    """Split one input's declarations by facet, so each can fail independently."""
+    yield "units", [Declared(unit=u) for u in sorted(units, key=lambda u: u.unit)]
+    yield "dims", [Declared(dims=m) for m in _distinct(d.dims for d in decls)]
+    yield "coords", [Declared(coords=m) for m in _distinct(d.coords for d in decls)]
+    yield "dtype", [Declared(dtype=m) for m in _distinct(d.dtype for d in decls)]
+    yield "freq", [Declared(freq=m) for m in _distinct(d.freq for d in decls)]
+
+
+def _dataarray_findings(
+    value: xr.DataArray, decls: list[Declared], units: list[Unit], name: str
+) -> list[str]:
+    findings = []
+    for facet, declarations in _single_facet_declarations(decls, units):
+        try:
+            for declared in declarations:
+                check_declared(value, declared, name)
+        except (
+            ValueError,
+            pint.DimensionalityError,
+            SchemaError,
+            FreqError,
+        ) as exc:
+            findings.append(f"  {name!r} ({facet}): {exc}")
+    return findings
+
+
+def _other_value_findings(value: Any, decls: list[Declared], name: str) -> list[str]:
+    # Every consumer is asked, as `| None` on one does not excuse a None for another.
+    for declared in decls:
+        try:
+            check_declared(value, declared, name)
+        except TypeError as exc:
+            return [f"  {name!r}: {exc}"]
+    return []
 
 
 def check_dag_contracts(dr: driver.Driver) -> None:
@@ -383,7 +243,41 @@ def check_dag_contracts(dr: driver.Driver) -> None:
     `CatenaValueError` naming every offending edge. This is a no-op when
     `xarray-annotated` is switched off.
     """
-    _check_dag(dr, _FACETS)
+    if not resolve_enabled():
+        return
+    produced, consumed, passthrough_edges = _collect_declarations(dr)
+    _propagate_units_forward(produced, passthrough_edges)
+    findings: list[str] = []
+    for name, consumers in consumed.items():
+        candidates: list[tuple[Declared, str]] = []
+        if name in produced:
+            decl, who = produced[name]
+            candidates.append((decl, f"output of {who}"))
+        candidates.extend((decl, f"input of {who}") for decl, who in consumers)
+        # All pairs, not star-wise against candidates[0]: three of the four facets are
+        # *non-transitive*, because a loose declaration is compatible with everything.
+        # Dims("x","y") is compatible with both Dims("x","y", ordered=True) and
+        # Dims("y","x", ordered=True), which provably conflict with each other — a star
+        # check anchored on the loose one would pass. (dtype widths and freq anchors
+        # have the same shape; units alone is transitive, being an equivalence
+        # relation.) Candidates are producer-first, so combinations() still leads with
+        # "output of ...".
+        for (a_decl, a_src), (b_decl, b_src) in combinations(candidates, 2):
+            try:
+                conflicts = declaration_conflicts(a_decl, b_decl)
+            except ValueError as exc:
+                raise CatenaValueError(
+                    f"malformed contract declaration on {name!r}, between {a_src} and "
+                    f"{b_src}: {exc}"
+                ) from exc
+            findings.extend(
+                f"  {name!r}: {a_src} and {b_src} conflict on {conflict}"
+                for conflict in conflicts
+            )
+    if findings:
+        raise CatenaValueError(
+            "contract declaration mismatch(es) in DAG:\n" + "\n".join(findings)
+        )
 
 
 def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
@@ -394,10 +288,29 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     frequency of its time axis (temporal), are checked against the contract declared
     by its consumer(s). Dims/coords/dtype live in the file header and a frequency
     needs only the 1-D datetime coordinate, so — like units — this executes no node
-    and is suitable as a ``run --dry-run`` pre-flight. Contracts are propagated
-    backward through unit-preserving passthrough edges to a fixpoint.
+    and is suitable as a ``run --dry-run`` pre-flight. Units are propagated backward
+    through unit-preserving passthrough edges to a fixpoint. A declared input that is
+    not a ``DataArray`` fails unless its hint allows the value, as ``| None`` allows
+    ``None``.
 
-    Every failing input is reported in one `CatenaValueError`. This is a no-op when
-    `xarray-annotated` is switched off.
+    Every failing input is reported in one `CatenaValueError`, with every failing
+    facet of a ``DataArray``. This is a no-op when `xarray-annotated` is switched off.
     """
-    _check_inputs(dr, inputs, _FACETS)
+    if not resolve_enabled():
+        return
+    _, consumed, passthrough_edges = _collect_declarations(dr)
+    expected_units = {
+        name: _distinct(decl.unit for decl, _ in consumers)
+        for name, consumers in consumed.items()
+    }
+    _propagate_units_backward(expected_units, passthrough_edges)
+    findings: list[str] = []
+    for name, value in inputs.items():
+        decls = [decl for decl, _ in consumed.get(name, ())]
+        if isinstance(value, xr.DataArray):
+            units = expected_units.get(name, [])
+            findings.extend(_dataarray_findings(value, decls, units, name))
+        else:
+            findings.extend(_other_value_findings(value, decls, name))
+    if findings:
+        raise CatenaValueError("input contract mismatch(es):\n" + "\n".join(findings))

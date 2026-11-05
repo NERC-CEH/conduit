@@ -140,9 +140,17 @@ class TestCheckInputUnitsDirect:
         with xra.enabled(True):
             check_input_contracts(dr, {"some_other_var": _input("kg")})
 
-    def test_non_dataarray_inputs_ignored(self, dr):
-        with xra.enabled(True):
+    def test_non_dataarray_on_a_declared_input_raises(self, dr):
+        # enforce would raise TypeError when the node runs, so the pre-flight does too.
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="declared a DataArray, got float"),
+        ):
             check_input_contracts(dr, {"vpd_weekly": 3.0})
+
+    def test_non_dataarray_without_a_declared_consumer_ignored(self, dr):
+        with xra.enabled(True):
+            check_input_contracts(dr, {"some_other_var": 3.0})
 
 
 # ---------------------------------------------------------------------------

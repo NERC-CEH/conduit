@@ -143,7 +143,7 @@ def assign_freq_colors(
 ) -> dict[str, str]:
     """Map each distinct declared frequency to a colour.
 
-    Frequencies are arbitrary offset aliases, not a fixed vocabulary, so colours are
+    Frequencies are arbitrary strings, not a fixed vocabulary, so colours are
     drawn from a qualitative **cycle** in first-seen order rather than looked up in a
     fixed ``daily``/``weekly``/``monthly`` table. A ``[palette]`` entry naming a
     frequency (``"7D" = "#ff7f00"``) pins that one, for users who want stable colours

@@ -255,7 +255,7 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     stages report ``skipped`` when `xarray-annotated` is switched off. No model runs
     and nothing is written.
     """
-    from xarray_annotated._config import resolve_enabled
+    from xarray_annotated import resolve_enabled
 
     from .contract_check import check_input_contracts
 

@@ -33,7 +33,7 @@ catena checks every such claim across the whole graph before any node runs; [Con
 | dims | the dimension names | `Dims("time", "site")` |
 | coords | required coordinate variables | `Coords("time")` |
 | dtype | the array's element type: a width is exact, and `float`, `int` and the like mean any width | `Dtype("float32")`, `Dtype("float")` |
-| freq | how often the time axis ticks, and on what phase | `Freq("7D")`, `Freq("W-SUN")` |
+| freq | how often the time axis ticks, and on what phase | `Freq("7D")`, `Freq("W-SUN")`, `Freq("month")`, `Freq("D", gaps_ok=True)` |
 
 One `@xra.enforce` checks every facet declared on a signature:
 
@@ -58,8 +58,11 @@ def weekly_mean(
 
 An *unanchored* frequency compares spacing only, so `Freq("7D")` accepts any weekly axis.
 An *anchored* one also pins the phase, so `Freq("W-SUN")` rejects an axis landing on Wednesdays, catching a resample offset by a day.
+A *calendar step* (`"month"`, `"3month"`, `"year"`, `"2year"`) requires one value per step on any day, so `Freq("month")` accepts monthly means stamped at midpoints.
+`Freq("D", gaps_ok=True)` declares daily values on an axis that may have holes: every step must be a whole number of days, and the smallest must be one day.
 
 An inline `[[node]]` declares the same facets with `units`, `dims`, `coords`, `dtype` and `freq` keys — see [Configuration › Nodes](../../reference/configuration.md#nodes).
+Its `freq` is a plain string, so `gaps_ok` can only be declared on a Python node.
 
 ## Producers and consumers
 

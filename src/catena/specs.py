@@ -103,10 +103,19 @@ class ResampleSpec:
                 f"'7D', '1ME', 'W-SUN')."
             )
 
+        from pandas.tseries.frequencies import to_offset
         from xarray_annotated.temporal import Freq, assert_valid_freq
 
         freq = entry["freq"]
         assert_valid_freq(Freq(freq), f"[[resample]] to '{entry['to']}' freq")
+        try:
+            to_offset(freq)
+        except ValueError as exc:
+            raise CatenaValueError(
+                f"[[resample]] to '{entry['to']}' freq must be a pandas offset alias, "
+                f"as {freq!r} says how often to sample but not where to stamp it. Use "
+                f"one such as '1ME' or 'YE'."
+            ) from exc
         return cls(
             vars=entry["vars"],
             source=entry["from"],
@@ -209,7 +218,7 @@ class NodeSpec:
             assert_valid_schema(Dtype(dtype), f"node '{name}' dtype")
         freq = entry.get("freq")
         if freq is not None:
-            # Fail fast on an unparseable pandas offset alias, at parse time.
+            # Fail fast on an unparseable frequency, at parse time.
             from xarray_annotated.temporal import Freq, assert_valid_freq
 
             assert_valid_freq(Freq(freq), f"node '{name}' freq")

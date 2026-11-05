@@ -412,6 +412,18 @@ class TestResample:
         with pytest.raises(ValueError, match="invalid frequency 'nope'"):
             config.parse()
 
+    @pytest.mark.parametrize("freq", ["month", "3month", "year", "2year"])
+    def test_calendar_step_refused_at_parse_time(self, freq):
+        config = Config(
+            {
+                "resample": [
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": freq}
+                ],
+            }
+        )
+        with pytest.raises(CatenaValueError, match="must be a pandas offset alias"):
+            config.parse()
+
 
 class TestNode:
     """Tests for [[node]] section parsing."""

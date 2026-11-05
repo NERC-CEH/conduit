@@ -47,7 +47,8 @@ Resampling only aggregates; for a finer resolution, provide finer input data.
 `frequency mismatch on 'time': expected '7D', got 'D'` means the data contradicts a declared `Freq` contract.
 Either the declaration or the data is wrong; fix whichever, or drop the declaration.
 
-`got irregular spacing` means no declared frequency describes the axis, so a gap in the record fails.
+`got irregular spacing` means the axis does not tick regularly, so a gap in the record fails a plain `Freq("D")`.
+If gaps are expected, declare `Freq("D", gaps_ok=True)` on a Python node, and for values on varying days of the month, such as monthly midpoints, declare `Freq("month")`.
 An axis of zero or one timestamps has no spacing, so it always passes.
 
 ## Data

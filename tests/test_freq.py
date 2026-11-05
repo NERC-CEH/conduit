@@ -104,7 +104,7 @@ class TestFreqEdgeCheck:
         dr = self._dr(register, Freq("D"), Freq("7D"))
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             check_dag_contracts(dr)
 
@@ -125,7 +125,7 @@ class TestFreqEdgeCheck:
         dr = self._dr(register, Freq("W-SUN"), Freq("W-WED"))
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             check_dag_contracts(dr)
 
@@ -253,7 +253,7 @@ class TestNodeFreq:
     def test_declared_node_freq_is_a_checkable_producer(self, register):
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             self._dr(register, "1ME", Freq("7D"))
 
@@ -339,7 +339,7 @@ class TestResampleFreq:
         # Sundays: caught at build time, on the resample node's own declaration.
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             self._dr(register, Freq("W-SUN"), offset="W-WED")
 
@@ -375,6 +375,96 @@ class TestResampleFreq:
         )
         with xra.enabled(True):
             build_driver(["rfp_prod", "node", "rfp_cons"], {}, node_specs=specs)
+
+
+# ---------------------------------------------------------------------------
+# Axes with holes and calendar steps on any day
+# ---------------------------------------------------------------------------
+
+
+def _gappy_daily() -> xr.DataArray:
+    """Daily values with a hole: January 2025 joined to January 2026."""
+    times = pd.date_range("2025-01-01", periods=31, freq="D").append(
+        pd.date_range("2026-01-01", periods=31, freq="D")
+    )
+    return xr.DataArray(np.ones(62), dims=("time",), coords={"time": times})
+
+
+def _axis_consumer(name: str, declared: Freq):
+    def consume(gappy: Annotated[xr.DataArray, declared]) -> xr.DataArray:
+        return gappy
+
+    consume.__name__ = name
+    return consume
+
+
+class TestGapsOk:
+    def test_gappy_axis_passes_a_gaps_ok_axis_consumer(self, register):
+        mod = register("fq_gaps_ok", _axis_consumer("c", Freq("D", gaps_ok=True)))
+        with xra.enabled(True):
+            check_input_contracts(_build(mod), {"gappy": _gappy_daily()})
+
+    def test_gappy_axis_fails_a_strict_axis_consumer(self, register):
+        mod = register("fq_gaps_strict", _axis_consumer("c", Freq("D")))
+        with xra.enabled(True), pytest.raises(CatenaValueError, match="'gappy'"):
+            check_input_contracts(_build(mod), {"gappy": _gappy_daily()})
+
+    def test_one_strict_consumer_decides(self, register):
+        mod = register(
+            "fq_gaps_mixed",
+            _axis_consumer("loose", Freq("D", gaps_ok=True)),
+            _axis_consumer("strict", Freq("D")),
+        )
+        dr = _build(mod)
+        with xra.enabled(True), pytest.raises(CatenaValueError, match="'gappy'"):
+            check_input_contracts(dr, {"gappy": _gappy_daily()})
+
+    def test_edge_passes_but_input_check_still_fails(self, register):
+        # gaps_ok plays no part in compatibility, so only the data can show the problem.
+        mod = register(
+            "fq_gaps_edge",
+            _producer("gappy", Freq("D", gaps_ok=True)),
+            _axis_consumer("strict", Freq("D")),
+        )
+        dr = _build(mod)
+        with xra.enabled(True):
+            check_dag_contracts(dr)
+            with pytest.raises(CatenaValueError, match="'gappy'"):
+                check_input_contracts(dr, {"gappy": _gappy_daily()})
+
+
+class TestCalendarSteps:
+    def test_mid_month_axis_passes_month(self, register):
+        times = pd.date_range("2020-01-01", periods=6, freq="MS") + pd.Timedelta(
+            days=14
+        )
+        da = xr.DataArray(np.ones(6), dims=("time",), coords={"time": times})
+        mod = register("fq_month", _axis_consumer("c", Freq("month")))
+        with xra.enabled(True):
+            check_input_contracts(_build(mod), {"gappy": da})
+
+    @pytest.mark.parametrize(
+        ("producer", "ok"), [("ME", True), ("MS", True), ("QE", False)]
+    )
+    def test_month_edges(self, register, producer, ok):
+        mod = register(
+            f"fq_month_edge_{producer}",
+            _producer("gappy", Freq(producer)),
+            _axis_consumer("c", Freq("month")),
+        )
+        dr = _build(mod)
+        with xra.enabled(True):
+            if ok:
+                check_dag_contracts(dr)
+            else:
+                with pytest.raises(ValueError, match=r"freq: .* are incompatible"):
+                    check_dag_contracts(dr)
+
+    def test_node_key_accepts_month(self):
+        spec = NodeSpec.from_config(
+            {"name": "m", "inputs": ["x"], "expression": "x", "freq": "month"}
+        )
+        assert spec.freq == "month"
 
 
 # ---------------------------------------------------------------------------

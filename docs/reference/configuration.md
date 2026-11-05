@@ -143,14 +143,14 @@ units = "1"
 | `dims` | Output dimension contract (list of names). |
 | `dtype` | Output dtype contract (validated at parse time). A name with a width (`float64`) is exact; `float`, `int` and the like mean any width. |
 | `coords` | Output coordinate contract (list of names). |
-| `freq` | Output temporal-frequency contract: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
+| `freq` | Output temporal-frequency contract, validated at parse time: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), or a calendar step on any day (`"month"`, `"3month"`, `"year"`, `"2year"`). |
 | `passthrough` | Declare no fixed output contract; propagate the input's contract across the node. |
 | `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
 
 Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer the [contract check](../guides/nodes/contracts.md) can verify.
 See [Inline nodes & fan-out](../guides/configs/inline-nodes-and-fan-out.md) for worked examples.
 
-An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an unanchored one (`"7D"`, `"W"`) constrains the spacing only.
+An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an unanchored one (`"7D"`, `"W"`) constrains the spacing only; a calendar step (`"month"`) accepts one value per step on any day, such as monthly means stamped at midpoints.
 
 ## Resample
 
@@ -171,7 +171,7 @@ aggfunc = "mean"
 | `vars` | **Required.** Variables to resample; each `{v}_{from}` → `{v}_{to}`. |
 | `from` | **Required.** Node-name suffix to read from. |
 | `to` | **Required.** Node-name suffix to write to. |
-| `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
+| `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. A calendar step such as `"month"` is refused, as it does not say where to stamp the result. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 
 `from` and `to` are free-form labels, so `from = "raw"`, `to = "smoothed"` works just as well; `freq` alone sets the time axis, and becomes the node's declared output frequency.

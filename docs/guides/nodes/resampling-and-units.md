@@ -60,3 +60,8 @@ units = "g C m-2"
 ```
 
 Now the declared units say what the number is, and the contract check has something to check against.
+
+## Resampling an axis with holes
+
+A resample returns a regular axis, with NaN in the empty bins, for `mean` and `sum` alike.
+Two Januaries of daily values at `freq = "1ME"` give 13 bins, 11 of them NaN, and those pass the node's declared `Freq("1ME")`.

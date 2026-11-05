@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from xarray_annotated.temporal import Freq, check_freq
 
 from catena.build import build_driver
 from catena.config import Config
@@ -29,6 +30,17 @@ def _daily_da(n_days: int = 14, n_pixel: int = 1, seed: int = 0) -> xr.DataArray
 
 class TestResampleTransform:
     """The plain transform function `catena.transforms.resample`."""
+
+    @pytest.mark.parametrize("aggfunc", ["mean", "sum"])
+    def test_holes_become_nan_bins_on_a_regular_axis(self, aggfunc):
+        times = pd.date_range("2025-01-01", periods=31, freq="D").append(
+            pd.date_range("2026-01-01", periods=31, freq="D")
+        )
+        da = xr.DataArray(np.ones(62), dims=("time",), coords={"time": times})
+        out = resample(da, freq="1ME", aggfunc=aggfunc)
+        assert out.sizes["time"] == 13
+        assert int(out.isnull().sum()) == 11
+        check_freq(out, Freq("1ME"), "out")
 
     def test_mean_values(self):
         da = _daily_da(14, 1)
