@@ -340,10 +340,10 @@ def create_output_store(
 
     Unlike the rest of the ``[subset]`` path, this is ``pixel``-only: the store *is*
     the stacked pixel grid (that is what `_pixel_template` builds and what `merge`
-    unstacks back to ``(y, x)``). A non-default ``point_dim``, or a ``[subset]`` over
-    any other ``dim``, is rejected alongside a Zarr output rather than silently
-    building a mislabelled store — such a pipeline should use a NetCDF output, whose
-    parts need no shared store.
+    unstacks back to ``(y, x)``). A ``[blocking]`` or ``[subset]`` over any other
+    ``dim`` is rejected alongside a Zarr output rather than silently building a
+    mislabelled store — such a pipeline should use a NetCDF output, whose parts need
+    no shared store.
     """
     import dask.array as da
 
@@ -358,20 +358,17 @@ def create_output_store(
     if not zarr_specs:
         return []
 
-    if parsed.point_dim != "pixel":
-        raise CatenaValueError(
-            f"point_dim is {parsed.point_dim!r}, but a Zarr output store is the "
-            f"stacked 'pixel' grid and can only be built over 'pixel'. Either leave "
-            f"point_dim at its default, or use a NetCDF output (whose subset parts "
-            f"are separate files and need no pre-created store)."
-        )
-    if parsed.subset_spec is not None and parsed.subset_spec.dim != "pixel":
-        raise CatenaValueError(
-            f"[subset] dim is {parsed.subset_spec.dim!r}, but a Zarr output store is "
-            f"the stacked 'pixel' grid and can only be partitioned over 'pixel'. "
-            f"Either subset over 'pixel', or use a NetCDF output (whose subset parts "
-            f"are separate files and need no pre-created store)."
-        )
+    for section, spec in (
+        ("blocking", parsed.blocking_spec),
+        ("subset", parsed.subset_spec),
+    ):
+        if spec is not None and spec.dim != "pixel":
+            raise CatenaValueError(
+                f"[{section}] dim is {spec.dim!r}, but a Zarr output store is the "
+                f"stacked 'pixel' grid and can only be partitioned over 'pixel'. "
+                f"Either partition over 'pixel', or use a NetCDF output (whose subset "
+                f"parts are separate files and need no pre-created store)."
+            )
     if not overwrite:
         existing = [
             spec.path for spec in zarr_specs.values() if Path(spec.path).exists()

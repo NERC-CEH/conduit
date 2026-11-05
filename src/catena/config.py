@@ -22,7 +22,6 @@ from .importing import (
 )
 from .input_checks import CHECKS
 from .specs import (
-    DEFAULT_POINT_DIM,
     BlockingSpec,
     CacheSpec,
     CheckSpec,
@@ -33,7 +32,6 @@ from .specs import (
     ResampleSpec,
     SubsetSpec,
     _validate_vars,
-    assert_dim_name,
 )
 
 
@@ -239,17 +237,7 @@ class Config:
         spec = CacheSpec.from_config(entry)
         return replace(spec, path=self._resolve(spec.path))
 
-    def _parse_point_dim(self, data: dict) -> str:
-        """Handle the top-level ``point_dim`` key.
-
-        Popped explicitly, and before `_parse_external_modules`: that loop treats
-        every remaining top-level name as a module section and calls ``dict()`` on
-        its value, which for a bare string fails with an opaque error rather than
-        one naming the key.
-        """
-        return assert_dim_name(data.pop("point_dim", DEFAULT_POINT_DIM), "'point_dim'")
-
-    def _parse_blocking(self, data: dict, point_dim: str) -> BlockingSpec | None:
+    def _parse_blocking(self, data: dict) -> BlockingSpec | None:
         """Handle the [blocking] section.
 
         Returns None if there is no [blocking] section.
@@ -257,9 +245,9 @@ class Config:
         entry = data.pop("blocking", None)
         if entry is None:
             return None
-        return BlockingSpec.from_config(entry, default_dim=point_dim)
+        return BlockingSpec.from_config(entry)
 
-    def _parse_subset(self, data: dict, point_dim: str) -> SubsetSpec | None:
+    def _parse_subset(self, data: dict) -> SubsetSpec | None:
         """Handle the [subset] section.
 
         Returns None if there is no [subset] section.
@@ -267,7 +255,7 @@ class Config:
         entry = data.pop("subset", None)
         if entry is None:
             return None
-        return SubsetSpec.from_config(entry, default_dim=point_dim)
+        return SubsetSpec.from_config(entry)
 
     def _parse_checks(
         self, data: dict, input_specs: dict[str, "IOSpec"]
@@ -384,8 +372,6 @@ class Config:
         """Parse config into a ParsedConfig.
 
         Recognised top-level keys and sections (processed directly):
-        - point_dim       — name of the partition axis (default "pixel"); supplies
-                            the default `dim` for [blocking] and [subset]
         - [inputs.*]      — I/O specs; freq derived from subsection key
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks
@@ -403,7 +389,6 @@ class Config:
         driver_config.
         """
         data = dict(self._data)
-        point_dim = self._parse_point_dim(data)
         driver_config: dict[str, Any] = {}
         input_specs: dict[str, IOSpec] = {}
         output_specs: dict[str, IOSpec] = {}
@@ -415,8 +400,8 @@ class Config:
         if node_specs:
             modules.append("node")
         cache_spec = self._parse_cache(data)
-        blocking_spec = self._parse_blocking(data, point_dim)
-        subset_spec = self._parse_subset(data, point_dim)
+        blocking_spec = self._parse_blocking(data)
+        subset_spec = self._parse_subset(data)
         registered: list[RegisteredModule] = []
         modules += self._parse_external_modules(data, driver_config, registered)
         return ParsedConfig(
@@ -429,7 +414,6 @@ class Config:
             blocking_spec=blocking_spec,
             subset_spec=subset_spec,
             checks=checks,
-            point_dim=point_dim,
             base=self._base,
             registered_modules=registered,
         )

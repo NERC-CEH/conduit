@@ -234,7 +234,7 @@ class TestAssertOutputPathsWritable:
 
     def test_subset_zarr_without_store_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "store.zarr"), vars=["gpp"])}
-        subset = SubsetSpec(start=0, stop=10)
+        subset = SubsetSpec(start=0, stop=10, dim="pixel")
         with pytest.raises(FileNotFoundError, match="does not exist"):
             assert_output_paths_writable(specs, subset)
 

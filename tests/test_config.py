@@ -654,48 +654,33 @@ class TestRemovedSections:
             Config({name: {"mode": "strict"}}).parse()
 
 
-class TestPointDim:
-    """The top-level ``point_dim`` key and its role as the partition-dim default."""
+class TestPartitionDim:
+    """``[blocking]`` and ``[subset]`` each name their dimension."""
 
-    def test_defaults_to_pixel(self):
-        assert Config({}).parse().point_dim == "pixel"
-
-    def test_explicit_value(self):
-        assert Config({"point_dim": "location"}).parse().point_dim == "location"
-
-    def test_supplies_blocking_dim_default(self):
-        parsed = Config(
-            {"point_dim": "location", "blocking": {"block_size": 10}}
-        ).parse()
+    def test_blocking_dim(self):
+        parsed = Config({"blocking": {"block_size": 10, "dim": "location"}}).parse()
         assert parsed.blocking_spec is not None
         assert parsed.blocking_spec.dim == "location"
 
-    def test_supplies_subset_dim_default(self):
-        parsed = Config(
-            {"point_dim": "location", "subset": {"start": 0, "stop": 10}}
-        ).parse()
+    def test_subset_dim(self):
+        parsed = Config({"subset": {"start": 0, "stop": 10, "dim": "location"}}).parse()
         assert parsed.subset_spec is not None
         assert parsed.subset_spec.dim == "location"
 
-    def test_explicit_section_dim_still_wins(self):
-        parsed = Config(
-            {
-                "point_dim": "location",
-                "blocking": {"block_size": 10, "dim": "site"},
-                "subset": {"start": 0, "stop": 10, "dim": "site"},
-            }
-        ).parse()
-        assert parsed.blocking_spec is not None
-        assert parsed.subset_spec is not None
-        assert parsed.blocking_spec.dim == "site"
-        assert parsed.subset_spec.dim == "site"
+    @pytest.mark.parametrize(
+        ("section", "entry"),
+        [
+            ("blocking", {"block_size": 10}),
+            ("subset", {"start": 0, "stop": 10}),
+        ],
+    )
+    def test_dim_is_required(self, section, entry):
+        with pytest.raises(CatenaValueError, match=rf"\[{section}\] 'dim'"):
+            Config({section: entry}).parse()
 
-    @pytest.mark.parametrize("bad", [42, "", True, ["location"]])
-    def test_invalid_value_raises(self, bad):
-        # Must name the key: without the explicit pop this falls through to the
-        # external-module loop and dies in dict() with an opaque message.
-        with pytest.raises(ValueError, match="point_dim"):
-            Config({"point_dim": bad}).parse()
+    def test_top_level_point_dim_is_rejected(self):
+        with pytest.raises(CatenaValueError, match="point_dim"):
+            Config({"point_dim": "location"}).parse()
 
 
 class TestExternalModules:

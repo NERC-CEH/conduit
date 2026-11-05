@@ -35,7 +35,7 @@ def _run_unblocked(pipeline_config, pipeline_inputs):
 
 
 def _run_blocked(pipeline_config, pipeline_inputs, block_size):
-    spec = BlockingSpec(block_size=block_size)
+    spec = BlockingSpec(block_size=block_size, dim="pixel")
     dr = build_driver(
         pipeline_config.modules,
         pipeline_config.driver_config,
@@ -55,11 +55,11 @@ class TestBlockInputNames:
         da_time = xr.DataArray(np.zeros(3), dims=["time"])
         scalar = 42
         inputs = {"a": da_pixel, "b": da_time, "c": scalar}
-        assert _block_input_names(inputs) == ["a"]
+        assert _block_input_names(inputs, "pixel") == ["a"]
 
     def test_empty_when_no_pixel_dim(self):
         inputs = {"x": xr.DataArray(np.zeros(3), dims=["time"])}
-        assert _block_input_names(inputs) == []
+        assert _block_input_names(inputs, "pixel") == []
 
 
 class TestBlockDimSizeConsistency:
@@ -69,7 +69,7 @@ class TestBlockDimSizeConsistency:
             "small": xr.DataArray(np.zeros(50), dims=["pixel"]),
         }
         with pytest.raises(ValueError, match="disagree on the size") as exc:
-            list(_make_blocks(inputs, ["big", "small"], block_size=10))
+            list(_make_blocks(inputs, ["big", "small"], block_size=10, dim="pixel"))
         message = str(exc.value)
         assert "big=100" in message
         assert "small=50" in message
@@ -79,7 +79,9 @@ class TestBlockDimSizeConsistency:
             "a": xr.DataArray(np.zeros(10), dims=["pixel"]),
             "b": xr.DataArray(np.zeros(10), dims=["pixel"]),
         }
-        assert len(list(_make_blocks(inputs, ["a", "b"], block_size=5))) == 2
+        assert (
+            len(list(_make_blocks(inputs, ["a", "b"], block_size=5, dim="pixel"))) == 2
+        )
 
 
 class TestMakeBlocks:
@@ -92,31 +94,31 @@ class TestMakeBlocks:
         return {"da": da, "scalar": 1.0}
 
     def test_exact_divisor(self):
-        blocks = list(_make_blocks(self._inputs(6), ["da"], block_size=3))
+        blocks = list(_make_blocks(self._inputs(6), ["da"], block_size=3, dim="pixel"))
         assert len(blocks) == 2
         assert blocks[0]["da"].sizes["pixel"] == 3
         assert blocks[1]["da"].sizes["pixel"] == 3
 
     def test_non_divisor_last_block_smaller(self):
-        blocks = list(_make_blocks(self._inputs(5), ["da"], block_size=3))
+        blocks = list(_make_blocks(self._inputs(5), ["da"], block_size=3, dim="pixel"))
         assert len(blocks) == 2
         assert blocks[0]["da"].sizes["pixel"] == 3
         assert blocks[1]["da"].sizes["pixel"] == 2
 
     def test_block_size_exceeds_n_pixels(self):
-        blocks = list(_make_blocks(self._inputs(3), ["da"], block_size=10))
+        blocks = list(_make_blocks(self._inputs(3), ["da"], block_size=10, dim="pixel"))
         assert len(blocks) == 1
         assert blocks[0]["da"].sizes["pixel"] == 3
 
     def test_non_pixel_inputs_passed_through_unchanged(self):
         inputs = self._inputs(4)
-        blocks = list(_make_blocks(inputs, ["da"], block_size=2))
+        blocks = list(_make_blocks(inputs, ["da"], block_size=2, dim="pixel"))
         for b in blocks:
             assert b["scalar"] == 1.0
 
     def test_no_pixel_names_yields_full_inputs(self):
         inputs = {"x": 1}
-        blocks = list(_make_blocks(inputs, [], block_size=3))
+        blocks = list(_make_blocks(inputs, [], block_size=3, dim="pixel"))
         assert len(blocks) == 1
         assert blocks[0] is inputs
 
@@ -126,7 +128,7 @@ class TestMakeBlocks:
             dims=["pixel"],
             coords={"pixel": np.arange(6)},
         )
-        blocks = list(_make_blocks({"da": da}, ["da"], block_size=3))
+        blocks = list(_make_blocks({"da": da}, ["da"], block_size=3, dim="pixel"))
         assert list(blocks[0]["da"].coords["pixel"].values) == [0, 1, 2]
         assert list(blocks[1]["da"].coords["pixel"].values) == [3, 4, 5]
 
@@ -147,19 +149,19 @@ class TestConcatResults:
                 coords={"pixel": [2, 3]},
             )
         }
-        result = _concat_results([b1, b2], ["x"])
+        result = _concat_results([b1, b2], ["x"], "pixel")
         assert result["x"].sizes["pixel"] == 4
         np.testing.assert_array_equal(result["x"].values, [1.0, 2.0, 3.0, 4.0])
 
     def test_raises_on_no_pixel_dim(self):
         blocks = [{"x": xr.DataArray([1.0, 2.0], dims=["time"])}] * 2
         with pytest.raises(ValueError, match="pixel"):
-            _concat_results(blocks, ["x"])
+            _concat_results(blocks, ["x"], "pixel")
 
     def test_raises_on_scalar(self):
         blocks = [{"x": xr.DataArray(1.0)}] * 2
         with pytest.raises(ValueError, match="pixel"):
-            _concat_results(blocks, ["x"])
+            _concat_results(blocks, ["x"], "pixel")
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ class TestConcatResults:
 
 class TestBlockingSpecValidation:
     def test_valid(self):
-        spec = BlockingSpec.from_config({"block_size": 4})
+        spec = BlockingSpec.from_config({"block_size": 4, "dim": "pixel"})
         assert spec.block_size == 4
 
     def test_missing_block_size_raises(self):
@@ -189,8 +191,8 @@ class TestBlockingSpecValidation:
             BlockingSpec.from_config({"block_size": "4"})
 
     def test_parsed_from_toml(self):
-        parsed = Config.loads("[blocking]\nblock_size = 8\n").parse()
-        assert parsed.blocking_spec == BlockingSpec(block_size=8)
+        parsed = Config.loads('[blocking]\nblock_size = 8\ndim = "pixel"\n').parse()
+        assert parsed.blocking_spec == BlockingSpec(block_size=8, dim="pixel")
 
     def test_absent_section_gives_none(self):
         parsed = Config.loads("").parse()
@@ -236,7 +238,7 @@ class TestCachingWithBlocking:
     ):
         from catena import CacheSpec
 
-        spec = BlockingSpec(block_size=2)
+        spec = BlockingSpec(block_size=2, dim="pixel")
         cache = CacheSpec(path=str(tmp_path / "cache"))
 
         def _run_blocked_cached():
@@ -283,6 +285,7 @@ vars = ["mean_temperature"]
 
 [blocking]
 block_size = 2
+dim = "pixel"
 """
         p = tmp_path / "config.toml"
         p.write_text(content)

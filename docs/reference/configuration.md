@@ -200,17 +200,6 @@ recompute = ["my_calibrated_node"]
 | `recompute` | `true` or a list of node names — force recompute even on a hit. |
 | `disable` | `true` or a list of node names — bypass the cache for those nodes. |
 
-## Point dimension
-
-`point_dim` is a top-level key naming the dimension your pipeline partitions over.
-It supplies the default `dim` for [`[blocking]`](#blocking) and [`[subset]`](#subset).
-
-```toml
-point_dim = "location"   # optional; defaults to "pixel"
-```
-
-Gridded pipelines should keep the default, because the geospatial layer stacks `(y, x)` into `pixel`.
-
 ## Blocking
 
 `[blocking]` processes a partition dimension in fixed-size sequential chunks to bound peak memory.
@@ -225,7 +214,7 @@ dim = "pixel"
 | Key | Description |
 |-----|-------------|
 | `block_size` | **Required.** Positive integer — rows of `dim` per block. |
-| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
+| `dim` | **Required.** Partition dimension. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
 
 ## Subset
 
@@ -236,14 +225,14 @@ See [Scale up › parallel subset runs](../guides/run/scale-up.md#parallel-subse
 [subset]
 start = 0            # inclusive
 stop  = 500          # exclusive
-dim   = "pixel"      # optional; the default
+dim   = "pixel"
 ```
 
 | Key | Description |
 |-----|-------------|
 | `start` | **Required.** First index along `dim` (inclusive, zero-based). |
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
-| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
+| `dim` | **Required.** Partition dimension. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
 
 Each NetCDF part is written to its own suffixed file (`out_location0-500.nc`).
 A Zarr output requires `dim = "pixel"`, because the shared store's layout is the stacked pixel grid; use NetCDF to subset over any other dimension.

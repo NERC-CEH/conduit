@@ -27,14 +27,11 @@ RESERVED_NODE_NAMES: frozenset[str] = frozenset(
     {"xr", "xra", "Any", "__import_module", "__transforms"}
 )
 
-DEFAULT_POINT_DIM = "pixel"
-
 #: Top-level config sections and keys catena parses itself. A section named here is
 #: never treated as a user module, so a package registering one of these names would
 #: register something no config could ever reach.
 RECOGNISED_SECTIONS: frozenset[str] = frozenset(
     {
-        "point_dim",
         "inputs",
         "outputs",
         "validation",
@@ -266,11 +263,7 @@ class CacheSpec:
 
 
 def assert_dim_name(value: Any, where: str) -> str:
-    """Validate a dimension-name key (``point_dim``, ``[blocking].dim``, ...).
-
-    One validator so the top-level ``point_dim`` and the per-section ``dim``
-    overrides that default to it fail the same way, with the same message.
-    """
+    """Validate a required dimension-name key (``[blocking].dim``, ``[subset].dim``)."""
     if not isinstance(value, str) or not value:
         raise CatenaValueError(f"{where} must be a non-empty string, got {value!r}.")
     return value
@@ -281,16 +274,15 @@ class BlockingSpec:
     """Specification for the [blocking] section.
 
     Controls how a partition dimension (``dim``) is split into fixed-size
-    sequential blocks to bound peak memory usage. ``dim`` defaults to the config's
-    top-level ``point_dim`` (itself ``pixel`` by default); set it to block over any
-    other dimension (e.g. ``location``) for non-gridded pipelines.
+    sequential blocks to bound peak memory usage. ``dim`` may be any dimension:
+    ``pixel`` for gridded data, or ``location``, say, for non-gridded pipelines.
     """
 
     block_size: int
-    dim: str = "pixel"
+    dim: str
 
     @classmethod
-    def from_config(cls, entry: dict, default_dim: str = "pixel") -> Self:
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [blocking] TOML entry."""
         block_size = entry.get("block_size")
         if not isinstance(block_size, int) or block_size < 1:
@@ -298,7 +290,7 @@ class BlockingSpec:
                 "[blocking] 'block_size' must be a positive integer, "
                 f"got {block_size!r}."
             )
-        dim = assert_dim_name(entry.get("dim", default_dim), "[blocking] 'dim'")
+        dim = assert_dim_name(entry.get("dim"), "[blocking] 'dim'")
         return cls(block_size=block_size, dim=dim)
 
 
@@ -306,10 +298,9 @@ class BlockingSpec:
 class SubsetSpec:
     """Specification for the [subset] section.
 
-    Selects a contiguous slice ``[start, stop)`` of one dimension (``dim``,
-    defaulting to the config's top-level ``point_dim``) so that independent
-    ``catena run`` processes can each handle a different chunk of the same input
-    files. ``stop`` is exclusive (Python slice convention).
+    Selects a contiguous slice ``[start, stop)`` of one dimension (``dim``) so that
+    independent ``catena run`` processes can each handle a different chunk of the same
+    input files. ``stop`` is exclusive (Python slice convention).
 
     ``dim`` mirrors `BlockingSpec.dim`: the two mechanisms partition the same way
     and differ only in *who* runs the parts (one process sequentially vs. many
@@ -321,10 +312,10 @@ class SubsetSpec:
 
     start: int
     stop: int
-    dim: str = "pixel"
+    dim: str
 
     @classmethod
-    def from_config(cls, entry: dict, default_dim: str = "pixel") -> Self:
+    def from_config(cls, entry: dict) -> Self:
         """Construct and validate from a raw [subset] TOML entry."""
 
         def _index(key: str) -> int:
@@ -341,7 +332,7 @@ class SubsetSpec:
             raise CatenaValueError(
                 f"[subset] 'stop' ({stop}) must be greater than 'start' ({start})."
             )
-        dim = assert_dim_name(entry.get("dim", default_dim), "[subset] 'dim'")
+        dim = assert_dim_name(entry.get("dim"), "[subset] 'dim'")
         return cls(start=start, stop=stop, dim=dim)
 
 
@@ -424,9 +415,6 @@ class ParsedConfig:
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
     checks: list["CheckSpec"] = field(default_factory=list)
-    #: The partition dimension name (top-level ``point_dim``, default ``pixel``).
-    #: Supplies the default ``dim`` for `BlockingSpec` and `SubsetSpec`.
-    point_dim: str = DEFAULT_POINT_DIM
     #: The directory relative paths in the config resolve against, normally the
     #: one holding the config file. ``None`` for a config with no file, which can
     #: then only use absolute paths and dotted ``_import_path`` names.

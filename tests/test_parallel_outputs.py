@@ -23,6 +23,7 @@ from catena.io import (
     load_inputs,
     save_outputs,
 )
+from catena.specs import BlockingSpec
 
 VAR = "mean_temperature"
 
@@ -69,7 +70,7 @@ def stacked_reference(pipeline_config, pipeline_driver):
 
 class TestStackingHelpers:
     def test_subset_suffix(self):
-        assert subset_suffix(SubsetSpec(0, 500)) == "_pixel0-500"
+        assert subset_suffix(SubsetSpec(0, 500, dim="pixel")) == "_pixel0-500"
 
     def test_subset_suffix_names_the_dim(self):
         spec = SubsetSpec(0, 10, dim="location")
@@ -162,7 +163,7 @@ class TestNetcdfSubset:
         out = tmp_path / "weekly.nc"
         specs = _output_specs(out)
 
-        for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
+        for spec in (SubsetSpec(0, 2, dim="pixel"), SubsetSpec(2, 4, dim="pixel")):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,
@@ -190,7 +191,7 @@ class TestNetcdfSubset:
         specs = _output_specs(out)
 
         # Write the outer two thirds; the middle subset "fails" (writes nothing).
-        for spec in (SubsetSpec(0, 1), SubsetSpec(3, 4)):
+        for spec in (SubsetSpec(0, 1, dim="pixel"), SubsetSpec(3, 4, dim="pixel")):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,
@@ -221,7 +222,7 @@ class TestZarrSubset:
         assert empty.sizes["pixel"] == stacked_reference.sizes["pixel"]
         assert bool(np.isnan(empty[VAR].values).all())
 
-        for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
+        for spec in (SubsetSpec(0, 2, dim="pixel"), SubsetSpec(2, 4, dim="pixel")):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,
@@ -281,7 +282,7 @@ class TestZarrSubset:
         specs = _output_specs(store)
         _create_store(pipeline_config, specs, pixel_chunk=2)
 
-        spec = SubsetSpec(0, 2)
+        spec = SubsetSpec(0, 2, dim="pixel")
         ds = _execute(pipeline_driver, pipeline_config, spec, specs)["weekly"]
         shifted = ds.assign_coords(time=ds.indexes["time"] + pd.Timedelta(days=1))
 
@@ -293,7 +294,7 @@ class TestZarrSubset:
         store = tmp_path / "weekly.zarr"
         specs = _output_specs(store)
         _create_store(pipeline_config, specs, pixel_chunk=2)
-        for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
+        for spec in (SubsetSpec(0, 2, dim="pixel"), SubsetSpec(2, 4, dim="pixel")):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,
@@ -320,7 +321,7 @@ class TestZarrSubset:
         created = _create_store(pipeline_config, specs, pixel_chunk=2)
         assert len(created) == 2
 
-        for spec in (SubsetSpec(0, 2), SubsetSpec(2, 4)):
+        for spec in (SubsetSpec(0, 2, dim="pixel"), SubsetSpec(2, 4, dim="pixel")):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
                 specs,
@@ -357,9 +358,11 @@ class TestZarrSubset:
 
         # Write something, then prove a second create-store won't silently wipe it.
         save_outputs(
-            _execute(pipeline_driver, pipeline_config, SubsetSpec(0, 2), specs),
+            _execute(
+                pipeline_driver, pipeline_config, SubsetSpec(0, 2, dim="pixel"), specs
+            ),
             specs,
-            subset_spec=SubsetSpec(0, 2),
+            subset_spec=SubsetSpec(0, 2, dim="pixel"),
         )
         with pytest.raises(FileExistsError, match="overwrite"):
             _create_store(pipeline_config, specs, pixel_chunk=2)
@@ -369,16 +372,23 @@ class TestZarrSubset:
         recreated = xr.open_zarr(store, consolidated=False).compute()
         assert bool(np.isnan(recreated[VAR].values).all())
 
-    def test_create_store_rejects_non_pixel_point_dim(self, pipeline_config, tmp_path):
+    def test_create_store_rejects_non_pixel_blocking_dim(
+        self, pipeline_config, tmp_path
+    ):
         """A Zarr store *is* the stacked pixel grid, so it is pixel-only.
 
-        Building one for a pipeline whose point axis is called something else would
-        silently mislabel the store, so it is refused up front.
+        Building one for a pipeline partitioned over something else would silently
+        mislabel the store, so it is refused up front.
         """
         specs = _output_specs(tmp_path / "weekly.zarr")
-        with pytest.raises(ValueError, match="point_dim is 'location'"):
+        with pytest.raises(ValueError, match=r"\[blocking\] dim is 'location'"):
             _create_store(
-                replace(pipeline_config, point_dim="location"), specs, pixel_chunk=2
+                replace(
+                    pipeline_config,
+                    blocking_spec=BlockingSpec(block_size=2, dim="location"),
+                ),
+                specs,
+                pixel_chunk=2,
             )
 
     def test_create_store_rejects_non_pixel_subset_dim(self, pipeline_config, tmp_path):
@@ -433,9 +443,12 @@ vars = ["{VAR}"]
 
 [blocking]
 block_size = {block_size}
+dim = "pixel"
 """
     if subset is not None:
-        blocks += f"\n[subset]\nstart = {subset[0]}\nstop = {subset[1]}\n"
+        blocks += (
+            f'\n[subset]\nstart = {subset[0]}\nstop = {subset[1]}\ndim = "pixel"\n'
+        )
     return blocks
 
 
@@ -581,7 +594,7 @@ class TestSubsetErrors:
         self, pipeline_config, pipeline_driver, tmp_path
     ):
         specs = _output_specs(tmp_path / "missing.zarr")
-        spec = SubsetSpec(0, 2)
+        spec = SubsetSpec(0, 2, dim="pixel")
         with pytest.raises(FileNotFoundError, match="create-store"):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),
@@ -594,7 +607,7 @@ class TestSubsetErrors:
         specs = _output_specs(store)
         _create_store(pipeline_config, specs, pixel_chunk=2)
 
-        spec = SubsetSpec(1, 3)  # not aligned to chunk size 2
+        spec = SubsetSpec(1, 3, dim="pixel")  # not aligned to chunk size 2
         with pytest.raises(ValueError, match="aligned"):
             save_outputs(
                 _execute(pipeline_driver, pipeline_config, spec, specs),

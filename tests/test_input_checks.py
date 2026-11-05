@@ -236,7 +236,7 @@ class TestRunInputChecksHook:
             modules=[],
             driver_config={},
             input_specs={},
-            subset_spec=SubsetSpec(start=0, stop=1) if subset else None,
+            subset_spec=SubsetSpec(start=0, stop=1, dim="pixel") if subset else None,
             checks=[CheckSpec("time_equal", ["a"])],
         )
 

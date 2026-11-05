@@ -46,7 +46,7 @@ Combine with blocking to cap peak memory.
 ```toml
 [blocking]
 block_size = 500     # rows of the partition dim processed at a time
-dim = "pixel"        # default; set to any dim (e.g. "location") for non-gridded data
+dim = "pixel"        # any dim, e.g. "location" for non-gridded data
 ```
 
 !!! warning "Outputs must vary over the partition dim"
@@ -62,7 +62,7 @@ For parallelism, run independent `catena run` processes, each restricted by `[su
 [subset]
 start = 0            # inclusive, zero-based
 stop  = 500          # exclusive (Python slice convention)
-dim   = "pixel"      # optional; the default. Any dimension works.
+dim   = "pixel"      # any dim
 ```
 
 As with `[blocking]`, `dim` can be any dimension, such as `location` or `site` in a non-gridded pipeline.

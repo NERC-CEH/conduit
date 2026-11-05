@@ -16,7 +16,7 @@ from .errors import CatenaValueError
 from .specs import BlockingSpec
 
 
-def _block_input_names(inputs: dict[str, Any], dim: str = "pixel") -> list[str]:
+def _block_input_names(inputs: dict[str, Any], dim: str) -> list[str]:
     """Return the names of inputs that have the ``dim`` dimension."""
     return [
         name
@@ -47,7 +47,7 @@ def _make_blocks(
     inputs: dict[str, Any],
     block_names: list[str],
     block_size: int,
-    dim: str = "pixel",
+    dim: str,
 ) -> Generator[dict[str, Any]]:
     """Yield sliced input dicts, one per block along ``dim``.
 
@@ -70,7 +70,7 @@ def _make_blocks(
 def _concat_results(
     block_results: list[dict[str, Any]],
     final_vars: list[str],
-    dim: str = "pixel",
+    dim: str,
 ) -> dict[str, Any]:
     """Concatenate per-block results along the ``dim`` dimension."""
     out: dict[str, Any] = {}

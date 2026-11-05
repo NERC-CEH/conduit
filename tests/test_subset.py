@@ -20,12 +20,13 @@ _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"
 
 class TestSubsetSpecValidation:
     def test_valid(self):
-        spec = SubsetSpec.from_config({"start": 0, "stop": 500})
+        spec = SubsetSpec.from_config({"start": 0, "stop": 500, "dim": "pixel"})
         assert spec.start == 0
         assert spec.stop == 500
 
-    def test_dim_defaults_to_pixel(self):
-        assert SubsetSpec.from_config({"start": 0, "stop": 500}).dim == "pixel"
+    def test_dim_is_required(self):
+        with pytest.raises(ValueError, match="'dim'"):
+            SubsetSpec.from_config({"start": 0, "stop": 500})
 
     def test_dim_can_be_any_dimension(self):
         spec = SubsetSpec.from_config({"start": 0, "stop": 10, "dim": "location"})
@@ -64,8 +65,10 @@ class TestSubsetSpecValidation:
             SubsetSpec.from_config({"start": 0.5, "stop": 500})
 
     def test_parsed_from_toml(self):
-        parsed = Config.loads("[subset]\nstart = 0\nstop = 100\n").parse()
-        assert parsed.subset_spec == SubsetSpec(start=0, stop=100)
+        parsed = Config.loads(
+            '[subset]\nstart = 0\nstop = 100\ndim = "pixel"\n'
+        ).parse()
+        assert parsed.subset_spec == SubsetSpec(start=0, stop=100, dim="pixel")
 
     def test_absent_section_gives_none(self):
         parsed = Config.loads("").parse()
@@ -82,8 +85,8 @@ class TestSubsetCorrectness:
 
     def test_pixel_coords_correct(self, pipeline_config, pipeline_inputs):
         """Each subset contains the right pixel coordinates."""
-        spec_a = SubsetSpec(start=0, stop=2)
-        spec_b = SubsetSpec(start=2, stop=4)
+        spec_a = SubsetSpec(start=0, stop=2, dim="pixel")
+        spec_b = SubsetSpec(start=2, stop=4, dim="pixel")
 
         inputs_a = load_inputs(pipeline_config.input_specs, subset_spec=spec_a)
         inputs_b = load_inputs(pipeline_config.input_specs, subset_spec=spec_b)
@@ -96,7 +99,7 @@ class TestSubsetCorrectness:
 
     def test_no_pixel_inputs_unaffected(self, pipeline_config, pipeline_inputs):
         """Inputs without the partition dim pass through unchanged."""
-        spec = SubsetSpec(start=0, stop=2)
+        spec = SubsetSpec(start=0, stop=2, dim="pixel")
         inputs_sub = load_inputs(pipeline_config.input_specs, subset_spec=spec)
 
         for name, full_val in pipeline_inputs.items():
@@ -122,10 +125,10 @@ class TestSubsetPipelineResult:
         reference = dr.execute(_FINAL_VARS, inputs=pipeline_inputs)  # type: ignore[reportArgumentType]
 
         inputs_a = load_inputs(
-            pipeline_config.input_specs, subset_spec=SubsetSpec(0, 2)
+            pipeline_config.input_specs, subset_spec=SubsetSpec(0, 2, dim="pixel")
         )
         inputs_b = load_inputs(
-            pipeline_config.input_specs, subset_spec=SubsetSpec(2, 4)
+            pipeline_config.input_specs, subset_spec=SubsetSpec(2, 4, dim="pixel")
         )
         result_a = dr.execute(_FINAL_VARS, inputs=inputs_a)  # type: ignore[reportArgumentType]
         result_b = dr.execute(_FINAL_VARS, inputs=inputs_b)  # type: ignore[reportArgumentType]
@@ -166,6 +169,7 @@ vars = ["mean_temperature"]
 [subset]
 start = 0
 stop = 2
+dim = "pixel"
 """
         p = tmp_path / "config.toml"
         p.write_text(content)
@@ -175,7 +179,7 @@ stop = 2
         """The auto-suffixed NetCDF path a [subset] run writes to."""
         from catena.gridded.io import subset_suffix
 
-        spec = SubsetSpec(0, 2)
+        spec = SubsetSpec(0, 2, dim="pixel")
         return out_path.with_name(
             f"{out_path.stem}{subset_suffix(spec)}{out_path.suffix}"
         )

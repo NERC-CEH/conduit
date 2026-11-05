@@ -42,7 +42,7 @@ catena reads entry points from installed metadata and imports a registered modul
 
 Three rules apply when a config is parsed:
 
-- **A registered name cannot shadow a built-in section** (`node`, `resample`, `inputs`, `outputs`, `validation`, `cache`, `blocking`, `subset`, `point_dim`).
+- **A registered name cannot shadow a built-in section** (`node`, `resample`, `inputs`, `outputs`, `validation`, `cache`, `blocking`, `subset`).
   Such a registration is ignored with a warning naming your package, so it cannot break configs belonging to people who merely have your package installed.
 - **The value must be a plain dotted module path.**
   A `module:attribute` value or a `.py` path is ignored with a warning; a `.py` path would resolve against the *user's* config directory.
