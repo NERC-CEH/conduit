@@ -133,7 +133,6 @@ def run(
     inputs = load_inputs(
         parsed.input_specs,
         subset_spec=parsed.subset_spec,
-        point_dim=parsed.point_dim,
     )
     logger.info(
         "inputs loaded: %d variable(s) from %d source(s)",
@@ -270,7 +269,6 @@ def dry_run(config: ConfigSource, *, allow_overrides: bool = False) -> DryRunRep
     inputs = load_inputs(
         parsed.input_specs,
         subset_spec=parsed.subset_spec,
-        point_dim=parsed.point_dim,
     )
     stages.append(
         Stage(
@@ -402,9 +400,7 @@ def _run_input_checks(parsed: ParsedConfig) -> int:
     from .input_checks import run_input_checks
     from .io import load_raw_datasets
 
-    run_input_checks(
-        load_raw_datasets(parsed.input_specs, parsed.point_dim), parsed.checks
-    )
+    run_input_checks(load_raw_datasets(parsed.input_specs), parsed.checks)
     return len(parsed.checks)
 
 

@@ -3,43 +3,19 @@
 Every extension-based decision catena makes — which reader to call, which writer,
 whether a format needs a pre-created store for a ``[subset]`` run — is an entry in
 `FORMATS`, looked up through `format_for`.
-
-Formats fall into two **groups**, which is what the loaders in `catena.io` mean by
-their names:
-
-- ``dataset`` — NetCDF/Zarr: an n-dimensional Dataset, read as-is;
-- ``scalar`` — JSON/TOML: single-point static values, reshaped to ``(point_dim,)``.
-
-``scalar`` formats are input-only (``write=None``), which is why `save_outputs`
-rejects a ``.json`` destination.
-
-**``point_dim``** is the size-1 axis the ``scalar`` group invents so single-point
-inputs broadcast against the partitioned ones. Its name must match the dimension the
-pipeline blocks or subsets over, or a subset run skips these inputs and leaves a stray
-axis in the outputs, so it comes from the config's top-level ``point_dim`` rather than
-being hardcoded.
 """
 
-import json
-import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
 
-import numpy as np
 import xarray as xr
 
 from .errors import CatenaValueError
 
-# Every reader takes a keyword-only ``point_dim``, including the ``dataset`` ones,
-# which ignore it. The uniform signature is what keeps FORMATS a flat table and the
-# dispatch in read_in_group free of per-group special cases, so do not drop the
-# parameter from the readers that ignore it.
-Reader = Callable[..., xr.Dataset]
+Reader = Callable[[str | PathLike], xr.Dataset]
 Writer = Callable[[xr.Dataset, str | PathLike], None]
-
-DEFAULT_POINT_DIM = "pixel"
 
 
 # ---------------------------------------------------------------------------
@@ -47,11 +23,11 @@ DEFAULT_POINT_DIM = "pixel"
 # ---------------------------------------------------------------------------
 
 
-def _read_netcdf(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
+def _read_netcdf(path: str | PathLike) -> xr.Dataset:
     return xr.open_dataset(path, engine="netcdf4", decode_coords="all")
 
 
-def _read_zarr(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
+def _read_zarr(path: str | PathLike) -> xr.Dataset:
     return xr.open_dataset(path, engine="zarr", decode_coords="all", consolidated=False)
 
 
@@ -61,27 +37,6 @@ def _write_netcdf(ds: xr.Dataset, path: str | PathLike) -> None:
 
 def _write_zarr(ds: xr.Dataset, path: str | PathLike) -> None:
     ds.to_zarr(path, consolidated=False)
-
-
-def _static_from_mapping(data: dict, point_dim: str) -> xr.Dataset:
-    """Shape a flat ``{name: value}`` mapping into a ``(point_dim,)`` Dataset."""
-    return xr.Dataset(
-        {
-            k: xr.DataArray(np.asarray([v], dtype=float), dims=[point_dim])
-            for k, v in data.items()
-        },
-        coords={point_dim: [0]},
-    )
-
-
-def _read_json(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
-    with open(path) as f:
-        return _static_from_mapping(json.load(f), point_dim)
-
-
-def _read_toml(path: str | PathLike, *, point_dim: str = DEFAULT_POINT_DIM):
-    with open(path, "rb") as f:
-        return _static_from_mapping(tomllib.load(f), point_dim)
 
 
 # ---------------------------------------------------------------------------
@@ -96,40 +51,30 @@ class Format:
     key: str
     #: Recognised extensions, lowercase and dot-prefixed. The first is canonical.
     suffixes: tuple[str, ...]
-    #: ``dataset`` (n-d) or ``scalar`` (static).
-    group: str
-    read: Reader | None
-    write: Writer | None
+    read: Reader
+    write: Writer
     #: Whether a subset write targets a store that must be created up front
     #: (``catena gridded create-store``) rather than a file per subset.
     needs_store: bool = False
 
 
 FORMATS: tuple[Format, ...] = (
-    Format("netcdf", (".nc", ".netcdf"), "dataset", _read_netcdf, _write_netcdf),
-    Format("zarr", (".zarr",), "dataset", _read_zarr, _write_zarr, True),
-    Format("json", (".json",), "scalar", _read_json, None),
-    Format("toml", (".toml",), "scalar", _read_toml, None),
+    Format("netcdf", (".nc", ".netcdf"), _read_netcdf, _write_netcdf),
+    Format("zarr", (".zarr",), _read_zarr, _write_zarr, True),
 )
 
 
-def supported_suffixes(*, writable: bool = False) -> list[str]:
-    """Every recognised extension, or only those that can be written."""
-    return sorted(
-        suffix
-        for fmt in FORMATS
-        for suffix in fmt.suffixes
-        if not writable or fmt.write is not None
-    )
+def supported_suffixes() -> list[str]:
+    """Every recognised extension."""
+    return sorted(suffix for fmt in FORMATS for suffix in fmt.suffixes)
 
 
-def format_for(path: str | PathLike, *, writable: bool = False) -> Format:
+def format_for(path: str | PathLike) -> Format:
     """Return the `Format` handling ``path``, by extension.
 
     A suffix-less path that is an existing directory is read as Zarr — that is the
     shape a Zarr store takes on disk. Anything unrecognised raises a ``ValueError``
-    naming *every* supported extension, rather than only those of whichever loader
-    happened to be last in an if-chain.
+    naming every supported extension.
     """
     p = Path(path)
     suffix = p.suffix.lower()
@@ -139,49 +84,12 @@ def format_for(path: str | PathLike, *, writable: bool = False) -> Format:
 
     for fmt in FORMATS:
         if suffix in fmt.suffixes:
-            if writable and fmt.write is None:
-                raise CatenaValueError(
-                    f"Cannot write {fmt.key} ({suffix}) — it is an input-only "
-                    f"format. Writable formats: {supported_suffixes(writable=True)}."
-                )
             return fmt
 
     raise CatenaValueError(
         f"Unsupported file extension {suffix or '(none)'!r} (path {str(path)!r}). "
-        f"Supported: {supported_suffixes(writable=writable)}."
+        f"Supported: {supported_suffixes()}."
     )
 
 
 _BY_KEY: dict[str, Format] = {fmt.key: fmt for fmt in FORMATS}
-
-
-def group_suffixes(group: str) -> list[str]:
-    """Every extension in one format group."""
-    return sorted(s for f in FORMATS if f.group == group for s in f.suffixes)
-
-
-def _in_group(path: str | PathLike, group: str, *, writable: bool = False) -> Format:
-    """Look ``path`` up, requiring it to be in ``group``."""
-    fmt = format_for(path, writable=writable)
-    if fmt.group != group:
-        raise CatenaValueError(
-            f"Unsupported file extension {Path(path).suffix or '(none)'!r} for a "
-            f"{group} file (path {str(path)!r}). Use one of {group_suffixes(group)}."
-        )
-    return fmt
-
-
-def read_in_group(
-    path: str | PathLike, group: str, *, point_dim: str = DEFAULT_POINT_DIM
-) -> xr.Dataset:
-    """Read ``path``, requiring it to be in ``group`` (see the module docstring)."""
-    fmt = _in_group(path, group)
-    assert fmt.read is not None  # every registered format is readable
-    return fmt.read(path, point_dim=point_dim)
-
-
-def write_in_group(ds: xr.Dataset, path: str | PathLike, group: str) -> None:
-    """Write ``ds`` to ``path``, requiring it to be in ``group``."""
-    fmt = _in_group(path, group, writable=True)
-    assert fmt.write is not None
-    fmt.write(ds, path)

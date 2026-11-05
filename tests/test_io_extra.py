@@ -1,7 +1,7 @@
 """Tests for io.py paths not covered by existing tests.
 
 Covers:
-- read_in_group / write_in_group with Zarr files
+- reading and writing Zarr files through the format registry
 - time-dimension detection (``time_dims``) and the single-time-dim invariant
 - get_outputs and save_outputs public API
 - Multiple-CRS-dataset lat/lon computation
@@ -16,7 +16,7 @@ import pytest
 import xarray as xr
 
 from catena.config import IOSpec
-from catena.formats import read_in_group, write_in_group
+from catena.formats import format_for
 from catena.io import (
     get_final_vars,
     get_outputs,
@@ -61,39 +61,24 @@ class TestZarrDataset:
     def test_save_and_load_zarr(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        write_in_group(ds, zarr_path, "dataset")
-        loaded = read_in_group(zarr_path, "dataset")
+        format_for(zarr_path).write(ds, zarr_path)
+        loaded = format_for(zarr_path).read(zarr_path)
         assert set(loaded.data_vars) == {"var_a"}
 
     def test_zarr_round_trip_values(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        write_in_group(ds, zarr_path, "dataset")
-        loaded = read_in_group(zarr_path, "dataset")
+        format_for(zarr_path).write(ds, zarr_path)
+        loaded = format_for(zarr_path).read(zarr_path)
         np.testing.assert_allclose(loaded["var_a"].values, ds["var_a"].values)
 
     def test_zarr_time_dimension_preserved(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        write_in_group(ds, zarr_path, "dataset")
-        loaded = read_in_group(zarr_path, "dataset")
+        format_for(zarr_path).write(ds, zarr_path)
+        loaded = format_for(zarr_path).read(zarr_path)
         assert "time" in loaded.dims
         assert loaded.sizes["time"] == N_TIMES
-
-
-class TestSaveNetcdfErrors:
-    """The dataset-group dispatch raises for unsupported extensions."""
-
-    def test_unsupported_extension_raises(self, tmp_path):
-        ds = _simple_ds()
-        with pytest.raises(ValueError, match="Unsupported file extension"):
-            write_in_group(ds, tmp_path / "data.csv", "dataset")
-
-    def test_load_unsupported_extension_raises(self, tmp_path):
-        p = tmp_path / "data.txt"
-        p.touch()
-        with pytest.raises(ValueError, match="Unsupported file extension"):
-            read_in_group(p, "dataset")
 
 
 # ---------------------------------------------------------------------------

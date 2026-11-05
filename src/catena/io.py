@@ -9,11 +9,7 @@ import numpy as np
 import xarray as xr
 
 from .errors import CatenaFileNotFoundError, CatenaPermissionError, CatenaValueError
-from .formats import (
-    DEFAULT_POINT_DIM,
-    format_for,
-    write_in_group,
-)
+from .formats import format_for
 from .specs import IOSpec, SubsetSpec
 
 
@@ -86,11 +82,9 @@ def _check_requested_vars(
 # ---------------------------------------------------------------------------
 
 
-def _load_raw(path: str, point_dim: str = DEFAULT_POINT_DIM) -> xr.Dataset:
+def _load_raw(path: str) -> xr.Dataset:
     """Open any supported input file (`catena.formats` picks the reader)."""
-    fmt = format_for(path)
-    assert fmt.read is not None  # every registered format is readable
-    return fmt.read(path, point_dim=point_dim)
+    return format_for(path).read(path)
 
 
 # ---------------------------------------------------------------------------
@@ -144,11 +138,9 @@ def sole_time_dim(obj: xr.Dataset | xr.DataArray, what: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _save(ds: xr.Dataset, path: str) -> None:
-    """Write ``ds`` to any writable format (`catena.formats` picks the writer)."""
-    fmt = format_for(path, writable=True)
-    assert fmt.write is not None
-    fmt.write(ds, path)
+def _save(ds: xr.Dataset, path: str | os.PathLike) -> None:
+    """Write ``ds`` to any supported format (`catena.formats` picks the writer)."""
+    format_for(path).write(ds, path)
 
 
 # ---------------------------------------------------------------------------
@@ -156,16 +148,11 @@ def _save(ds: xr.Dataset, path: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def load_raw_datasets(
-    input_specs: dict[str, IOSpec], point_dim: str = DEFAULT_POINT_DIM
-) -> dict[str, xr.Dataset]:
+def load_raw_datasets(input_specs: dict[str, IOSpec]) -> dict[str, xr.Dataset]:
     """Open every configured input as a raw ``Dataset`` (pre-stack, pre-subset).
 
     `load_inputs` calls this internally, and so does the input-checks pre-flight.
     Opens are lazy (metadata only), so calling it twice per run is cheap.
-
-    ``point_dim`` names the synthetic axis given to single-point ``scalar`` inputs;
-    see `catena.formats`.
 
     Raises `CatenaFileNotFoundError` listing every input path that does not exist.
     """
@@ -176,16 +163,13 @@ def load_raw_datasets(
     ]
     if missing:
         raise CatenaFileNotFoundError("input file(s) not found:\n" + "\n".join(missing))
-    return {
-        label: _load_raw(spec.path, point_dim) for label, spec in input_specs.items()
-    }
+    return {label: _load_raw(spec.path) for label, spec in input_specs.items()}
 
 
 def load_inputs(
     input_specs: dict[str, IOSpec],
     subset_spec: SubsetSpec | None = None,
     geospatial: bool | None = None,
-    point_dim: str = DEFAULT_POINT_DIM,
 ) -> dict[str, xr.DataArray]:
     """Load all configured inputs and return them as a flat dict of named DataArrays.
 
@@ -214,11 +198,6 @@ def load_inputs(
     geospatial:
         Force the geospatial path on (``True``) or off (``False``). When ``None``
         (default) it is auto-detected from the presence of CRS metadata.
-    point_dim:
-        Name of the synthetic size-1 axis given to single-point JSON/TOML inputs so
-        they broadcast against the partitioned ones. Must match the
-        dimension the pipeline blocks or subsets over, which is why both default to
-        the config's top-level ``point_dim``. Typically ``parsed_config.point_dim``.
     """
     from .gridded.io import (  # lazy: optional geo extra (see catena.gridded)
         compute_lat_lon,
@@ -227,7 +206,7 @@ def load_inputs(
     )
 
     inputs: dict[str, xr.DataArray] = {}
-    raw_datasets = load_raw_datasets(input_specs, point_dim)
+    raw_datasets = load_raw_datasets(input_specs)
 
     # Invariant: at most one time dimension per input dataset. A second datetime
     # axis makes "the time dimension" ambiguous (for validation, resampling, and
@@ -276,7 +255,7 @@ def subset_inputs(
 ) -> dict[str, xr.DataArray]:
     """Slice every input carrying ``subset_spec.dim`` to that spec's range.
 
-    Inputs without the dimension (a static scalar, say) pass through untouched.
+    Inputs without the dimension pass through untouched.
     """
     dim = subset_spec.dim
     sl = slice(subset_spec.start, subset_spec.stop)
@@ -370,13 +349,13 @@ def save_outputs(
 
         from .gridded.io import save_zarr_region, subset_path  # lazy: geo extra
 
-        if format_for(path, writable=True).needs_store:
+        if format_for(path).needs_store:
             save_zarr_region(ds, path, subset_spec)
             written[label] = Path(path)
         else:
             part = subset_path(path, subset_spec)
             Path(part).parent.mkdir(parents=True, exist_ok=True)
-            write_in_group(ds, part, "dataset")
+            _save(ds, part)
             written[label] = Path(part)
     return written
 
@@ -395,8 +374,8 @@ def assert_output_paths_writable(
     """
     for label, spec in output_specs.items():
         path = Path(spec.path)
-        # Raises with the full list of writable formats for an unknown extension.
-        fmt = format_for(spec.path, writable=True)
+        # Raises with the full list of formats for an unknown extension.
+        fmt = format_for(spec.path)
 
         if subset_spec is not None:
             if fmt.needs_store:

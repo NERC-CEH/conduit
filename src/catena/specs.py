@@ -27,6 +27,8 @@ RESERVED_NODE_NAMES: frozenset[str] = frozenset(
     {"xr", "xra", "Any", "__import_module", "__transforms"}
 )
 
+DEFAULT_POINT_DIM = "pixel"
+
 #: Top-level config sections and keys catena parses itself. A section named here is
 #: never treated as a user module, so a package registering one of these names would
 #: register something no config could ever reach.
@@ -422,11 +424,9 @@ class ParsedConfig:
     blocking_spec: "BlockingSpec | None" = None
     subset_spec: "SubsetSpec | None" = None
     checks: list["CheckSpec"] = field(default_factory=list)
-    #: The partition/point dimension name (top-level ``point_dim``, default
-    #: ``pixel``). Names the synthetic axis single-point ``scalar``
-    #: inputs are given (see `catena.formats`) and supplies the default ``dim``
-    #: for `BlockingSpec` and `SubsetSpec`.
-    point_dim: str = "pixel"
+    #: The partition dimension name (top-level ``point_dim``, default ``pixel``).
+    #: Supplies the default ``dim`` for `BlockingSpec` and `SubsetSpec`.
+    point_dim: str = DEFAULT_POINT_DIM
     #: The directory relative paths in the config resolve against, normally the
     #: one holding the config file. ``None`` for a config with no file, which can
     #: then only use absolute paths and dotted ``_import_path`` names.

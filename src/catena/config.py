@@ -14,7 +14,6 @@ from typing import Any, Self
 import tomli_w
 
 from .errors import CatenaValueError
-from .formats import DEFAULT_POINT_DIM
 from .importing import (
     discover_registered_modules,
     is_file_form,
@@ -23,6 +22,7 @@ from .importing import (
 )
 from .input_checks import CHECKS
 from .specs import (
+    DEFAULT_POINT_DIM,
     BlockingSpec,
     CacheSpec,
     CheckSpec,
@@ -384,10 +384,8 @@ class Config:
         """Parse config into a ParsedConfig.
 
         Recognised top-level keys and sections (processed directly):
-        - point_dim       — name of the synthetic point/partition axis (default
-                            "pixel"); supplies the default `dim` for [blocking]
-                            and [subset], and names the axis given to single-point
-                            scalar inputs (see catena.formats)
+        - point_dim       — name of the partition axis (default "pixel"); supplies
+                            the default `dim` for [blocking] and [subset]
         - [inputs.*]      — I/O specs; freq derived from subsection key
         - [validation]    — declared expectations to validate; `checks` holds the
                             input-Dataset compatibility checks

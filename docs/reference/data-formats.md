@@ -9,15 +9,14 @@ catena picks a file's format from its extension.
 
 ## Supported formats
 
-| Extension | Format | Loader | Output? | `[subset]`? |
-|-----------|--------|--------|---------|-------------|
-| `.nc`, `.netcdf` | NetCDF | `xarray` + `netcdf4` engine | ✅ | ✅ (one file per part) |
-| `.zarr` | Zarr store | `xarray` + `zarr` engine | ✅ | ✅ (regions of a shared store) |
-| `.json` | JSON (key → scalar mapping) | `json.load` | ❌ input only | ❌ |
-| `.toml` | TOML (key → scalar mapping) | `tomllib.load` | ❌ input only | ❌ |
+| Extension | Format | Loader | `[subset]` outputs |
+|-----------|--------|--------|--------------------|
+| `.nc`, `.netcdf` | NetCDF | `xarray` + `netcdf4` engine | One file per part |
+| `.zarr` | Zarr store | `xarray` + `zarr` engine | Regions of a shared store |
 
-NetCDF and Zarr are for arrays: gridded data, multi-point data and single-site time series.
-JSON/TOML are for time-invariant scalar parameters, and are input-only.
+Both are read as inputs and written as outputs, and hold any array: gridded data, multi-point data and single-site time series.
+
+A scalar parameter belongs in the config itself, in a [module section](configuration.md#modules).
 
 CSV and Parquet are not supported.
 Convert a table to NetCDF first, and label its variables with their units if your nodes declare any:
@@ -34,15 +33,12 @@ The table is defined in [`catena.formats.FORMATS`](modules/catena.formats.md).
 
 ## Spatial handling
 
-catena handles three spatial layouts automatically:
+catena handles two spatial layouts automatically:
 
 - **Gridded (NetCDF/Zarr with a CRS).** Spatial dimensions (`x`/`y` or `lat`/`lon`) with a CRS are stacked into a single `pixel` dimension — each grid cell becomes one pixel.
   This path uses the optional `geo` extra and activates only when CRS metadata is present.
   See [`catena.gridded`](modules/catena.gridded/io.md).
 - **Pre-stacked.** Data that already has a `pixel` dimension is used as-is.
-- **Single-point (JSON/TOML).** These files are treated as one site; a size-1 dimension with a single coordinate (`0`) is added automatically — named by the top-level [`point_dim`](configuration.md#point-dimension) key, `pixel` by default.
-  Scalar files become `(point_dim,)`.
-  Set `point_dim` to match whatever a non-gridded pipeline blocks or subsets over.
 
 Grid coordinate nodes (`latitude`, `longitude`) are computed from the CRS when a gridded input is loaded.
 
@@ -58,8 +54,6 @@ Frequency is checked only where it is declared: by a `Freq` [contract](../guides
 
 Give input variables a CF-style `units` attribute so catena can validate them against your nodes' [contracts](../guides/nodes/contracts.md).
 A missing or unparseable `units` attribute fails wherever a consumer declares a unit.
-
-JSON and TOML values carry no units, so declare none on them.
 
 ## Output provenance
 

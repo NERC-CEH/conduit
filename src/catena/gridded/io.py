@@ -383,7 +383,7 @@ def create_output_store(
                 f"(CLI: --overwrite) to recreate them from scratch."
             )
 
-    inputs = load_inputs(parsed.input_specs, point_dim=parsed.point_dim)
+    inputs = load_inputs(parsed.input_specs)
     skeleton = _pixel_template(inputs)
     n_pixel = skeleton.sizes["pixel"]
     chunk = pixel_chunk or n_pixel
@@ -511,7 +511,7 @@ def merge_subset_outputs(
     written: list[str] = []
     for spec in output_specs.values():
         path = Path(spec.path)
-        fmt = format_for(spec.path, writable=True)
+        fmt = format_for(spec.path)
 
         if fmt.needs_store:
             # One shared store, region-written by every subset run: read it whole.
