@@ -525,6 +525,23 @@ class TestNode:
         with pytest.raises(ValueError, match="not a recognised"):
             config.parse()
 
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("units", "not_a_unit"),
+            ("dtype", "not_a_dtype"),
+            ("freq", "not_a_freq"),
+            ("dims", ["x", "x"]),
+            ("dims", [1, 2]),
+            ("dims", 5),
+            ("coords", [""]),
+        ],
+    )
+    def test_malformed_contract_is_a_catena_error_naming_the_node(self, key, value):
+        node = {"name": "n", "inputs": ["a"], "expression": "a", key: value}
+        with pytest.raises(CatenaValueError, match="node 'n'"):
+            Config({"node": [node]}).parse()
+
     def test_duplicate_node_name_raises(self):
         config = Config(
             {

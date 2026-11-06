@@ -5,6 +5,7 @@ import types
 from typing import Annotated, TypedDict
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 import xarray_annotated as xra
@@ -20,6 +21,13 @@ from catena.contract_check import (
     check_input_contracts,
 )
 from catena.errors import CatenaValueError
+
+_DAILY = xr.DataArray(
+    [1.0, 2.0, 3.0],
+    dims="time",
+    coords={"time": pd.date_range("2025-01-01", periods=3, freq="D")},
+    attrs={"units": "Pa"},
+)
 
 
 def _da():
@@ -495,7 +503,9 @@ class TestRuntimeQualname:
 
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match=r"\[.*my_model_node\].*no 'units'"),
+            pytest.raises(
+                xra.units.UnitError, match=r"\[.*my_model_node\].*no 'units'"
+            ),
         ):
             my_model_node(vpd=xr.DataArray([1.0]))
 
@@ -507,7 +517,9 @@ class TestRuntimeQualname:
         da = xr.DataArray([1.0], attrs={"units": "fraction"})
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match=r"\[.*another_node\].*unparseable"),
+            pytest.raises(
+                xra.units.UnitError, match=r"\[.*another_node\].*unparseable"
+            ),
         ):
             another_node(vpd=da)
 
@@ -702,8 +714,8 @@ class TestSchemaInputCheck:
         with xra.enabled(True), pytest.raises(CatenaValueError) as exc:
             check_input_contracts(dr, inputs)
         message = str(exc.value)
-        assert "'first' (dims)" in message
-        assert "'second' (dtype)" in message
+        assert "'first' dims mismatch" in message
+        assert "'second' dtype mismatch" in message
 
     def test_every_failing_facet_of_one_input_is_reported(self, register):
         def consumer(
@@ -716,8 +728,8 @@ class TestSchemaInputCheck:
         with xra.enabled(True), pytest.raises(CatenaValueError) as exc:
             check_input_contracts(dr, {"x": wrong})
         message = str(exc.value)
-        assert "'x' (units)" in message
-        assert "'x' (dims)" in message
+        assert "input 'x'" in message
+        assert "'x' dims mismatch" in message
 
     def test_none_passes_where_the_hint_allows_it(self, register):
         def consumer(
@@ -758,6 +770,36 @@ class TestSchemaInputCheck:
             pytest.raises(CatenaValueError, match="malformed contract declaration"),
         ):
             check_dag_contracts(dr)
+
+    @pytest.mark.parametrize(
+        "marker",
+        [xra.Unit("not_a_unit"), xra.Dtype("not_a_dtype"), xra.Freq("not_a_freq")],
+        ids=["unit", "dtype", "freq"],
+    )
+    @pytest.mark.parametrize(
+        "check",
+        [check_dag_contracts, lambda dr: check_input_contracts(dr, {"x": _DAILY})],
+        ids=["edge", "input"],
+    )
+    def test_malformed_marker_on_a_lone_declaration(self, register, marker, check):
+        def consumer(x: Annotated[xr.DataArray, marker]) -> xr.DataArray:
+            return x
+
+        dr = _build(register(f"sci_lone_{type(marker).__name__}", consumer))
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="malformed contract declaration"),
+        ):
+            check(dr)
+
+    def test_dimensionality_failure_names_the_input_once(self, register):
+        def consumer(x: Annotated[xr.DataArray, xra.Unit("kg")]) -> xr.DataArray:
+            return x
+
+        dr = _build(register("sci_named_once", consumer))
+        with xra.enabled(True), pytest.raises(CatenaValueError) as exc:
+            check_input_contracts(dr, {"x": _DAILY})
+        assert str(exc.value).count("'x'") == 1
 
 
 class TestParameterizedNodes:

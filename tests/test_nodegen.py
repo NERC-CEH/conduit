@@ -18,7 +18,7 @@ def test_reserved_names_match_generated_namespace():
     assert set(_node_namespace()) == RESERVED_NODE_NAMES
 
 
-def _expr_spec(name, inputs, expression, units=None):
+def _expr_spec(name, inputs, expression, units=None, passthrough=False):
     return NodeSpec(
         name=name,
         inputs=list(inputs),
@@ -26,6 +26,7 @@ def _expr_spec(name, inputs, expression, units=None):
         import_path=None,
         function=None,
         units=units,
+        passthrough=passthrough,
     )
 
 
@@ -166,16 +167,24 @@ class TestNodeUnits:
 
     def test_output_with_no_unit_raises(self):
         mod = make_node_module([_expr_spec("f", ["a"], "a", units="t ha-1")])
-        with xra.enabled(True), pytest.raises(ValueError, match="no 'units' attribute"):
+        with (
+            xra.enabled(True),
+            pytest.raises(xra.units.UnitError, match="no 'units' attribute"),
+        ):
             mod.f(xr.DataArray([1.0]))
 
     def test_output_with_a_stale_unit_raises(self):
         mod = make_node_module([_expr_spec("f", ["a"], "a * 0.01", units="hPa")])
         with (
             xra.enabled(True),
-            pytest.raises(ValueError, match="differs from declared"),
+            pytest.raises(xra.units.UnitError, match="differs from declared"),
         ):
             mod.f(xr.DataArray([1.0], attrs={"units": "Pa"}))
+
+    @pytest.mark.parametrize("passthrough", [False, True])
+    def test_node_declaring_nothing_is_left_unwrapped(self, passthrough):
+        spec = _expr_spec("f", ["a"], "a", passthrough=passthrough)
+        assert not hasattr(make_node_module([spec]).f, "__wrapped__")
 
     def test_expression_states_a_changed_unit(self):
         expression = "(a * 0.01).assign_attrs(units='hPa')"

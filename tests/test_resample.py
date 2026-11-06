@@ -13,6 +13,7 @@ from xarray_annotated.temporal import Freq, check_freq
 
 from catena.build import build_driver
 from catena.config import Config
+from catena.errors import CatenaValueError
 from catena.transforms import resample
 
 
@@ -218,7 +219,7 @@ class TestResampleSpecValidation:
     def test_invalid_freq_raises(self):
         from catena.config import ResampleSpec
 
-        with pytest.raises(ValueError, match="invalid frequency 'banana'"):
+        with pytest.raises(CatenaValueError, match="invalid frequency 'banana'"):
             ResampleSpec.from_config(
                 {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "banana"}
             )

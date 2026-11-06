@@ -99,22 +99,20 @@ def _decorate(fn: Any, spec: NodeSpec) -> Any:
     # facet it does not preserve), and is tagged for the check to propagate the rest.
     if spec.passthrough:
         fn.__annotations__["return"] = xra.annotate(freq=spec.freq)
-        if spec.freq is not None:
-            fn = xra.enforce(fn)
+        fn = xra.enforce(fn)
         return tag(**{PASSTHROUGH_TAG: "true"})(fn)  # type: ignore[reportArgumentType]
 
     # Otherwise a declared unit/dims/dtype/coords/freq makes the node a typed producer:
     # validated at runtime and read by the build-time check. Without any, the node is
     # simply unchecked.
-    hint = xra.annotate(
+    fn.__annotations__["return"] = xra.annotate(
         unit=spec.units,
         dims=spec.dims or None,
         dtype=spec.dtype,
         coords=spec.coords or None,
         freq=spec.freq,
     )
-    fn.__annotations__["return"] = hint
-    return fn if hint is xr.DataArray else xra.enforce(fn)
+    return xra.enforce(fn)
 
 
 def _build_fn_code(spec: NodeSpec) -> str:

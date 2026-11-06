@@ -13,7 +13,8 @@ executing any node (the basis of ``catena run --dry-run``).
 **dims** / **coords** / **dtype** (schema), and **freq** (the spacing and phase of
 the time axis) — and apply the rules `xarray_annotated.enforce` applies at run time,
 through `xarray_annotated.declaration_conflicts` for edges and
-`xarray_annotated.check_declared` for inputs.
+`xarray_annotated.declaration_violations` for inputs. A malformed declaration, on a
+function no `xarray_annotated.enforce` has validated, raises `CatenaValueError`.
 
 **Switching off.** Both checks do nothing when `xarray-annotated` is switched off,
 with ``XARRAY_ANNOTATED_ENABLED=false`` or inside ``xarray_annotated.enabled(False)``.
@@ -45,24 +46,22 @@ the thing that *changes* its frequency, so a ``[[resample]]`` node declares its 
 output frequency instead, making it an ordinary producer for that one facet.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import replace
 from itertools import combinations
 from typing import Any
 
-import pint
 import xarray as xr
 from hamilton import driver, graph_types
 from xarray_annotated import (
     Declared,
     Unit,
-    check_declared,
+    assert_valid_declaration,
     declaration_conflicts,
+    declaration_violations,
     declarations_from_signature,
     resolve_enabled,
 )
-from xarray_annotated.schema import SchemaError
-from xarray_annotated.temporal import FreqError
 
 from .errors import CatenaValueError
 
@@ -196,45 +195,6 @@ def _distinct[T](markers: Iterable[T | None]) -> list[T]:
     return seen
 
 
-def _single_facet_declarations(
-    decls: list[Declared], units: list[Unit]
-) -> Iterator[tuple[str, list[Declared]]]:
-    """Split one input's declarations by facet, so each can fail independently."""
-    yield "units", [Declared(unit=u) for u in sorted(units, key=lambda u: u.unit)]
-    yield "dims", [Declared(dims=m) for m in _distinct(d.dims for d in decls)]
-    yield "coords", [Declared(coords=m) for m in _distinct(d.coords for d in decls)]
-    yield "dtype", [Declared(dtype=m) for m in _distinct(d.dtype for d in decls)]
-    yield "freq", [Declared(freq=m) for m in _distinct(d.freq for d in decls)]
-
-
-def _dataarray_findings(
-    value: xr.DataArray, decls: list[Declared], units: list[Unit], name: str
-) -> list[str]:
-    findings = []
-    for facet, declarations in _single_facet_declarations(decls, units):
-        try:
-            for declared in declarations:
-                check_declared(value, declared, name)
-        except (
-            ValueError,
-            pint.DimensionalityError,
-            SchemaError,
-            FreqError,
-        ) as exc:
-            findings.append(f"  {name!r} ({facet}): {exc}")
-    return findings
-
-
-def _other_value_findings(value: Any, decls: list[Declared], name: str) -> list[str]:
-    # Every consumer is asked, as `| None` on one does not excuse a None for another.
-    for declared in decls:
-        try:
-            check_declared(value, declared, name)
-        except TypeError as exc:
-            return [f"  {name!r}: {exc}"]
-    return []
-
-
 def check_dag_contracts(dr: driver.Driver) -> None:
     """Verify declared contracts are consistent across every built-DAG edge.
 
@@ -254,6 +214,13 @@ def check_dag_contracts(dr: driver.Driver) -> None:
             decl, who = produced[name]
             candidates.append((decl, f"output of {who}"))
         candidates.extend((decl, f"input of {who}") for decl, who in consumers)
+        for decl, source in candidates:
+            try:
+                assert_valid_declaration(decl, f"{name!r}, {source}")
+            except ValueError as exc:
+                raise CatenaValueError(
+                    f"malformed contract declaration: {exc}"
+                ) from exc
         # All pairs, not star-wise against candidates[0]: three of the four facets are
         # *non-transitive*, because a loose declaration is compatible with everything.
         # Dims("x","y") is compatible with both Dims("x","y", ordered=True) and
@@ -263,16 +230,9 @@ def check_dag_contracts(dr: driver.Driver) -> None:
         # relation.) Candidates are producer-first, so combinations() still leads with
         # "output of ...".
         for (a_decl, a_src), (b_decl, b_src) in combinations(candidates, 2):
-            try:
-                conflicts = declaration_conflicts(a_decl, b_decl)
-            except ValueError as exc:
-                raise CatenaValueError(
-                    f"malformed contract declaration on {name!r}, between {a_src} and "
-                    f"{b_src}: {exc}"
-                ) from exc
             findings.extend(
                 f"  {name!r}: {a_src} and {b_src} conflict on {conflict}"
-                for conflict in conflicts
+                for conflict in declaration_conflicts(a_decl, b_decl)
             )
     if findings:
         raise CatenaValueError(
@@ -294,7 +254,8 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     ``None``.
 
     Every failing input is reported in one `CatenaValueError`, with every failing
-    facet of a ``DataArray``. This is a no-op when `xarray-annotated` is switched off.
+    facet of a ``DataArray``. A malformed declaration raises `CatenaValueError` too.
+    This is a no-op when `xarray-annotated` is switched off.
     """
     if not resolve_enabled():
         return
@@ -307,10 +268,16 @@ def check_input_contracts(dr: driver.Driver, inputs: dict[str, Any]) -> None:
     findings: list[str] = []
     for name, value in inputs.items():
         decls = [decl for decl, _ in consumed.get(name, ())]
+        # A unit-only declaration has no `others`, so it would refuse a `| None`.
         if isinstance(value, xr.DataArray):
-            units = expected_units.get(name, [])
-            findings.extend(_dataarray_findings(value, decls, units, name))
-        else:
-            findings.extend(_other_value_findings(value, decls, name))
+            units = sorted(expected_units.get(name, []), key=lambda u: u.unit)
+            decls += [Declared(unit=unit) for unit in units]
+        try:
+            found = [v for d in decls for v in declaration_violations(value, d, name)]
+        except ValueError as exc:
+            raise CatenaValueError(f"malformed contract declaration: {exc}") from exc
+        # By message, as `Declared` equality ignores `others`: `| None` on one consumer
+        # does not excuse a None for another.
+        findings.extend(f"  {violation}" for violation in dict.fromkeys(found))
     if findings:
         raise CatenaValueError("input contract mismatch(es):\n" + "\n".join(findings))

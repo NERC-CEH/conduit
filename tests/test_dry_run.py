@@ -114,7 +114,7 @@ class TestCheckInputUnitsDirect:
     def test_incompatible_units_raise(self, dr):
         with (
             xra.enabled(True),
-            pytest.raises(CatenaValueError, match="'vpd_weekly' \\(units\\)"),
+            pytest.raises(CatenaValueError, match="input 'vpd_weekly'"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input("kg")})
 

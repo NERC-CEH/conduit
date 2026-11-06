@@ -103,19 +103,19 @@ class ResampleSpec:
                 f"'7D', '1ME', 'W-SUN')."
             )
 
-        from pandas.tseries.frequencies import to_offset
         from xarray_annotated.temporal import Freq, assert_valid_freq
 
         freq = entry["freq"]
-        assert_valid_freq(Freq(freq), f"[[resample]] to '{entry['to']}' freq")
         try:
-            to_offset(freq)
+            assert_valid_freq(Freq(freq), f"[[resample]] to '{entry['to']}' freq")
         except ValueError as exc:
+            raise CatenaValueError(str(exc)) from exc
+        if Freq(freq).any_day:
             raise CatenaValueError(
                 f"[[resample]] to '{entry['to']}' freq must be a pandas offset alias, "
                 f"as {freq!r} says how often to sample but not where to stamp it. Use "
                 f"one such as '1ME' or 'YE'."
-            ) from exc
+            )
         return cls(
             vars=entry["vars"],
             source=entry["from"],
@@ -148,6 +148,32 @@ def _assert_node_identifier(value: Any, field_: str, node_name: Any) -> None:
             f"generated node module ({sorted(RESERVED_NODE_NAMES)}). Choose "
             f"another name."
         )
+
+
+def _assert_valid_contract(entry: dict, node_name: Any) -> None:
+    """Reject a [[node]] entry's malformed output contract at parse time."""
+    from xarray_annotated import (
+        annotate,
+        assert_valid_declaration,
+        declaration_from_hint,
+    )
+
+    try:
+        declared = declaration_from_hint(
+            annotate(
+                unit=entry.get("units"),
+                dims=entry.get("dims"),
+                dtype=entry.get("dtype"),
+                coords=entry.get("coords"),
+                freq=entry.get("freq"),
+            )
+        )
+        if declared is not None:
+            assert_valid_declaration(declared, f"node '{node_name}'")
+    except TypeError as exc:
+        raise CatenaValueError(f"node '{node_name}': {exc}") from exc
+    except ValueError as exc:
+        raise CatenaValueError(str(exc)) from exc
 
 
 @dataclass
@@ -203,36 +229,18 @@ class NodeSpec:
                 f"'{missing}'. A function node needs both keys: "
                 f"'_import_path' (the module) and 'function' (the name within it)."
             )
-        units = entry.get("units")
-        if units is not None:
-            # Fail fast on a malformed/unknown unit, at parse time.
-            from xarray_annotated.units import assert_valid_unit
-
-            assert_valid_unit(units, f"node '{name}' units")
-        dtype = entry.get("dtype")
-        if dtype is not None:
-            # Fail fast on a malformed dtype, at parse time, via the same
-            # declaration validator the schema decorator uses.
-            from xarray_annotated.schema import Dtype, assert_valid_schema
-
-            assert_valid_schema(Dtype(dtype), f"node '{name}' dtype")
-        freq = entry.get("freq")
-        if freq is not None:
-            # Fail fast on an unparseable frequency, at parse time.
-            from xarray_annotated.temporal import Freq, assert_valid_freq
-
-            assert_valid_freq(Freq(freq), f"node '{name}' freq")
+        _assert_valid_contract(entry, name)
         return cls(
             name=entry["name"],
             inputs=entry["inputs"],
             expression=entry.get("expression"),
             import_path=entry.get("_import_path"),
             function=entry.get("function"),
-            units=units,
+            units=entry.get("units"),
             dims=entry.get("dims"),
-            dtype=dtype,
+            dtype=entry.get("dtype"),
             coords=entry.get("coords"),
-            freq=freq,
+            freq=entry.get("freq"),
             passthrough=bool(entry.get("passthrough", False)),
         )
 

@@ -93,7 +93,7 @@ An edge is checked wherever both ends declare a contract.
 ## Different units are an error
 
 Suppose your file stores pressure in hectopascals and the node above wants pascals.
-Nothing converts it for you, because whether a conversion is correct depends on the quantity, so the node raises `ValueError`.
+Nothing converts it for you, because whether a conversion is correct depends on the quantity, so the node raises `xarray_annotated.units.UnitError`.
 A unit that is only spelled differently, `"pascal"` for `"Pa"`, passes, and the values are not touched.
 
 Declarations are held to the same rule.
