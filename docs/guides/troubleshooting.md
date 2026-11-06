@@ -7,9 +7,9 @@ icon: lucide/wrench
 
 ## Installation
 
-### `graphviz` not found when running `conduit graph`
+### `graphviz` not found when running `catena graph`
 
-`conduit graph` needs the system Graphviz binary, not just the Python package:
+`catena graph` needs the system Graphviz binary, not just the Python package:
 
 ```sh
 sudo apt install graphviz     # Ubuntu/Debian
@@ -17,7 +17,7 @@ brew install graphviz         # macOS
 sudo dnf install graphviz     # Fedora
 ```
 
-### `conduit gridded` reports a missing extra
+### `catena gridded` reports a missing extra
 
 Install the `geo` extra; see [Installation](install.md#extras).
 
@@ -28,14 +28,14 @@ Install the `geo` extra; see [Installation](install.md#extras).
 A node needs an input that nothing produces.
 Usually one of:
 
-1. **Not listed in config** — the variable is missing from the `vars` of the right `[inputs.*]` section.
+1. **Not listed in config** — the variable is missing from the `vars` of the right `[inputs.*]` section, or the scalar is missing from every module section.
 2. **Suffix mismatch** — a parameter named `temperature_daily` needs a `temperature` variable under `[inputs.daily]`, or a `vars` mapping alias.
 3. **Wrong resolution** — the variable exists only at another frequency; add a [`[[resample]]`](../reference/configuration.md#resample).
 
 ### A unit / dimension mismatch error
 
 A node's declared contract disagrees with its producer's; see [Reading a contract failure](validate/validate-before-running.md#reading-a-contract-failure).
-To relax the check, adjust the [`[annotations]`](../reference/configuration.md#annotations) policy.
+To fix it, correct whichever declaration is wrong, or [convert the units](nodes/contracts.md#converting-units) in a node of its own.
 
 ### `[[resample]]` entry is missing required key `freq`
 
@@ -47,20 +47,11 @@ Resampling only aggregates; for a finer resolution, provide finer input data.
 `frequency mismatch on 'time': expected '7D', got 'D'` means the data contradicts a declared `Freq` contract.
 Either the declaration or the data is wrong; fix whichever, or drop the declaration.
 
-`frequency of 'time' is uninferable` means the axis has fewer than three timestamps or irregular spacing, so the declaration could not be tested.
-This warns by default; set `on_uninferable` in [`[annotations]`](../reference/configuration.md#annotations) to `"error"` to make it fatal, or `"ignore"` for short test fixtures.
+`got irregular spacing` means the axis does not tick regularly, so a gap in the record fails a plain `Freq("D")`.
+If gaps are expected, declare `Freq("D", gaps_ok=True)` on a Python node, and for values on varying days of the month, such as monthly midpoints, declare `Freq("month")`.
+An axis of zero or one timestamps has no spacing, so it always passes.
 
 ## Data
-
-### CSV file not loading
-
-CSV inputs must have a parseable date as the **first column**, one row per time step:
-
-```csv
-time,precipitation,temperature
-2020-01-01,3.2,8.1
-2020-01-02,0.0,9.3
-```
 
 ### NetCDF file has no CRS / wrong spatial dimensions
 
@@ -83,14 +74,14 @@ A subset run produced a time axis that differs from the shared store's, so the c
 Re-create the store from the current config:
 
 ```sh
-conduit gridded create-store config.toml --overwrite
+catena gridded create-store config.toml --overwrite
 ```
 
 `--overwrite` erases what other subset runs have written, so re-run them all afterwards.
 
 ### Empty or missing output
 
-Check that the `[outputs.*]` `vars` name nodes that exist, that the output's parent directory exists, and that the input data covers the range you expect.
+Check that the `[outputs.*]` `vars` name nodes that exist, that the output's directory can be created or written to, and that the input data covers the range you expect.
 `--dry-run` checks the first two.
 
 ### Slow on large grids
@@ -104,10 +95,10 @@ Check that the `[outputs.*]` `vars` name nodes that exist, that the output's par
 
 ### The graph is too large to read
 
-Pass `conduit graph` a `--style` file with Graphviz sizing attributes, or draw part of the DAG in Python:
+Pass `catena graph` a `--style` file with Graphviz sizing attributes, or draw part of the DAG in Python:
 
 ```python
-from conduit import build_driver, load_config
+from catena import build_driver, load_config
 
 parsed = load_config("config.toml")
 dr = build_driver(

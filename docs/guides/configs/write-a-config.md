@@ -30,9 +30,9 @@ Three kinds of section do the work:
 `[outputs.<label>]`
 :   What gets written. One section per output file, `path` plus the nodes to put in it.
 
-The optional sections `[annotations]`, `[validation]`, `[cache]`, `[blocking]` and `[subset]` change how the pipeline is checked or executed, never what it computes.
+The optional sections `[validation]`, `[cache]`, `[blocking]` and `[subset]` change how the pipeline is checked or executed, never what it computes.
 
-Any other section is treated as one of your modules and must carry an `_import_path`, so a typo like `[anotations]` fails at parse time instead of being silently ignored.
+Any other section is treated as one of your modules and must carry an `_import_path`, so a typo like `[valdation]` fails at parse time instead of being silently ignored.
 
 ## Names are what wire it together
 
@@ -51,7 +51,7 @@ Two escape hatches:
 - `suffix = ""` on an input section gives bare node names, useful for a static file that feeds everything.
 - The mapping form of `vars`, `vars = {temperature_daily = "t2m"}`, gives a file variable a different node name.
 
-To see what actually connected to what, draw it with [`conduit graph config.toml --pdf`](../validate/visualise-the-graph.md).
+To see what actually connected to what, draw it with [`catena graph config.toml --pdf`](../validate/visualise-the-graph.md).
 
 ## The edits you will actually make
 
@@ -63,7 +63,7 @@ If the new files name their variables differently, use the mapping form of `vars
 
 **Add a variable from a file you already read.**
 Add it to that section's `vars` list.
-It becomes a node; until something consumes it, conduit only warns that it is unused.
+It becomes a node; until something consumes it, catena only warns that it is unused.
 
 **Add a derived quantity.**
 If it fits in one expression, add an [inline `[[node]]`](inline-nodes-and-fan-out.md).
@@ -78,13 +78,10 @@ Any node can be requested, including an intermediate you want to inspect.
 A module's keyword-only arguments are set in that module's section.
 They [share one namespace](../nodes/bring-your-own-module.md#parameter-names-share-one-namespace) across every section, so `floor` set under `[aridity]` is the same `floor` everywhere.
 
-**Turn the checks up.**
-Add `[annotations]` with `mode = "strict"` to make a contract mismatch fail rather than warn, and `on_inexact = "warn"` to see every unit conversion the run performs.
-
 ## Before you run it
 
 ```sh
-conduit run config.toml --dry-run
+catena run config.toml --dry-run
 ```
 
 This checks everything short of computing: it catches a suffix that does not match, a renamed file variable, or an output nothing produces.

@@ -5,25 +5,25 @@ icon: lucide/terminal
 
 # Run from the CLI
 
-The `conduit` command (the `cli` extra) runs pipelines from the terminal.
+The `catena` command (the `cli` extra) runs pipelines from the terminal.
 The usual workflow is:
 
 ```
-write a config.toml  →  conduit graph  →  conduit run --dry-run  →  conduit run
+write a config.toml  →  catena graph  →  catena run --dry-run  →  catena run
 ```
 
 ## Run the pipeline
 
 ```sh
-conduit run config.toml
+catena run config.toml
 ```
 
-conduit builds the DAG, executes the nodes your `[outputs.*]` sections need, and writes the output files, each [stamped with the config](../../reference/data-formats.md#output-provenance) that produced it.
+catena builds the DAG, executes the nodes your `[outputs.*]` sections need, and writes the output files, each [stamped with the config](../../reference/data-formats.md#output-provenance) that produced it.
 It reports each stage as it goes, then one line per file written, with its variable count and size, and the elapsed time.
 
 Only the nodes your requested outputs depend on run, so trimming `[outputs.*]` to one variable skips unrelated branches.
 
-Before a long run, check everything with `conduit run config.toml --dry-run`; see [Validate before running](../validate/validate-before-running.md).
+Before a long run, check everything with `catena run config.toml --dry-run`; see [Validate before running](../validate/validate-before-running.md).
 
 ## Overriding the config
 

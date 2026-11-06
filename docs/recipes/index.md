@@ -7,18 +7,18 @@ icon: lucide/book-open
 
 A recipe is a complete pipeline you can read end to end: the data, the node module, the config, and the run.
 
-Each lives in its own directory under [`recipes/`](https://github.com/NERC-CEH/conduit/tree/main/recipes), with a node module, a `config.toml`, a synthetic-data generator, and a marimo notebook that runs the pipeline.
+Each lives in its own directory under [`recipes/`](https://github.com/NERC-CEH/catena/tree/main/recipes), with a node module, a `config.toml`, a synthetic-data generator, and a marimo notebook that runs the pipeline.
 The tests and the docs build both execute every recipe, so they stay in step with the library.
 
 To run one, clone the repository (or download the recipe's directory) and open its notebook with [marimo](https://marimo.io):
 
 ```sh
-git clone https://github.com/NERC-CEH/conduit.git
-cd conduit
+git clone https://github.com/NERC-CEH/catena.git
+cd catena
 marimo edit --sandbox recipes/pipeline_101/demo.py
 ```
 
-`--sandbox` (which needs [uv](https://docs.astral.sh/uv/)) installs the notebook's dependencies, conduit included, from the header at the top of `demo.py`; drop it to use your current environment instead.
+`--sandbox` (which needs [uv](https://docs.astral.sh/uv/)) installs the notebook's dependencies, catena included, from the header at the top of `demo.py`; drop it to use your current environment instead.
 
 ## Available
 
@@ -30,4 +30,4 @@ marimo edit --sandbox recipes/pipeline_101/demo.py
 - **Land-cover classification** — a gridded classification pipeline over multi-band inputs.
 - **Nowcasting** — a short-horizon forecast with temporal resampling.
 
-If there is a pattern you would like to see worked through, [open an issue](https://github.com/NERC-CEH/conduit/issues).
+If there is a pattern you would like to see worked through, [open an issue](https://github.com/NERC-CEH/catena/issues).

@@ -1,13 +1,9 @@
-"""Tests for conduit.formats — the single file-format registry."""
+"""Tests for catena.formats — the single file-format registry."""
 
 import pytest
 
-from conduit.formats import (
-    FORMATS,
-    format_for,
-    group_suffixes,
-    supported_suffixes,
-)
+from catena.errors import CatenaValueError
+from catena.formats import FORMATS, format_for, supported_suffixes
 
 
 class TestFormatFor:
@@ -17,11 +13,6 @@ class TestFormatFor:
             ("a.nc", "netcdf"),
             ("a.netcdf", "netcdf"),
             ("a.zarr", "zarr"),
-            ("a.csv", "csv"),
-            ("a.parquet", "parquet"),
-            ("a.pq", "parquet"),
-            ("a.json", "json"),
-            ("a.toml", "toml"),
         ],
     )
     def test_dispatches_by_extension(self, path, key):
@@ -44,19 +35,13 @@ class TestFormatFor:
         for suffix in supported_suffixes():
             assert suffix in message
 
-    def test_writable_lookup_rejects_input_only_formats(self):
-        # JSON/TOML are readable but have no writer.
-        with pytest.raises(ValueError, match="input-only"):
-            format_for("out.json", writable=True)
-
-    def test_writable_lookup_allows_writable_formats(self):
-        assert format_for("out.csv", writable=True).key == "csv"
+    @pytest.mark.parametrize("path", ["a.csv", "a.parquet", "a.pq", "a.json", "a.toml"])
+    def test_table_and_scalar_formats_are_not_supported(self, path):
+        with pytest.raises(CatenaValueError, match="Unsupported file extension"):
+            format_for(path)
 
 
 class TestRegistryShape:
-    def test_every_format_is_readable(self):
-        assert all(fmt.read is not None for fmt in FORMATS)
-
     def test_suffixes_are_unique_across_formats(self):
         seen = [s for fmt in FORMATS for s in fmt.suffixes]
         assert len(seen) == len(set(seen))
@@ -67,24 +52,8 @@ class TestRegistryShape:
                 assert suffix.startswith(".")
                 assert suffix == suffix.lower()
 
-    def test_only_table_formats_write_frames(self):
-        for fmt in FORMATS:
-            assert (fmt.write_frame is not None) == (fmt.group == "table")
-
-    def test_subset_capable_formats_are_the_dataset_ones(self):
-        # [subset] partial writes need NetCDF (a file per part) or Zarr (regions).
-        assert {f.key for f in FORMATS if f.supports_subset} == {"netcdf", "zarr"}
-
     def test_only_zarr_needs_a_prepared_store(self):
         assert {f.key for f in FORMATS if f.needs_store} == {"zarr"}
 
-    def test_groups_partition_the_registry(self):
-        assert group_suffixes("dataset") == [".nc", ".netcdf", ".zarr"]
-        assert group_suffixes("table") == [".csv", ".parquet", ".pq"]
-        assert group_suffixes("scalar") == [".json", ".toml"]
-
-    def test_supported_suffixes_writable_excludes_input_only(self):
-        writable = supported_suffixes(writable=True)
-        assert ".json" not in writable
-        assert ".toml" not in writable
-        assert ".nc" in writable
+    def test_supported_suffixes(self):
+        assert supported_suffixes() == [".nc", ".netcdf", ".zarr"]

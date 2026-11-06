@@ -1,3 +1,0 @@
-# `nodegen`
-
-::: conduit.nodegen

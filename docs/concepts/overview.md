@@ -5,7 +5,7 @@ icon: lucide/lightbulb
 
 # Overview
 
-conduit is built around one choice: keep the graph separate from the functions, and let the functions carry their own contracts.
+catena is built around one choice: keep the graph separate from the functions, and let the functions carry their own contracts.
 
 A node is a plain xarray function.
 It names its inputs by parameter name and its output by function name, and knows nothing about where its data comes from, what consumes it, or how it will be executed.
@@ -19,7 +19,7 @@ graph LR
 
 Everything else follows from that split.
 The functions can be written and tested without a pipeline, the pipeline can be assembled and checked without running it, and how it runs is a separate decision again.
-Hence the four stages of working with conduit.
+Hence the four stages of working with catena.
 
 ## 1. Write the science code
 
@@ -34,7 +34,7 @@ Start at [Write a config](../guides/configs/write-a-config.md).
 
 ## 3. Validate
 
-Because the config names every node and every function declares its signature, conduit can assemble the whole graph and check every edge without computing an array.
+Because the config names every node and every function declares its signature, catena can assemble the whole graph and check every edge without computing an array.
 [Contracts and the whole-graph check](contracts.md) explains what that catches and what it misses; [Validate before running](../guides/validate/validate-before-running.md) is the practical guide.
 
 ## 4. Run

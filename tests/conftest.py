@@ -1,17 +1,17 @@
 import multiprocessing
+import os
 from pathlib import Path
 
 import pytest
 import xarray as xr
 from synthetic_data import write_synthetic_inputs
-from xarray_annotated.units import set_policy
 
-from conduit.build import build_driver
-from conduit.config import load_config
-from conduit.io import load_inputs
+from catena.build import build_driver
+from catena.config import load_config
+from catena.io import load_inputs
 
 multiprocessing.set_start_method("spawn", force=True)
-set_policy(enabled=False)
+os.environ["XARRAY_ANNOTATED_ENABLED"] = "false"
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -108,49 +108,4 @@ vars = ["temperature"]
 """
     p = tmp_path / "config.toml"
     p.write_text(content)
-    return p
-
-
-@pytest.fixture
-def inexact_units_module():
-    """Register a module whose one DAG edge declares 'm' upstream and 'km' down.
-
-    Compatible (both lengths) but *inexact*, so the build-time contract check
-    flags it only when the units policy says ``on_inexact="error"`` — which is
-    what ``[annotations] on_inexact = "error"`` asks for. That makes it a probe for
-    "did this command apply the config's policy?".
-    """
-    import sys
-    import types
-    from typing import Annotated
-
-    name = "conduit_test_inexact_units"
-    mod = types.ModuleType(name)
-
-    def metres() -> Annotated[xr.DataArray, "m"]:
-        return xr.DataArray([1.0])
-
-    def consumer(metres: Annotated[xr.DataArray, "km"]) -> xr.DataArray:
-        return metres
-
-    for fn in (metres, consumer):
-        fn.__module__ = name
-        setattr(mod, fn.__name__, fn)
-    sys.modules[name] = mod
-    yield name
-    del sys.modules[name]
-
-
-@pytest.fixture
-def inexact_units_config(tmp_path, inexact_units_module):
-    p = tmp_path / "inexact.toml"
-    p.write_text(
-        f"""\
-[annotations]
-on_inexact = "error"
-
-[probe]
-_import_path = "{inexact_units_module}"
-"""
-    )
     return p

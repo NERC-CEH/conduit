@@ -1,6 +1,6 @@
-"""Tests for `conduit.run`, the Python entry point a pipeline actually runs through.
+"""Tests for `catena.run`, the Python entry point a pipeline actually runs through.
 
-`conduit run` is a shim over this, so the behaviour that must hold on every real
+`catena run` is a shim over this, so the behaviour that must hold on every real
 run — input checks, output pre-flight, provenance — is tested here rather than
 through the CLI.
 """
@@ -8,9 +8,9 @@ through the CLI.
 import pytest
 import xarray as xr
 
-from conduit import run
-from conduit.config import load_config
-from conduit.input_checks import InputCheckError
+from catena import run
+from catena.config import load_config
+from catena.input_checks import InputCheckError
 
 
 def _config(tmp_path, synthetic_data_dir, out, extra=""):
@@ -83,8 +83,8 @@ vars = ["temperature"]
         out = tmp_path / "out.nc"
         run(_config(tmp_path, synthetic_data_dir, out))
         with xr.open_dataset(out) as ds:
-            assert "warmth_daily" in ds.attrs["conduit_config"]
-            assert len(ds.attrs["conduit_config_sha256"]) == 64
+            assert "warmth_daily" in ds.attrs["catena_config"]
+            assert len(ds.attrs["catena_config_sha256"]) == 64
 
     def test_parsed_config_stamps_no_provenance(self, tmp_path, synthetic_data_dir):
         """An in-memory config has no text to stamp, so it stamps nothing rather
@@ -92,7 +92,7 @@ vars = ["temperature"]
         out = tmp_path / "out.nc"
         run(load_config(_config(tmp_path, synthetic_data_dir, out)))
         with xr.open_dataset(out) as ds:
-            assert "conduit_config" not in ds.attrs
+            assert "catena_config" not in ds.attrs
 
 
 class TestRunPreFlight:
@@ -140,7 +140,12 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
         run(cfg)
         assert out.exists()
 
-    def test_missing_output_dir_fails_before_compute(
+    def test_missing_output_dir_is_created(self, tmp_path, synthetic_data_dir):
+        out = tmp_path / "missing" / "nested" / "out.nc"
+        run(_config(tmp_path, synthetic_data_dir, out))
+        assert out.exists()
+
+    def test_output_blocked_by_a_file_fails_before_compute(
         self, tmp_path, synthetic_data_dir
     ):
         """Output paths are pre-flighted on the real run, not just in a dry run.
@@ -148,11 +153,11 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
         Otherwise the whole DAG executes and the bad destination only surfaces
         inside save_outputs, after all the work.
         """
-        out = tmp_path / "missing" / "out.nc"
-        cfg = _config(tmp_path, synthetic_data_dir, out)
-        with pytest.raises(FileNotFoundError, match="does not exist"):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        cfg = _config(tmp_path, synthetic_data_dir, blocker / "out.nc")
+        with pytest.raises(FileNotFoundError, match="not a directory"):
             run(cfg)
-        assert not out.parent.exists()
 
     def test_subset_zarr_without_store_fails_before_compute(
         self, tmp_path, synthetic_data_dir
@@ -162,20 +167,11 @@ checks = [{{ check = "time_equal", inputs = ["daily", "weekly"] }}]
             tmp_path,
             synthetic_data_dir,
             out,
-            extra="\n[subset]\nstart = 0\nstop = 2\n",
+            extra='\n[subset]\nstart = 0\nstop = 2\ndim = "pixel"\n',
         )
         with pytest.raises(FileNotFoundError, match="create-store"):
             run(cfg)
         assert not out.exists()
-
-    def test_rejects_inexact_edge_under_exact_policy(self, inexact_units_config):
-        """The build-time contract check consults the *process-global* policy, so
-        an entry point that skipped `AnnotationPolicySpec.apply` would accept a
-        config that another rejects."""
-        from xarray_annotated.units import policy
-
-        with policy(enabled=True), pytest.raises(ValueError, match="exact match"):
-            run(inexact_units_config)
 
 
 class TestOutputsAreCheckedBeforeAnythingIsCreated:
@@ -189,6 +185,8 @@ class TestOutputsAreCheckedBeforeAnythingIsCreated:
     def test_no_cache_directory_after_an_unwritable_output(
         self, tmp_path, synthetic_data_dir
     ):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
         cfg = tmp_path / "config.toml"
         cfg.write_text(
             f"""\
@@ -200,7 +198,7 @@ path = "{synthetic_data_dir / "daily.nc"}"
 vars = ["temperature"]
 
 [outputs.daily]
-path = "{tmp_path / "missing" / "out.nc"}"
+path = "{blocker / "out.nc"}"
 vars = ["temperature"]
 """
         )

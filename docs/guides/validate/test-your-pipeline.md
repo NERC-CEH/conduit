@@ -35,30 +35,30 @@ def test_anomaly_is_centred():
     assert float(anomaly.mean("time")) == pytest.approx(0.0)
 ```
 
-`@declare_units` runs on the call, validating and converting the argument's `units` as it would in a pipeline, with no config or DAG needed.
-Give test arrays a `units` attribute, or you will be testing the missing-units policy rather than your function.
+`@xra.enforce` runs on the call, checking the argument's `units` as it would in a pipeline, with no config or DAG needed.
+Give test arrays a `units` attribute, or the call raises before your function runs.
 
 This is where the science belongs: assert on known analytic cases, conservation properties, limits, or whatever else tells you the calculation is the one you meant.
 
 ## 2. The config, without computing anything
 
-`conduit.dry_run` runs every check against your real input files without executing a node, so it is fast enough for every commit:
+`catena.dry_run` runs every check against your real input files without executing a node, so it is fast enough for every commit:
 
 ```python
 from pathlib import Path
 
-import conduit
+import catena
 
 
 def test_config_is_valid():
-    report = conduit.dry_run(Path("config.toml"))
+    report = catena.dry_run(Path("config.toml"))
 
     # A hard failure raises, so reaching here means the pipeline is valid.
     # Assert on findings too if you want soft issues to fail the build.
     assert not [f for stage in report.stages for f in stage.findings]
 ```
 
-`Stage.findings` holds the soft issues the active `[annotations]` policy let through.
+`Stage.findings` holds the soft issues, such as an input no node consumes.
 In CI, this catches a renamed input, a mistyped section, a unit that stopped matching or an output nothing produces, in seconds.
 [Validate before running](validate-before-running.md) lists every stage.
 
@@ -67,11 +67,11 @@ If your inputs are large or absent in CI, point the test at a small synthetic fi
 ## 3. The pipeline end to end
 
 Run the whole pipeline over small synthetic inputs and assert on the outputs.
-conduit tests its own recipes this way; see [`tests/test_recipes.py`](https://github.com/NERC-CEH/conduit/blob/main/tests/test_recipes.py).
+catena tests its own recipes this way; see [`tests/test_recipes.py`](https://github.com/NERC-CEH/catena/blob/main/tests/test_recipes.py).
 
 ```python
 def test_pipeline_writes_expected_variables():
-    conduit.run(Path("config.toml"))
+    catena.run(Path("config.toml"))
 
     with xr.open_dataset("results/anomaly.nc") as result:
         assert {"temperature_anomaly", "anomaly_range"} <= set(result)

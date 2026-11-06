@@ -1,12 +1,12 @@
-"""Tests for the input-Dataset compatibility suite (`conduit.input_checks`)."""
+"""Tests for the input-Dataset compatibility suite (`catena.input_checks`)."""
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-from conduit.config import CheckSpec
-from conduit.input_checks import (
+from catena.config import CheckSpec
+from catena.input_checks import (
     CHECKS,
     InputCheckError,
     coords_equal,
@@ -88,7 +88,7 @@ class TestSpatialGridEqual:
         spatial_grid_equal(daily_ds)
 
     def test_mismatched_crs_raises(self, daily_ds):
-        from conduit.gridded.io import MisalignedGridError
+        from catena.gridded.io import MisalignedGridError
 
         other = daily_ds.rio.write_crs("EPSG:3857")
         with pytest.raises(MisalignedGridError):
@@ -230,25 +230,25 @@ class TestRunInputChecksHook:
     """The cli/run.py `_run_input_checks` orchestration hook."""
 
     def _parsed(self, subset):
-        from conduit.config import ParsedConfig, SubsetSpec
+        from catena.config import ParsedConfig, SubsetSpec
 
         return ParsedConfig(
             modules=[],
             driver_config={},
             input_specs={},
-            subset_spec=SubsetSpec(start=0, stop=1) if subset else None,
+            subset_spec=SubsetSpec(start=0, stop=1, dim="pixel") if subset else None,
             checks=[CheckSpec("time_equal", ["a"])],
         )
 
     def test_no_checks_is_noop(self):
-        from conduit.config import ParsedConfig
-        from conduit.pipeline import _run_input_checks
+        from catena.config import ParsedConfig
+        from catena.pipeline import _run_input_checks
 
         parsed = ParsedConfig(modules=[], driver_config={}, checks=[])
         assert _run_input_checks(parsed) == 0
 
     def test_subset_skips_with_warning(self):
-        from conduit.pipeline import _run_input_checks
+        from catena.pipeline import _run_input_checks
 
         parsed = self._parsed(subset=True)
         with pytest.warns(UserWarning, match="input checks skipped under \\[subset\\]"):

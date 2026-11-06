@@ -1,0 +1,3 @@
+# `pipeline`
+
+::: catena.pipeline

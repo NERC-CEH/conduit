@@ -13,21 +13,21 @@ section being called ``daily``/``weekly``/``monthly``) is gone.
 
 import sys
 import types
-import warnings
 from typing import Annotated
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+import xarray_annotated as xra
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
-from xarray_annotated.temporal import Freq, FreqError, FreqWarning
-from xarray_annotated.units import policy
+from xarray_annotated.temporal import Freq, FreqError
 
-from conduit.build import build_driver
-from conduit.config import Config, NodeSpec, ResampleSpec, resample_to_node_entry
-from conduit.contract_check import check_dag_contracts, check_input_contracts
+from catena.build import build_driver
+from catena.config import NodeSpec, ResampleSpec, resample_to_node_entry
+from catena.contract_check import check_dag_contracts, check_input_contracts
+from catena.errors import CatenaValueError
 
 
 def _series(freq: str, periods: int = 10, start: str = "2020-01-01") -> xr.DataArray:
@@ -103,51 +103,47 @@ class TestFreqEdgeCheck:
     def test_spacing_mismatch_raises(self, register):
         dr = self._dr(register, Freq("D"), Freq("7D"))
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             check_dag_contracts(dr)
 
     def test_message_names_node_and_freqs(self, register):
         dr = self._dr(register, Freq("D"), Freq("7D"))
-        with policy(enabled=True), pytest.raises(ValueError, match="flux") as exc:
+        with xra.enabled(True), pytest.raises(ValueError, match="flux") as exc:
             check_dag_contracts(dr)
         assert "Freq('D')" in str(exc.value)
         assert "Freq('7D')" in str(exc.value)
 
     def test_matching_freqs_pass(self, register):
         dr = self._dr(register, Freq("7D"), Freq("7D"))
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_dag_contracts(dr)
 
     def test_anchor_mismatch_raises(self, register):
         # The resample-phase footgun: same spacing, different anchor.
         dr = self._dr(register, Freq("W-SUN"), Freq("W-WED"))
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             check_dag_contracts(dr)
 
     def test_unanchored_declaration_matches_any_anchor(self, register):
         # "7D" spells no anchor, so it compares on spacing only.
         dr = self._dr(register, Freq("7D"), Freq("W-WED"))
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_dag_contracts(dr)
 
     def test_undeclared_producer_is_not_checked(self, register):
         # Opt-in: an edge is compared only where both sides declare a frequency.
         dr = self._dr(register, None, Freq("7D"))
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_dag_contracts(dr)
 
     def test_disabled_policy_skips(self, register):
         dr = self._dr(register, Freq("D"), Freq("7D"))
-        with policy(enabled=False), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(False):
             check_dag_contracts(dr)
 
 
@@ -162,32 +158,63 @@ class TestFreqInputCheck:
 
     def test_inferred_frequency_contradicting_declaration_raises(self, register):
         dr = self._dr(register, Freq("7D"))
-        with policy(enabled=True), pytest.raises(FreqError, match="frequency mismatch"):
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="frequency mismatch"),
+        ):
             check_input_contracts(dr, {"arr": _series("D")})
 
     def test_matching_frequency_passes(self, register):
         dr = self._dr(register, Freq("7D"))
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_input_contracts(dr, {"arr": _series("7D")})
 
     def test_anchor_mismatch_raises(self, register):
         dr = self._dr(register, Freq("W-SUN"))
-        with policy(enabled=True), pytest.raises(FreqError, match="frequency mismatch"):
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="frequency mismatch"),
+        ):
             check_input_contracts(dr, {"arr": _series("W-WED")})
 
-    def test_short_axis_is_uninferable_and_warns(self, register):
-        # Fewer than three points: the declaration was never tested, not violated.
+    def test_two_points_contradicting_the_declaration_raise(self, register):
         dr = self._dr(register, Freq("7D"))
-        with policy(enabled=True), pytest.warns(FreqWarning, match="uninferable"):
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="frequency mismatch"),
+        ):
             check_input_contracts(dr, {"arr": _series("D", periods=2)})
+
+    def test_irregular_axis_raises(self, register):
+        dr = self._dr(register, Freq("D"))
+        times = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-05"])
+        irregular = xr.DataArray(np.ones(3), dims="time", coords={"time": times})
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="irregular spacing"),
+        ):
+            check_input_contracts(dr, {"arr": irregular})
+
+    def test_single_point_has_no_spacing_to_contradict(self, register):
+        dr = self._dr(register, Freq("7D"))
+        with xra.enabled(True):
+            check_input_contracts(dr, {"arr": _series("D", periods=1)})
+
+    def test_every_declared_consumer_is_checked(self, register):
+        first = _consumer(Freq("D"), in_name="arr", name="c_daily")
+        second = _consumer(Freq("7D"), in_name="arr", name="c_weekly")
+        dr = _build(register("fqi_many", first, second))
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="frequency mismatch"),
+        ):
+            check_input_contracts(dr, {"arr": _series("D")})
 
     def test_undeclared_input_is_not_checked(self, register):
         # A pipeline with no Freq declarations skips the facet entirely.
         cons = register("fqi_plain", _consumer(Freq("D"), in_name="other"))
         dr = _build(cons)
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_input_contracts(dr, {"arr": _series("ME")})
 
 
@@ -225,17 +252,17 @@ class TestNodeFreq:
 
     def test_declared_node_freq_is_a_checkable_producer(self, register):
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             self._dr(register, "1ME", Freq("7D"))
 
     def test_matching_consumer_passes(self, register):
-        with policy(enabled=True):
+        with xra.enabled(True):
             self._dr(register, "7D", Freq("7D"))
 
     def test_runtime_check_on_node_output(self):
-        # The generated node is wrapped in @declare_freq, so a node whose output
+        # The generated node is wrapped in enforce, so a node whose output
         # contradicts its declaration fails when it runs.
         specs = [
             NodeSpec(
@@ -247,7 +274,7 @@ class TestNodeFreq:
                 freq="1ME",
             )
         ]
-        with policy(enabled=True):
+        with xra.enabled(True):
             dr = build_driver(["node"], {}, node_specs=specs)
             with pytest.raises(FreqError, match="frequency mismatch"):
                 dr.execute(["flux"], inputs={"a": _series("D")})
@@ -259,7 +286,7 @@ class TestNodeFreq:
 
 
 def _resample_specs(*specs):
-    from conduit.config import expand_node_entries
+    from catena.config import expand_node_entries
 
     entries = [resample_to_node_entry(s) for s in specs]
     return [NodeSpec.from_config(e) for e in expand_node_entries(entries)]
@@ -297,12 +324,12 @@ class TestResampleFreq:
         return build_driver(["node", "rf_cons"], {}, node_specs=specs)
 
     def test_consumer_matching_the_offset_passes(self, register):
-        with policy(enabled=True):
+        with xra.enabled(True):
             self._dr(register, Freq("7D"))
 
     def test_consumer_contradicting_the_offset_raises(self, register):
         with (
-            policy(enabled=True),
+            xra.enabled(True),
             pytest.raises(ValueError, match="gpp_weekly"),
         ):
             self._dr(register, Freq("1ME"))
@@ -311,8 +338,8 @@ class TestResampleFreq:
         # A fat-fingered W-WED offset against a downstream consumer that requires
         # Sundays: caught at build time, on the resample node's own declaration.
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="frequencies incompatible"),
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"freq: .* are incompatible"),
         ):
             self._dr(register, Freq("W-SUN"), offset="W-WED")
 
@@ -330,8 +357,7 @@ class TestResampleFreq:
                 freq=offset,
             )
         )
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             dr = build_driver(["node"], {}, node_specs=specs)
             out = dr.execute(
                 ["gpp_weekly"], inputs={"gpp_daily": _series("D", periods=120)}
@@ -347,26 +373,102 @@ class TestResampleFreq:
         specs = _resample_specs(
             ResampleSpec(vars=["gpp"], source="daily", target="weekly", freq="7D")
         )
-        with policy(enabled=True):
+        with xra.enabled(True):
             build_driver(["rfp_prod", "node", "rfp_cons"], {}, node_specs=specs)
 
 
 # ---------------------------------------------------------------------------
-# Policy plumbing: [annotations] drives the temporal axes
+# Axes with holes and calendar steps on any day
 # ---------------------------------------------------------------------------
 
 
-class TestPolicyFromConfig:
-    def test_on_mismatch_and_on_uninferable_parsed(self):
-        parsed = Config(
-            {"annotations": {"on_mismatch": "warn", "on_uninferable": "ignore"}}
-        ).parse()
-        assert parsed.annotations.on_mismatch == "warn"
-        assert parsed.annotations.on_uninferable == "ignore"
+def _gappy_daily() -> xr.DataArray:
+    """Daily values with a hole: January 2025 joined to January 2026."""
+    times = pd.date_range("2025-01-01", periods=31, freq="D").append(
+        pd.date_range("2026-01-01", periods=31, freq="D")
+    )
+    return xr.DataArray(np.ones(62), dims=("time",), coords={"time": times})
+
+
+def _axis_consumer(name: str, declared: Freq):
+    def consume(gappy: Annotated[xr.DataArray, declared]) -> xr.DataArray:
+        return gappy
+
+    consume.__name__ = name
+    return consume
+
+
+class TestGapsOk:
+    def test_gappy_axis_passes_a_gaps_ok_axis_consumer(self, register):
+        mod = register("fq_gaps_ok", _axis_consumer("c", Freq("D", gaps_ok=True)))
+        with xra.enabled(True):
+            check_input_contracts(_build(mod), {"gappy": _gappy_daily()})
+
+    def test_gappy_axis_fails_a_strict_axis_consumer(self, register):
+        mod = register("fq_gaps_strict", _axis_consumer("c", Freq("D")))
+        with xra.enabled(True), pytest.raises(CatenaValueError, match="'gappy'"):
+            check_input_contracts(_build(mod), {"gappy": _gappy_daily()})
+
+    def test_one_strict_consumer_decides(self, register):
+        mod = register(
+            "fq_gaps_mixed",
+            _axis_consumer("loose", Freq("D", gaps_ok=True)),
+            _axis_consumer("strict", Freq("D")),
+        )
+        dr = _build(mod)
+        with xra.enabled(True), pytest.raises(CatenaValueError, match="'gappy'"):
+            check_input_contracts(dr, {"gappy": _gappy_daily()})
+
+    def test_edge_passes_but_input_check_still_fails(self, register):
+        # gaps_ok plays no part in compatibility, so only the data can show the problem.
+        mod = register(
+            "fq_gaps_edge",
+            _producer("gappy", Freq("D", gaps_ok=True)),
+            _axis_consumer("strict", Freq("D")),
+        )
+        dr = _build(mod)
+        with xra.enabled(True):
+            check_dag_contracts(dr)
+            with pytest.raises(CatenaValueError, match="'gappy'"):
+                check_input_contracts(dr, {"gappy": _gappy_daily()})
+
+
+class TestCalendarSteps:
+    def test_mid_month_axis_passes_month(self, register):
+        times = pd.date_range("2020-01-01", periods=6, freq="MS") + pd.Timedelta(
+            days=14
+        )
+        da = xr.DataArray(np.ones(6), dims=("time",), coords={"time": times})
+        mod = register("fq_month", _axis_consumer("c", Freq("month")))
+        with xra.enabled(True):
+            check_input_contracts(_build(mod), {"gappy": da})
+
+    @pytest.mark.parametrize(
+        ("producer", "ok"), [("ME", True), ("MS", True), ("QE", False)]
+    )
+    def test_month_edges(self, register, producer, ok):
+        mod = register(
+            f"fq_month_edge_{producer}",
+            _producer("gappy", Freq(producer)),
+            _axis_consumer("c", Freq("month")),
+        )
+        dr = _build(mod)
+        with xra.enabled(True):
+            if ok:
+                check_dag_contracts(dr)
+            else:
+                with pytest.raises(ValueError, match=r"freq: .* are incompatible"):
+                    check_dag_contracts(dr)
+
+    def test_node_key_accepts_month(self):
+        spec = NodeSpec.from_config(
+            {"name": "m", "inputs": ["x"], "expression": "x", "freq": "month"}
+        )
+        assert spec.freq == "month"
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: `conduit run --dry-run` flags a mis-declared input frequency
+# End-to-end: `catena run --dry-run` flags a mis-declared input frequency
 # ---------------------------------------------------------------------------
 
 
@@ -416,10 +518,10 @@ class TestDryRunEndToEnd:
     def _invoke(self, register, tmp_path, declared: Freq, module: str):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         register(module, _model(declared))
-        with policy(enabled=True):
+        with xra.enabled(True):
             return CliRunner().invoke(
                 app, ["run", _write_config(tmp_path, module), "--dry-run"]
             )
@@ -434,6 +536,6 @@ class TestDryRunEndToEnd:
         # and nothing is written — the mis-declaration surfaces before any compute.
         result = self._invoke(register, tmp_path, Freq("7D"), "fq_cli_bad")
         assert result.exit_code != 0
-        assert isinstance(result.exception, FreqError)
+        assert isinstance(result.exception, CatenaValueError)
         assert "frequency mismatch" in str(result.exception)
         assert not (tmp_path / "out.nc").exists()

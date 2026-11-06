@@ -1,12 +1,12 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "conduit[all] @ git+https://github.com/NERC-CEH/conduit",
+#     "ukceh-catena[all] @ git+https://github.com/NERC-CEH/catena",
 #     "marimo",
 # ]
 # ///
 
-"""Interactive, executable walkthrough of the Conduit flux pipeline."""
+"""Interactive, executable walkthrough of the Catena flux pipeline."""
 
 import marimo
 
@@ -39,7 +39,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # A flux-processing pipeline with conduit
+    # A flux-processing pipeline with catena
 
     This example adapts the eddy-covariance flux workflow from the [xarray-annotated worked example](https://github.com/jmarshrossney/xarray-annotated/blob/main/examples/notebook.py).
     It keeps the scientific functions in a Python module and moves the pipeline wiring into TOML.
@@ -52,7 +52,7 @@ def _(mo):
 
 @app.cell
 def _(data_dir, recipe_dir, rel):
-    from conduit.importing import import_user_module
+    from catena.importing import import_user_module
 
     make_data = import_user_module(str(recipe_dir / "make_data.py"))
 
@@ -79,7 +79,8 @@ def _(mo, nodes_path):
     mo.md(f"""
     ## The Python module
 
-    The annotations declare the units and time frequencies that conduit checks across the DAG.
+    The annotations declare the units and time frequencies that catena checks across the DAG.
+    A node never converts its inputs for you, so `tair_celsius` converts the temperature from the kelvin in the file, and a node whose calculation changes the unit states the new one with `.assign_attrs(units=...)`.
 
     ```python
     {nodes_path.read_text()}
@@ -98,11 +99,11 @@ def _(mo):
 
 @app.cell
 def _(config_path):
-    import conduit
+    import catena
 
-    graph = conduit.build_graph(config_path)
+    graph = catena.build_graph(config_path)
     graph
-    return (conduit,)
+    return (catena,)
 
 
 @app.cell(hide_code=True)
@@ -114,8 +115,8 @@ def _(mo):
 
 
 @app.cell
-def _(conduit, config_path, mo):
-    dry = conduit.dry_run(config_path)
+def _(catena, config_path, mo):
+    dry = catena.dry_run(config_path)
 
     mo.md(
         "| Stage | Status | Detail |\n|---|---|---|\n"
@@ -124,22 +125,6 @@ def _(conduit, config_path, mo):
             for stage in dry.stages
         )
     )
-    return (dry,)
-
-
-@app.cell(hide_code=True)
-def _(dry, mo):
-    findings = [
-        f"- **{stage.name}** — {finding}"
-        for stage in dry.stages
-        for finding in stage.findings
-    ]
-    mo.md(
-        "conduit reports the unit conversion this pipeline relies on, because "
-        '`on_inexact = "warn"` in the config asks it to:\n\n' + "\n".join(findings)
-        if findings
-        else "No findings."
-    )
     return
 
 
@@ -147,19 +132,13 @@ def _(dry, mo):
 def _(mo):
     mo.md("""
     ## Run the pipeline
-
-    The conversion reported above happens here, so its warning is silenced rather than repeated.
     """)
     return
 
 
 @app.cell
-def _(conduit, config_path, mo, rel):
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        run = conduit.run(config_path)
+def _(catena, config_path, mo, rel):
+    run = catena.run(config_path)
 
     mo.md(
         f"Completed in {run.elapsed:.2f}s.\n\n"

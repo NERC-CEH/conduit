@@ -1,22 +1,23 @@
 """Tests for io.py paths not covered by existing tests.
 
 Covers:
-- read_in_group / write_in_group with Zarr files
+- reading and writing Zarr files through the format registry
 - time-dimension detection (``time_dims``) and the single-time-dim invariant
 - get_outputs and save_outputs public API
 - Multiple-CRS-dataset lat/lon computation
 """
 
 import importlib.util
+import warnings
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-from conduit.config import IOSpec
-from conduit.formats import read_in_group, write_in_group
-from conduit.io import (
+from catena.config import IOSpec
+from catena.formats import format_for
+from catena.io import (
     get_final_vars,
     get_outputs,
     load_inputs,
@@ -60,39 +61,24 @@ class TestZarrDataset:
     def test_save_and_load_zarr(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        write_in_group(ds, zarr_path, "dataset")
-        loaded = read_in_group(zarr_path, "dataset")
+        format_for(zarr_path).write(ds, zarr_path)
+        loaded = format_for(zarr_path).read(zarr_path)
         assert set(loaded.data_vars) == {"var_a"}
 
     def test_zarr_round_trip_values(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        write_in_group(ds, zarr_path, "dataset")
-        loaded = read_in_group(zarr_path, "dataset")
+        format_for(zarr_path).write(ds, zarr_path)
+        loaded = format_for(zarr_path).read(zarr_path)
         np.testing.assert_allclose(loaded["var_a"].values, ds["var_a"].values)
 
     def test_zarr_time_dimension_preserved(self, tmp_path):
         ds = _simple_ds()
         zarr_path = tmp_path / "data.zarr"
-        write_in_group(ds, zarr_path, "dataset")
-        loaded = read_in_group(zarr_path, "dataset")
+        format_for(zarr_path).write(ds, zarr_path)
+        loaded = format_for(zarr_path).read(zarr_path)
         assert "time" in loaded.dims
         assert loaded.sizes["time"] == N_TIMES
-
-
-class TestSaveNetcdfErrors:
-    """The dataset-group dispatch raises for unsupported extensions."""
-
-    def test_unsupported_extension_raises(self, tmp_path):
-        ds = _simple_ds()
-        with pytest.raises(ValueError, match="Unsupported file extension"):
-            write_in_group(ds, tmp_path / "data.csv", "dataset")
-
-    def test_load_unsupported_extension_raises(self, tmp_path):
-        p = tmp_path / "data.txt"
-        p.touch()
-        with pytest.raises(ValueError, match="Unsupported file extension"):
-            read_in_group(p, "dataset")
 
 
 # ---------------------------------------------------------------------------
@@ -281,20 +267,6 @@ class TestSaveOutputs:
         loaded = xr.open_dataset(out_path)
         assert "gpp" in loaded.data_vars
 
-    def test_saves_csv_for_non_gridded(self, tmp_path):
-        times = DAILY_TIMES
-        pixel = [0]
-        da = xr.DataArray(
-            RNG.random((N_TIMES, 1)),
-            dims=["time", "pixel"],
-            coords={"time": times, "pixel": pixel},
-        )
-        ds = xr.Dataset({"gpp": da})
-        out_path = tmp_path / "out.csv"
-        output_specs = {"daily": IOSpec(path=str(out_path), vars=["gpp"])}
-        save_outputs({"daily": ds}, output_specs)
-        assert out_path.exists()
-
 
 # ---------------------------------------------------------------------------
 # vars: omitted means "load everything"
@@ -401,7 +373,7 @@ class TestSingleTimeDim:
 
 
 class TestMissingVars:
-    """A `vars` entry absent from the file is a conduit error, not an xarray one."""
+    """A `vars` entry absent from the file is a catena error, not an xarray one."""
 
     @pytest.fixture
     def input_path(self, tmp_path):
@@ -457,13 +429,13 @@ class TestMissingVars:
 
 
 class TestMissingInputFile:
-    """A missing input file is a conduit error naming every absent path."""
+    """A missing input file is a catena error naming every absent path."""
 
-    def test_raises_conduit_file_not_found(self, tmp_path):
-        from conduit.errors import ConduitFileNotFoundError
+    def test_raises_catena_file_not_found(self, tmp_path):
+        from catena.errors import CatenaFileNotFoundError
 
         specs = {"daily": IOSpec(path=str(tmp_path / "absent.nc"), vars=["var_a"])}
-        with pytest.raises(ConduitFileNotFoundError, match=r"\[inputs\.daily\]"):
+        with pytest.raises(CatenaFileNotFoundError, match=r"\[inputs\.daily\]"):
             load_inputs(specs)
 
     def test_all_missing_files_are_reported_at_once(self, tmp_path):
@@ -480,3 +452,27 @@ class TestMissingInputFile:
         assert "one.nc" in message
         assert "two.zarr" in message
         assert "present.nc" not in message
+
+
+class TestGetOutputsMerge:
+    """`get_outputs` pins its merge behaviour rather than inherit xarray's defaults."""
+
+    @staticmethod
+    def _results(a_coord: int, b_coord: int) -> dict[str, xr.DataArray]:
+        da = xr.DataArray([1.0, 2.0], dims="time", coords={"time": [0, 1]})
+        return {
+            "a": da.assign_coords(height=a_coord),
+            "b": da.assign_coords(height=b_coord),
+        }
+
+    def test_shared_coordinate_merges_without_a_future_warning(self):
+        specs = {"out": IOSpec(path="out.nc", vars={"a": "a", "b": "b"})}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            ds = get_outputs(self._results(2, 2), specs)["out"]
+        assert set(ds.data_vars) == {"a", "b"}
+
+    def test_conflicting_coordinate_raises(self):
+        specs = {"out": IOSpec(path="out.nc", vars={"a": "a", "b": "b"})}
+        with pytest.raises(xr.MergeError, match="height"):
+            get_outputs(self._results(2, 10), specs)

@@ -1,3 +1,0 @@
-# `errors`
-
-::: conduit.errors

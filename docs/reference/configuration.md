@@ -5,7 +5,7 @@ icon: lucide/settings
 
 # Configuration reference
 
-A conduit pipeline is described by a [TOML](https://toml.io/en/) file.
+A catena pipeline is described by a [TOML](https://toml.io/en/) file.
 Each section switches on one part of the pipeline; leave a section out and that part is not there.
 
 Recognised top-level sections are listed below.
@@ -67,11 +67,13 @@ vars = ["temperature_anomaly", "aridity_index"]
 
 `vars` takes the same list/mapping forms as inputs — the mapping form (`{gpp_daily = "gpp"}`) writes node `gpp_daily` to file variable `gpp`.
 Format is inferred from the extension.
+Missing parent directories are created when the output is written.
 
 ## Modules
 
 Apart from the built-in `[[node]]` and `[[resample]]`, any section is **your own module**.
 A module's keyword-only parameters are set in its section.
+Any other value in the section is available by name as a node input, so a `[[node]]` can list it in `inputs`.
 
 ```toml
 # A .py file beside the config
@@ -99,7 +101,7 @@ A `.py` module can import installed packages but [not a sibling file](../guides/
 A section header is a free-form label wherever `_import_path` is present.
 Without one, it has to name a module that an installed package registers.
 
-| The section | What conduit does |
+| The section | What catena does |
 | --- | --- |
 | carries `_import_path` | imports that, whatever else the environment offers under the same name |
 | carries no `_import_path`, and an installed package registers a module under the section name | imports the registered module, and reports which package supplied it |
@@ -127,7 +129,7 @@ Each entry uses **either** an `expression` **or** (`_import_path` + `function`),
 [[node]]
 name = "aridity_index_daily"
 inputs = ["precipitation_daily", "evapotranspiration_daily"]
-expression = "precipitation_daily / evapotranspiration_daily"
+expression = "(precipitation_daily / evapotranspiration_daily).assign_attrs(units='1')"
 units = "1"
 ```
 
@@ -135,25 +137,25 @@ units = "1"
 |-----|-------------|
 | `name` | **Required.** The node this entry produces. |
 | `inputs` | **Required.** Node names this entry consumes (available in `expression`). |
-| `expression` | A Python/xarray expression over `inputs` (`xr` is in scope). |
+| `expression` | A Python/xarray expression over `inputs` (`xr` and `xra`, for `xarray_annotated`, are in scope). |
 | `_import_path` + `function` | Alternative to `expression`: call `function` in that module. Same two forms as a module section's. |
-| `units` | Output unit contract (validated at parse time). |
+| `units` | Output unit contract (validated at parse time). The output must already carry this unit, so an expression that changes it ends with `.assign_attrs(units=...)`. |
 | `dims` | Output dimension contract (list of names). |
-| `dtype` | Output dtype contract (validated at parse time). |
+| `dtype` | Output dtype contract (validated at parse time). A name with a width (`float64`) is exact; `float`, `int` and the like mean any width. |
 | `coords` | Output coordinate contract (list of names). |
-| `freq` | Output temporal-frequency contract: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
+| `freq` | Output temporal-frequency contract, validated at parse time: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), or a calendar step on any day (`"month"`, `"3month"`, `"year"`, `"2year"`). |
 | `passthrough` | Declare no fixed output contract; propagate the input's contract across the node. |
 | `for_each` | Fan-out: generate one node per value, substituting `{var}` in string fields. |
 
 Declaring any of `units`/`dims`/`dtype`/`coords`/`freq` makes the node a typed producer the [contract check](../guides/nodes/contracts.md) can verify.
 See [Inline nodes & fan-out](../guides/configs/inline-nodes-and-fan-out.md) for worked examples.
 
-An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an unanchored one (`"7D"`, `"W"`) constrains the spacing only.
+An anchored `freq` (`"W-SUN"`, `"ME"`) pins the *phase* as well as the spacing; an unanchored one (`"7D"`, `"W"`) constrains the spacing only; a calendar step (`"month"`) accepts one value per step on any day, such as monthly means stamped at midpoints.
 
 ## Resample
 
 `[[resample]]` aggregates to a coarser time frequency, preserving units and dims.
-It expands to one passthrough `[[node]]` per variable, applying `conduit.transforms.resample`.
+It expands to one passthrough `[[node]]` per variable, applying `catena.transforms.resample`.
 
 ```toml
 [[resample]]
@@ -169,7 +171,7 @@ aggfunc = "mean"
 | `vars` | **Required.** Variables to resample; each `{v}_{from}` → `{v}_{to}`. |
 | `from` | **Required.** Node-name suffix to read from. |
 | `to` | **Required.** Node-name suffix to write to. |
-| `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. |
+| `freq` | **Required.** Target frequency: a pandas offset alias (`"7D"`, `"1ME"`, `"W-SUN"`), validated at parse time. A calendar step such as `"month"` is refused, as it does not say where to stamp the result. |
 | `aggfunc` | Aggregation: `mean` (default), `sum`, `max`, `min`, `first`, `last`. |
 
 `from` and `to` are free-form labels, so `from = "raw"`, `to = "smoothed"` works just as well; `freq` alone sets the time axis, and becomes the node's declared output frequency.
@@ -187,31 +189,16 @@ See [Scale up › caching](../guides/run/scale-up.md#caching-results).
 
 ```toml
 [cache]
-path = ".conduit_cache"
+path = ".catena_cache"
 recompute = ["my_calibrated_node"]
 ```
 
 | Key | Description |
 |-----|-------------|
-| `path` | Cache directory (default `.conduit_cache`). |
+| `path` | Cache directory (default `.catena_cache`). |
 | `enabled` | Set `false` to keep the section but disable caching. |
 | `recompute` | `true` or a list of node names — force recompute even on a hit. |
 | `disable` | `true` or a list of node names — bypass the cache for those nodes. |
-
-## Point dimension
-
-`point_dim` is a top-level key naming the dimension your pipeline partitions over.
-It does two things:
-
-- it supplies the default `dim` for [`[blocking]`](#blocking) and [`[subset]`](#subset);
-- it names the synthetic size-1 axis added to single-point CSV/Parquet/JSON/TOML inputs (see [Data formats › spatial handling](data-formats.md#spatial-handling)).
-
-```toml
-point_dim = "location"   # optional; defaults to "pixel"
-```
-
-One key drives both so they cannot disagree; otherwise a `[subset]` over `location` would skip a table input given a `pixel` axis.
-Gridded pipelines should keep the default, because the geospatial layer stacks `(y, x)` into `pixel`.
 
 ## Blocking
 
@@ -227,7 +214,7 @@ dim = "pixel"
 | Key | Description |
 |-----|-------------|
 | `block_size` | **Required.** Positive integer — rows of `dim` per block. |
-| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
+| `dim` | **Required.** Partition dimension, which at least one input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
 
 ## Subset
 
@@ -238,14 +225,14 @@ See [Scale up › parallel subset runs](../guides/run/scale-up.md#parallel-subse
 [subset]
 start = 0            # inclusive
 stop  = 500          # exclusive
-dim   = "pixel"      # optional; the default
+dim   = "pixel"
 ```
 
 | Key | Description |
 |-----|-------------|
 | `start` | **Required.** First index along `dim` (inclusive, zero-based). |
 | `stop` | **Required.** One past the last index (exclusive); must exceed `start`. |
-| `dim` | Partition dimension (defaults to [`point_dim`](#point-dimension), itself `pixel`). |
+| `dim` | **Required.** Partition dimension, which at least one input must have. Gridded pipelines use `pixel`, because the geospatial layer stacks `(y, x)` into it. |
 
 Each NetCDF part is written to its own suffixed file (`out_location0-500.nc`).
 A Zarr output requires `dim = "pixel"`, because the shared store's layout is the stacked pixel grid; use NetCDF to subset over any other dimension.
@@ -282,34 +269,13 @@ Available checks:
 | `crs_equal` | any | all inputs share a CRS |
 | `coords_equal` | any | the named `coords` match across all inputs (`atol` for float coords) |
 
-The checks live in [`conduit.input_checks`](modules/conduit.input_checks.md) and can be called directly from Python.
+The checks live in [`catena.input_checks`](modules/catena.input_checks.md) and can be called directly from Python.
 Under [`[subset]`](#subset) they are skipped with a warning, since they describe the whole domain rather than one shard.
 
-## Annotations
+## Contract checks
 
-`[annotations]` controls how contract declarations (units, schema: dims/coords/dtype, and temporal: freq) are validated.
-Omit it to keep the defaults.
-
-```toml
-[annotations]
-mode = "strict"           # "strict" | "warn" (default) | "off"
-on_inexact = "convert"    # "convert" (default) | "warn" | "error"
-on_mismatch = "error"     # "error" | "warn" | "ignore" — dims/coords/dtype/freq
-on_uninferable = "warn"   # "error" | "warn" (default) | "ignore" — freq only
-```
-
-| Key | Description |
-|-----|-------------|
-| `mode` | Units strictness. `strict` raises on a unit problem; `warn` reports and continues; `off` disables **all** contract checking (every facet). Default `warn`. |
-| `on_inexact` | What to do with a dimensionally-compatible but value-changing unit (e.g. `hPa` where `Pa` is declared): `convert` it silently (default), `warn` and convert, or `error`. Two spellings of the same unit (`"pascal"` for `"Pa"`) are relabelled without consulting this. |
-| `on_mismatch` | The array contradicts its declaration (dims/coords/dtype/freq): `error` (default), `warn`, or `ignore`. |
-| `on_uninferable` | A time axis with too few points (fewer than three) or irregular spacing, so a declared `freq` could not be *tested*: `error`, `warn` (default), or `ignore`. |
-
+No section configures contract checking, and every failed check raises.
 Contracts are checked between nodes when the driver is built, and against each node's actual inputs when it runs; [`--dry-run`](../guides/validate/validate-before-running.md) brings the second forward without executing anything.
-Incompatible units always raise, and a missing or unparseable `units` attribute follows `mode`.
 
-!!! warning "Affine units (temperature)"
-
-    Converting between offset units such as `degC` and `K` applies the offset (`degC → K` adds 273.15), which is right for an *absolute* temperature and wrong for a *difference* or anomaly.
-    Declare such quantities in the unit they are stored in, so no conversion happens, or set `on_inexact = "error"` to forbid implicit temperature conversions.
-    `on_inexact = "warn"` is the middle course: each conversion still happens, but is reported by name.
+To switch off all checking, set `XARRAY_ANNOTATED_ENABLED=false`, or call catena inside `with xarray_annotated.enabled(False):`.
+The block beats the variable, and covers only the current thread or async task, so use the variable to switch off worker threads.

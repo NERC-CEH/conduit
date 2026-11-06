@@ -1,14 +1,22 @@
-"""End-to-end integration tests for the full conduit pipeline.
+"""End-to-end integration tests for the full catena pipeline.
 
 These tests call load_inputs() with the test config and synthetic data,
 then execute pipeline nodes to verify the full stack — config → load_inputs
 → driver.execute() — works end-to-end.
 """
 
-import numpy as np
+import sys
+import types
+from typing import Annotated
 
-from conduit.config import IOSpec
-from conduit.io import get_final_vars
+import numpy as np
+import pandas as pd
+import xarray as xr
+from xarray_annotated import Freq, enabled, enforce
+
+from catena.config import IOSpec
+from catena.io import get_final_vars
+from catena.pipeline import run
 
 N_PIXELS = 4  # 2x2 grid
 N_DAYS = 365
@@ -108,3 +116,71 @@ class TestDriverExecution:
         results = pipeline_driver.execute(daily_vars, inputs=pipeline_inputs)
         assert "temperature_daily" in results
         assert "dummy_variable_monthly" not in results
+
+
+class TestGappyAndCalendarDeclarations:
+    """A pipeline whose axes only the 0.8 ``Freq`` declarations can describe."""
+
+    def test_gaps_ok_python_node_and_month_toml_node(self, tmp_path, monkeypatch):
+        gappy = pd.date_range("2025-01-01", periods=31, freq="D").append(
+            pd.date_range("2026-01-01", periods=31, freq="D")
+        )
+        xr.DataArray(
+            np.ones(62), dims="time", coords={"time": gappy}, name="temperature"
+        ).to_netcdf(tmp_path / "daily.nc")
+        midpoints = pd.date_range("2025-01-01", periods=6, freq="MS") + pd.Timedelta(
+            days=14
+        )
+        xr.DataArray(
+            np.ones(6), dims="time", coords={"time": midpoints}, name="rain"
+        ).to_netcdf(tmp_path / "monthly.nc")
+
+        @enforce
+        def doubled_temperature(
+            temperature_daily: Annotated[xr.DataArray, Freq("D", gaps_ok=True)],
+        ) -> Annotated[xr.DataArray, Freq("D", gaps_ok=True)]:
+            return temperature_daily * 2
+
+        module = types.ModuleType("gappy_model")
+        doubled_temperature.__module__ = module.__name__
+        module.doubled_temperature = doubled_temperature  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+
+        config = tmp_path / "config.toml"
+        config.write_text(
+            """
+[inputs.daily]
+path = "daily.nc"
+vars = ["temperature"]
+
+[inputs.monthly]
+path = "monthly.nc"
+vars = ["rain"]
+
+[gappy_model]
+_import_path = "gappy_model"
+
+[[node]]
+name = "rain_copy"
+inputs = ["rain_monthly"]
+expression = "rain_monthly * 1"
+freq = "month"
+
+[outputs.temperature]
+path = "temperature.nc"
+suffix = ""
+vars = ["doubled_temperature"]
+
+[outputs.rain]
+path = "rain.nc"
+suffix = ""
+vars = ["rain_copy"]
+"""
+        )
+        with enabled(True):
+            run(str(config))
+
+        written = xr.open_dataarray(tmp_path / "temperature.nc")
+        assert written.sizes["time"] == 62
+        np.testing.assert_allclose(written.values, 2.0)
+        assert xr.open_dataarray(tmp_path / "rain.nc").sizes["time"] == 6

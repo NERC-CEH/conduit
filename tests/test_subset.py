@@ -6,9 +6,10 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from conduit.build import build_driver
-from conduit.config import Config, IOSpec, SubsetSpec
-from conduit.io import get_final_vars, load_inputs
+from catena.build import build_driver
+from catena.config import Config, IOSpec, SubsetSpec
+from catena.errors import CatenaValueError
+from catena.io import get_final_vars, load_inputs
 
 _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"])})
 
@@ -20,12 +21,13 @@ _FINAL_VARS = get_final_vars({"weekly": IOSpec(path="", vars=["mean_temperature"
 
 class TestSubsetSpecValidation:
     def test_valid(self):
-        spec = SubsetSpec.from_config({"start": 0, "stop": 500})
+        spec = SubsetSpec.from_config({"start": 0, "stop": 500, "dim": "pixel"})
         assert spec.start == 0
         assert spec.stop == 500
 
-    def test_dim_defaults_to_pixel(self):
-        assert SubsetSpec.from_config({"start": 0, "stop": 500}).dim == "pixel"
+    def test_dim_is_required(self):
+        with pytest.raises(ValueError, match="'dim'"):
+            SubsetSpec.from_config({"start": 0, "stop": 500})
 
     def test_dim_can_be_any_dimension(self):
         spec = SubsetSpec.from_config({"start": 0, "stop": 10, "dim": "location"})
@@ -64,12 +66,22 @@ class TestSubsetSpecValidation:
             SubsetSpec.from_config({"start": 0.5, "stop": 500})
 
     def test_parsed_from_toml(self):
-        parsed = Config.loads("[subset]\nstart = 0\nstop = 100\n").parse()
-        assert parsed.subset_spec == SubsetSpec(start=0, stop=100)
+        parsed = Config.loads(
+            '[subset]\nstart = 0\nstop = 100\ndim = "pixel"\n'
+        ).parse()
+        assert parsed.subset_spec == SubsetSpec(start=0, stop=100, dim="pixel")
 
     def test_absent_section_gives_none(self):
         parsed = Config.loads("").parse()
         assert parsed.subset_spec is None
+
+
+class TestMissingDim:
+    def test_dim_on_no_input_raises_and_lists_dims(self, pipeline_config):
+        spec = SubsetSpec(start=0, stop=2, dim="locaton")
+        with pytest.raises(CatenaValueError, match=r"\[subset\] dim 'locaton'") as exc:
+            load_inputs(pipeline_config.input_specs, subset_spec=spec)
+        assert "pixel" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -82,8 +94,8 @@ class TestSubsetCorrectness:
 
     def test_pixel_coords_correct(self, pipeline_config, pipeline_inputs):
         """Each subset contains the right pixel coordinates."""
-        spec_a = SubsetSpec(start=0, stop=2)
-        spec_b = SubsetSpec(start=2, stop=4)
+        spec_a = SubsetSpec(start=0, stop=2, dim="pixel")
+        spec_b = SubsetSpec(start=2, stop=4, dim="pixel")
 
         inputs_a = load_inputs(pipeline_config.input_specs, subset_spec=spec_a)
         inputs_b = load_inputs(pipeline_config.input_specs, subset_spec=spec_b)
@@ -96,7 +108,7 @@ class TestSubsetCorrectness:
 
     def test_no_pixel_inputs_unaffected(self, pipeline_config, pipeline_inputs):
         """Inputs without the partition dim pass through unchanged."""
-        spec = SubsetSpec(start=0, stop=2)
+        spec = SubsetSpec(start=0, stop=2, dim="pixel")
         inputs_sub = load_inputs(pipeline_config.input_specs, subset_spec=spec)
 
         for name, full_val in pipeline_inputs.items():
@@ -122,10 +134,10 @@ class TestSubsetPipelineResult:
         reference = dr.execute(_FINAL_VARS, inputs=pipeline_inputs)  # type: ignore[reportArgumentType]
 
         inputs_a = load_inputs(
-            pipeline_config.input_specs, subset_spec=SubsetSpec(0, 2)
+            pipeline_config.input_specs, subset_spec=SubsetSpec(0, 2, dim="pixel")
         )
         inputs_b = load_inputs(
-            pipeline_config.input_specs, subset_spec=SubsetSpec(2, 4)
+            pipeline_config.input_specs, subset_spec=SubsetSpec(2, 4, dim="pixel")
         )
         result_a = dr.execute(_FINAL_VARS, inputs=inputs_a)  # type: ignore[reportArgumentType]
         result_b = dr.execute(_FINAL_VARS, inputs=inputs_b)  # type: ignore[reportArgumentType]
@@ -141,13 +153,13 @@ class TestSubsetPipelineResult:
 
 
 class TestCLISubset:
-    """conduit run with [subset] exits zero and writes only the subset pixels."""
+    """catena run with [subset] exits zero and writes only the subset pixels."""
 
     @pytest.fixture
     def subset_config_toml(self, tmp_path, synthetic_data_dir):
         out_path = tmp_path / "outputs.nc"
         # Load only what the pipeline consumes (temperature_daily), so a real
-        # ``conduit run`` stays free of the unused-input WiringWarning. Broad
+        # ``catena run`` stays free of the unused-input WiringWarning. Broad
         # multi-section configs are exercised by the parser tests instead.
         content = f"""\
 [[node]]
@@ -166,6 +178,7 @@ vars = ["mean_temperature"]
 [subset]
 start = 0
 stop = 2
+dim = "pixel"
 """
         p = tmp_path / "config.toml"
         p.write_text(content)
@@ -173,9 +186,9 @@ stop = 2
 
     def _subset_path(self, out_path):
         """The auto-suffixed NetCDF path a [subset] run writes to."""
-        from conduit.gridded.io import subset_suffix
+        from catena.gridded.io import subset_suffix
 
-        spec = SubsetSpec(0, 2)
+        spec = SubsetSpec(0, 2, dim="pixel")
         return out_path.with_name(
             f"{out_path.stem}{subset_suffix(spec)}{out_path.suffix}"
         )
@@ -183,7 +196,7 @@ stop = 2
     def test_exits_zero(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         config_path, _ = subset_config_toml
         result = CliRunner().invoke(app, ["run", str(config_path)])
@@ -193,7 +206,7 @@ stop = 2
         """A subset run writes a uniquely-suffixed, stacked (pixel) file."""
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
+        from catena.cli.app import app
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])
@@ -206,9 +219,9 @@ stop = 2
     def test_output_values_match_full_run(self, subset_config_toml):
         from typer.testing import CliRunner
 
-        from conduit.cli.app import app
-        from conduit.config import load_config
-        from conduit.io import get_outputs
+        from catena.cli.app import app
+        from catena.config import load_config
+        from catena.io import get_outputs
 
         config_path, out_path = subset_config_toml
         CliRunner().invoke(app, ["run", str(config_path)])

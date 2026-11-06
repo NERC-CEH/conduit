@@ -1,19 +1,18 @@
-"""Unit tests for conduit.config."""
+"""Unit tests for catena.config."""
 
 from pathlib import Path
 
 import pytest
 
-from conduit import config as config_module
-from conduit.config import (
-    AnnotationPolicySpec,
+from catena import config as config_module
+from catena.config import (
     Config,
     IOSpec,
     NodeSpec,
     ParsedConfig,
     load_config,
 )
-from conduit.errors import ConduitValueError
+from catena.errors import CatenaValueError
 
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config.toml"
 
@@ -188,7 +187,7 @@ class TestPathResolution:
         cfg = tmp_path / "config.toml"
         cfg.write_text(
             '[inputs.daily]\npath = "data/daily.nc"\nvars = ["t"]\n\n'
-            '[cache]\npath = ".conduit_cache"\n'
+            '[cache]\npath = ".catena_cache"\n'
         )
         config = Config.load(cfg)
 
@@ -201,7 +200,7 @@ class TestPathResolution:
         parsed = config.parse()
         assert Path(parsed.input_specs["daily"].path) == tmp_path / "data" / "daily.nc"
         assert parsed.cache_spec is not None
-        assert Path(parsed.cache_spec.path) == tmp_path / ".conduit_cache"
+        assert Path(parsed.cache_spec.path) == tmp_path / ".catena_cache"
 
     def test_loads_leaves_paths_untouched(self):
         """Config.loads has no base directory, so relative paths stay CWD-relative."""
@@ -224,7 +223,7 @@ class TestValidation:
         config = Config({"mymodel": {"_import_path": "no_such_pkg.mod"}})
 
         def _build():
-            from conduit.build import build_driver
+            from catena.build import build_driver
 
             parsed = config.parse()
             build_driver(
@@ -413,6 +412,18 @@ class TestResample:
         with pytest.raises(ValueError, match="invalid frequency 'nope'"):
             config.parse()
 
+    @pytest.mark.parametrize("freq", ["month", "3month", "year", "2year"])
+    def test_calendar_step_refused_at_parse_time(self, freq):
+        config = Config(
+            {
+                "resample": [
+                    {"vars": ["gpp"], "from": "daily", "to": "monthly", "freq": freq}
+                ],
+            }
+        )
+        with pytest.raises(CatenaValueError, match="must be a pandas offset alias"):
+            config.parse()
+
 
 class TestNode:
     """Tests for [[node]] section parsing."""
@@ -513,6 +524,23 @@ class TestNode:
         )
         with pytest.raises(ValueError, match="not a recognised"):
             config.parse()
+
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("units", "not_a_unit"),
+            ("dtype", "not_a_dtype"),
+            ("freq", "not_a_freq"),
+            ("dims", ["x", "x"]),
+            ("dims", [1, 2]),
+            ("dims", 5),
+            ("coords", [""]),
+        ],
+    )
+    def test_malformed_contract_is_a_catena_error_naming_the_node(self, key, value):
+        node = {"name": "n", "inputs": ["a"], "expression": "a", key: value}
+        with pytest.raises(CatenaValueError, match="node 'n'"):
+            Config({"node": [node]}).parse()
 
     def test_duplicate_node_name_raises(self):
         config = Config(
@@ -646,172 +674,42 @@ class TestMultipleFrequencies:
         assert "monthly" in parsed.output_specs
 
 
-class TestAnnotationsSection:
-    """Tests for the [annotations] section."""
+class TestRemovedSections:
+    """A section catena no longer parses is an error, rather than being ignored."""
 
-    def test_mode_and_on_inexact(self):
-        parsed = Config(
-            {"annotations": {"mode": "strict", "on_inexact": "error"}}
-        ).parse()
-        assert parsed.annotations.on_missing == "error"
-        assert parsed.annotations.on_inexact == "error"
-        assert parsed.annotations.on_mismatch is None
-
-    def test_on_inexact_warn(self):
-        parsed = Config({"annotations": {"on_inexact": "warn"}}).parse()
-        assert parsed.annotations.on_inexact == "warn"
-
-    def test_bad_on_inexact_rejected(self):
-        with pytest.raises(ValueError, match="'on_inexact' must be one of"):
-            Config({"annotations": {"on_inexact": "maybe"}}).parse()
-
-    def test_unrecognised_key_rejected(self):
-        """A silently ignored policy is worse than an absent one."""
-        with pytest.raises(ValueError, match="unrecognised key"):
-            Config({"annotations": {"exact": True}}).parse()
-
-    def test_units_section_no_longer_recognised(self):
-        # The legacy alias is gone, so [units] falls through to the external-module
-        # path and fails for want of an _import_path.
+    @pytest.mark.parametrize("name", ["annotations", "units"])
+    def test_falls_through_to_the_external_module_path(self, name):
         with pytest.raises(ValueError, match="_import_path"):
-            Config({"units": {"mode": "strict"}}).parse()
-
-    def test_mode_off_disables(self):
-        parsed = Config({"annotations": {"mode": "off"}}).parse()
-        assert parsed.annotations.enabled is False
-
-    def test_on_mismatch_drives_schema_and_temporal(self):
-        parsed = Config({"annotations": {"on_mismatch": "warn"}}).parse()
-        assert parsed.annotations.on_mismatch == "warn"
-
-    def test_on_uninferable(self):
-        parsed = Config({"annotations": {"on_uninferable": "ignore"}}).parse()
-        assert parsed.annotations.on_uninferable == "ignore"
-
-    def test_invalid_on_mismatch_raises(self):
-        with pytest.raises(ValueError, match="on_mismatch"):
-            Config({"annotations": {"on_mismatch": "explode"}}).parse()
-
-    def test_invalid_on_uninferable_raises(self):
-        with pytest.raises(ValueError, match="on_uninferable"):
-            Config({"annotations": {"on_uninferable": "explode"}}).parse()
-
-    def test_absent_section_is_all_none(self):
-        parsed = Config({}).parse()
-        assert parsed.annotations.enabled is None
-        assert parsed.annotations.on_mismatch is None
-        assert parsed.annotations.on_uninferable is None
+            Config({name: {"mode": "strict"}}).parse()
 
 
-class TestPointDim:
-    """The top-level ``point_dim`` key and its role as the partition-dim default."""
+class TestPartitionDim:
+    """``[blocking]`` and ``[subset]`` each name their dimension."""
 
-    def test_defaults_to_pixel(self):
-        assert Config({}).parse().point_dim == "pixel"
-
-    def test_explicit_value(self):
-        assert Config({"point_dim": "location"}).parse().point_dim == "location"
-
-    def test_supplies_blocking_dim_default(self):
-        parsed = Config(
-            {"point_dim": "location", "blocking": {"block_size": 10}}
-        ).parse()
+    def test_blocking_dim(self):
+        parsed = Config({"blocking": {"block_size": 10, "dim": "location"}}).parse()
         assert parsed.blocking_spec is not None
         assert parsed.blocking_spec.dim == "location"
 
-    def test_supplies_subset_dim_default(self):
-        parsed = Config(
-            {"point_dim": "location", "subset": {"start": 0, "stop": 10}}
-        ).parse()
+    def test_subset_dim(self):
+        parsed = Config({"subset": {"start": 0, "stop": 10, "dim": "location"}}).parse()
         assert parsed.subset_spec is not None
         assert parsed.subset_spec.dim == "location"
 
-    def test_explicit_section_dim_still_wins(self):
-        parsed = Config(
-            {
-                "point_dim": "location",
-                "blocking": {"block_size": 10, "dim": "site"},
-                "subset": {"start": 0, "stop": 10, "dim": "site"},
-            }
-        ).parse()
-        assert parsed.blocking_spec is not None
-        assert parsed.subset_spec is not None
-        assert parsed.blocking_spec.dim == "site"
-        assert parsed.subset_spec.dim == "site"
+    @pytest.mark.parametrize(
+        ("section", "entry"),
+        [
+            ("blocking", {"block_size": 10}),
+            ("subset", {"start": 0, "stop": 10}),
+        ],
+    )
+    def test_dim_is_required(self, section, entry):
+        with pytest.raises(CatenaValueError, match=rf"\[{section}\] 'dim'"):
+            Config({section: entry}).parse()
 
-    @pytest.mark.parametrize("bad", [42, "", True, ["location"]])
-    def test_invalid_value_raises(self, bad):
-        # Must name the key: without the explicit pop this falls through to the
-        # external-module loop and dies in dict() with an opaque message.
-        with pytest.raises(ValueError, match="point_dim"):
-            Config({"point_dim": bad}).parse()
-
-
-class TestAnnotationPolicyApply:
-    """apply() pushes every axis into xarray-annotated's global policy."""
-
-    def test_annotation_policy_apply_sets_all_axes(self):
-        from xarray_annotated.schema import get_policy as schema_get_policy
-        from xarray_annotated.schema import policy as schema_policy
-        from xarray_annotated.temporal import get_policy as temporal_get_policy
-        from xarray_annotated.temporal import policy as temporal_policy
-        from xarray_annotated.units import get_policy as units_get_policy
-        from xarray_annotated.units import policy as units_policy
-
-        spec = AnnotationPolicySpec(
-            enabled=True,
-            on_missing="error",
-            on_inexact="error",
-            on_mismatch="warn",
-            on_uninferable="ignore",
-        )
-        # The three context managers restore the process-global policy on exit.
-        with units_policy(), schema_policy(), temporal_policy():
-            spec.apply()
-            units = units_get_policy()
-            assert units.enabled is True
-            assert units.on_missing == "error"
-            assert units.on_inexact == "error"
-            # `enabled` reaches every facet, not just units.
-            assert schema_get_policy().enabled is True
-            assert temporal_get_policy().enabled is True
-            # on_mismatch drives *both* validate-only domains.
-            assert schema_get_policy().on_mismatch == "warn"
-            assert temporal_get_policy().on_mismatch == "warn"
-            assert temporal_get_policy().on_uninferable == "ignore"
-
-    def test_mode_off_disables_every_facet(self):
-        """`mode = "off"` is a kill-switch for all contract checking, not just units.
-
-        Schema and temporal both default to ``enabled=True, on_mismatch='error'``, so
-        a units-only ``enabled=False`` would leave dims/coords/dtype and freq still
-        raising — the opposite of what the config key promises.
-        """
-        from xarray_annotated.schema import get_policy as schema_get_policy
-        from xarray_annotated.schema import policy as schema_policy
-        from xarray_annotated.temporal import get_policy as temporal_get_policy
-        from xarray_annotated.temporal import policy as temporal_policy
-        from xarray_annotated.units import get_policy as units_get_policy
-        from xarray_annotated.units import policy as units_policy
-
-        parsed = Config({"annotations": {"mode": "off"}}).parse()
-        with (
-            units_policy(enabled=True),
-            schema_policy(enabled=True),
-            temporal_policy(enabled=True),
-        ):
-            parsed.annotations.apply()
-            assert units_get_policy().enabled is False
-            assert schema_get_policy().enabled is False
-            assert temporal_get_policy().enabled is False
-
-    def test_empty_policy_applies_nothing(self):
-        from xarray_annotated.units import get_policy, policy
-
-        with policy(enabled=True, on_missing="warn"):
-            AnnotationPolicySpec().apply()
-            assert get_policy().enabled is True
-            assert get_policy().on_missing == "warn"
+    def test_top_level_point_dim_is_rejected(self):
+        with pytest.raises(CatenaValueError, match="point_dim"):
+            Config({"point_dim": "location"}).parse()
 
 
 class TestExternalModules:
@@ -972,7 +870,7 @@ class TestRecognisedSectionsStayInSync:
         import re
         from pathlib import Path
 
-        from conduit.specs import RECOGNISED_SECTIONS
+        from catena.specs import RECOGNISED_SECTIONS
 
         source = Path(config_module.__file__).read_text()
         popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
@@ -982,7 +880,7 @@ class TestRecognisedSectionsStayInSync:
         import re
         from pathlib import Path
 
-        from conduit.specs import RECOGNISED_SECTIONS
+        from catena.specs import RECOGNISED_SECTIONS
 
         source = Path(config_module.__file__).read_text()
         popped = set(re.findall(r"""data\.pop\(\s*["'](\w+)["']""", source))
@@ -998,9 +896,9 @@ class TestAStrayTopLevelKey:
     """
 
     def test_names_the_key(self):
-        with pytest.raises(ConduitValueError, match="n_workers"):
+        with pytest.raises(CatenaValueError, match="n_workers"):
             Config({"n_workers": 4}).parse()
 
-    def test_is_a_conduit_error(self):
-        with pytest.raises(ConduitValueError):
+    def test_is_a_catena_error(self):
+        with pytest.raises(CatenaValueError):
             Config({"point_dims": "pixel"}).parse()

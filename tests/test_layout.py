@@ -1,6 +1,6 @@
 """Boundaries the package layout is meant to enforce, as tests rather than directories.
 
-`conduit` keeps every module at the top level except the two subpackages behind
+`catena` keeps every module at the top level except the two subpackages behind
 install extras, so a directory can no longer mark where an optional or heavyweight
 dependency is allowed to appear. These tests do that instead, and unlike a directory
 they fail in CI when someone crosses the line.
@@ -15,30 +15,30 @@ import sys
 
 import pytest
 
-import conduit
+import catena
 
 #: Modules permitted to import the Hamilton API. Everything here either builds a
 #: ``Driver``, generates modules to feed one, configures one, executes one, or reads
 #: the graph one holds. A new name belongs on this list only for the same reason.
 HAMILTON_IMPORTERS = frozenset(
     {
-        "conduit.build",
-        "conduit.nodegen",
-        "conduit.caching",
-        "conduit.blocking",
-        "conduit.contract_check",
-        "conduit.wiring_check",
-        "conduit.graph",
+        "catena.build",
+        "catena.nodegen",
+        "catena.caching",
+        "catena.blocking",
+        "catena.contract_check",
+        "catena.wiring_check",
+        "catena.graph",
     }
 )
 
 
 def _module_sources() -> dict[str, str]:
     """Every module in the installed package, mapped to its source text."""
-    root = conduit.__file__
+    root = catena.__file__
     assert root is not None
-    sources = {"conduit": pathlib.Path(root).read_text()}
-    for mod in pkgutil.walk_packages(conduit.__path__, "conduit."):
+    sources = {"catena": pathlib.Path(root).read_text()}
+    for mod in pkgutil.walk_packages(catena.__path__, "catena."):
         spec = importlib.util.find_spec(mod.name)
         assert spec is not None
         assert spec.origin is not None
@@ -52,10 +52,10 @@ class TestSubpackagesAreOptionalExtras:
     def test_only_cli_and_gridded_are_subpackages(self):
         packages = {
             mod.name
-            for mod in pkgutil.walk_packages(conduit.__path__, "conduit.")
+            for mod in pkgutil.walk_packages(catena.__path__, "catena.")
             if mod.ispkg
         }
-        assert packages == {"conduit.cli", "conduit.gridded"}
+        assert packages == {"catena.cli", "catena.gridded"}
 
 
 class TestHamiltonIsConfinedToTheDagModules:
@@ -80,7 +80,7 @@ class TestHamiltonIsConfinedToTheDagModules:
 
 
 class TestTyperIsConfinedToTheCli:
-    """No conduit module outside ``conduit.cli`` may import typer.
+    """No catena module outside ``catena.cli`` may import typer.
 
     typer ships in the optional ``cli`` extra, so a library import that reached
     for it would break every install that did not ask for the CLI — and would
@@ -91,34 +91,32 @@ class TestTyperIsConfinedToTheCli:
         offenders = [
             name
             for name, text in _module_sources().items()
-            if not (name.startswith("conduit.cli") or name.endswith(".cli"))
+            if not (name.startswith("catena.cli") or name.endswith(".cli"))
             and "import typer" in text
         ]
         assert not offenders, offenders
 
-    def test_import_conduit_needs_no_typer(self):
+    def test_import_catena_needs_no_typer(self):
         code = (
             "import sys; sys.modules['typer'] = None; "
-            "import conduit; "
-            "assert conduit.run and conduit.dry_run and conduit.build_graph"
+            "import catena; "
+            "assert catena.run and catena.dry_run and catena.build_graph"
         )
         assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
 
 
-def _conduit_imports(text: str) -> set[str]:
-    """The conduit modules a source file imports, absolute or relative."""
+def _catena_imports(text: str) -> set[str]:
+    """The catena modules a source file imports, absolute or relative."""
     tree = ast.parse(text)
     found = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if node.level:
-                found.add(f"conduit.{node.module}" if node.module else "conduit")
-            elif node.module and node.module.split(".")[0] == "conduit":
+                found.add(f"catena.{node.module}" if node.module else "catena")
+            elif node.module and node.module.split(".")[0] == "catena":
                 found.add(node.module)
         elif isinstance(node, ast.Import):
-            found.update(
-                a.name for a in node.names if a.name.split(".")[0] == "conduit"
-            )
+            found.update(a.name for a in node.names if a.name.split(".")[0] == "catena")
     return found
 
 
@@ -130,12 +128,10 @@ class TestSpecsIsALeaf:
     """
 
     def test_specs_imports_only_errors(self):
-        assert _conduit_imports(_module_sources()["conduit.specs"]) <= {
-            "conduit.errors"
-        }
+        assert _catena_imports(_module_sources()["catena.specs"]) <= {"catena.errors"}
 
     def test_errors_imports_nothing(self):
-        tree = ast.parse(_module_sources()["conduit.errors"])
+        tree = ast.parse(_module_sources()["catena.errors"])
         imports = [
             n for n in ast.walk(tree) if isinstance(n, ast.Import | ast.ImportFrom)
         ]
@@ -143,17 +139,17 @@ class TestSpecsIsALeaf:
 
 
 class TestOptionalExtrasStayUnimported:
-    """`import conduit` must not pull in a package from an optional extra.
+    """`import catena` must not pull in a package from an optional extra.
 
-    `build_graph` is re-exported from the package root, so `conduit.graph` is
-    imported on every `import conduit`. Its graphviz import is therefore confined
+    `build_graph` is re-exported from the package root, so `catena.graph` is
+    imported on every `import catena`. Its graphviz import is therefore confined
     to a ``TYPE_CHECKING`` block, and this is what keeps it there.
     """
 
     @pytest.mark.parametrize("package", ["graphviz", "rioxarray", "pyproj"])
-    def test_importing_conduit_does_not_load(self, package):
+    def test_importing_catena_does_not_load(self, package):
         code = (
-            "import sys, conduit; "
+            "import sys, catena; "
             f"loaded = [m for m in sys.modules if m.split('.')[0] == {package!r}]; "
             "assert not loaded, loaded"
         )

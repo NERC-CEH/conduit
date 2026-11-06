@@ -1,10 +1,10 @@
-"""Tests for conduit.build — build_driver wiring."""
+"""Tests for catena.build — build_driver wiring."""
 
 import pytest
 from hamilton import driver
 
-from conduit.build import build_driver
-from conduit.config import Config, NodeSpec
+from catena.build import build_driver
+from catena.config import Config, NodeSpec
 
 
 class TestBuildDriverReturnType:
@@ -53,7 +53,7 @@ class TestBuildDriverReturnType:
 
     def test_importable_custom_module(self):
         """A dotted import path to a real module loads like any built-in."""
-        dr = build_driver(["conduit.transforms"], {})
+        dr = build_driver(["catena.transforms"], {})
         assert isinstance(dr, driver.Driver)
 
 

@@ -2,23 +2,31 @@
 
 import sys
 import types
-import warnings
 from typing import Annotated, TypedDict
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
+import xarray_annotated as xra
 from hamilton import driver
 from hamilton.function_modifiers import extract_fields
 from hamilton.settings import ENABLE_POWER_USER_MODE
-from xarray_annotated.schema import Coords, Dims, Dtype, SchemaError
-from xarray_annotated.units import declare_units, policy
+from xarray_annotated.schema import Coords, Dims, Dtype
 
-from conduit.build import build_driver
-from conduit.config import NodeSpec, ResampleSpec
-from conduit.contract_check import (
+from catena.build import build_driver
+from catena.config import NodeSpec, ResampleSpec
+from catena.contract_check import (
     check_dag_contracts,
     check_input_contracts,
+)
+from catena.errors import CatenaValueError
+
+_DAILY = xr.DataArray(
+    [1.0, 2.0, 3.0],
+    dims="time",
+    coords={"time": pd.date_range("2025-01-01", periods=3, freq="D")},
+    attrs={"units": "Pa"},
 )
 
 
@@ -63,10 +71,10 @@ def _producer(unit: str):
     """A node producing ``gpp_weekly`` with the given declared output unit."""
 
     class Out(TypedDict):
-        gpp_weekly: Annotated[xr.DataArray, unit]
+        gpp_weekly: Annotated[xr.DataArray, xra.Unit(unit)]
 
     @extract_fields()
-    @declare_units
+    @xra.enforce
     def producer() -> Out:  # type: ignore[valid-type]
         return {"gpp_weekly": _da()}
 
@@ -84,12 +92,12 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from xarray_annotated.units import declare_units\n"
+        "import xarray_annotated as xra\n"
         f"class _Out(TypedDict):\n"
-        f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
+        f"    {name}_out: Annotated[xr.DataArray, xra.Unit('t ha-1')]\n"
         "@extract_fields()\n"
-        "@declare_units\n"
-        f"def {name}({in_name}: Annotated[xr.DataArray, {unit!r}]) -> _Out:\n"
+        "@xra.enforce\n"
+        f"def {name}({in_name}: Annotated[xr.DataArray, xra.Unit({unit!r})]) -> _Out:\n"
         f"    return {{{name + '_out'!r}: {in_name}}}\n"
     )
     ns: dict = {}
@@ -108,9 +116,9 @@ def _bare_producer(unit: str, name: str = "flux"):
     src = (
         "from typing import Annotated\n"
         "import xarray as xr\n"
-        "from xarray_annotated.units import declare_units\n"
-        "@declare_units\n"
-        f"def {name}() -> Annotated[xr.DataArray, {unit!r}]:\n"
+        "import xarray_annotated as xra\n"
+        "@xra.enforce\n"
+        f"def {name}() -> Annotated[xr.DataArray, xra.Unit({unit!r})]:\n"
         "    return xr.DataArray([1.0])\n"
     )
     ns: dict = {}
@@ -128,11 +136,11 @@ def _plain_consumer(name: str = "plain_cons", in_name: str = "gpp_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from xarray_annotated.units import declare_units\n"
+        "import xarray_annotated as xra\n"
         f"class _Out(TypedDict):\n"
-        f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
+        f"    {name}_out: Annotated[xr.DataArray, xra.Unit('t ha-1')]\n"
         "@extract_fields()\n"
-        "@declare_units\n"
+        "@xra.enforce\n"
         f"def {name}({in_name}: xr.DataArray) -> _Out:\n"
         f"    return {{{name + '_out'!r}: {in_name}}}\n"
     )
@@ -155,28 +163,19 @@ class TestDimensionalMismatch:
     def test_strict_raises(self, register):
         dr = self._dr(register)
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="dimensionally incompatible"),
-        ):
-            check_dag_contracts(dr)
-
-    def test_warn_also_raises(self, register):
-        dr = self._dr(register)
-        with (
-            policy(enabled=True, on_missing="warn"),
+            xra.enabled(True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
             check_dag_contracts(dr)
 
     def test_off_is_silent(self, register):
         dr = self._dr(register)
-        with policy(enabled=False), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(False):
             check_dag_contracts(dr)
 
     def test_message_names_node_and_units(self, register):
         dr = self._dr(register)
-        with policy(enabled=True), pytest.raises(ValueError, match="gpp_weekly") as exc:
+        with xra.enabled(True), pytest.raises(ValueError, match="gpp_weekly") as exc:
             check_dag_contracts(dr)
         msg = str(exc.value)
         assert "'g m-2 d-1'" in msg
@@ -184,7 +183,7 @@ class TestDimensionalMismatch:
 
 
 # ---------------------------------------------------------------------------
-# Exact-string mismatch (only when on_inexact is "error")
+# Compatible but unequal units (nothing converts them between nodes)
 # ---------------------------------------------------------------------------
 
 
@@ -194,19 +193,28 @@ class TestExactMatch:
         cons = register("ue_cons", _consumer("hPa"))
         return _build(prod, cons)
 
-    def test_compatible_passes_when_convert(self, register):
-        dr = self._dr(register)
-        with policy(enabled=True, on_inexact="convert"), warnings.catch_warnings():
-            warnings.simplefilter("error")
-            check_dag_contracts(dr)
-
-    def test_compatible_flagged_when_error(self, register):
+    def test_compatible_flagged(self, register):
         dr = self._dr(register)
         with (
-            policy(enabled=True, on_inexact="error"),
-            pytest.raises(ValueError, match="exact match required"),
+            xra.enabled(True),
+            pytest.raises(ValueError, match="different units"),
         ):
             check_dag_contracts(dr)
+
+    def test_compatible_fails_the_build(self, register):
+        register("ue2_prod", _producer("m"))
+        register("ue2_cons", _consumer("km"))
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="different units"),
+        ):
+            build_driver(["ue2_prod", "ue2_cons"], {})
+
+    def test_different_spellings_of_one_unit_pass(self, register):
+        prod = register("ue3_prod", _producer("Pa"))
+        cons = register("ue3_cons", _consumer("pascal"))
+        with xra.enabled(True):
+            check_dag_contracts(_build(prod, cons))
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +228,7 @@ class TestSharedInputConflict:
         b = register("us_b", _consumer("kg", name="consumer_b"))
         dr = _build(a, b)
         with (
-            policy(enabled=True),
+            xra.enabled(True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
             check_dag_contracts(dr)
@@ -247,25 +255,23 @@ class TestBareReturnProducer:
     def test_incompatible_raises(self, register):
         dr = self._dr(register, "g m-2 d-1", "kg")
         with (
-            policy(enabled=True),
+            xra.enabled(True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
             check_dag_contracts(dr)
 
-    def test_compatible_passes_under_exact(self, register):
+    def test_equal_units_pass(self, register):
         dr = self._dr(register, "g m-2 d-1", "g m-2 d-1")
         with (
-            policy(enabled=True, on_inexact="error"),
-            warnings.catch_warnings(),
+            xra.enabled(True),
         ):
-            warnings.simplefilter("error")
             check_dag_contracts(dr)
 
     def test_exact_string_mismatch_flagged(self, register):
         dr = self._dr(register, "Pa", "hPa")
         with (
-            policy(enabled=True, on_inexact="error"),
-            pytest.raises(ValueError, match="exact match required"),
+            xra.enabled(True),
+            pytest.raises(ValueError, match="different units"),
         ):
             check_dag_contracts(dr)
 
@@ -280,71 +286,69 @@ class TestOptInContract:
         cons = register("oc_cons", _plain_consumer())
         dr = _build(prod, cons)
         with (
-            policy(enabled=True, on_inexact="error"),
-            warnings.catch_warnings(),
+            xra.enabled(True),
         ):
-            warnings.simplefilter("error")
             check_dag_contracts(dr)
 
 
-class TestDefaultResolution:
-    """Every facet's policy is resolved from the process-global state.
+class TestSwitch:
+    """The checks follow xarray-annotated's on/off switch, block over variable."""
 
-    That is the only path now: the units-only wrappers that let a caller override
-    ``on_inexact`` per call are gone, so production and tests reach the check the
-    same way — via `set_policy` / `policy`."""
+    def _dr(self, register):
+        prod = register("sw_prod", _producer("g m-2 d-1"))
+        cons = register("sw_cons", _consumer("kg"))
+        return _build(prod, cons)
 
-    def test_dimension_mismatch_raises_when_enabled(self, register):
-        prod = register("dm_prod", _producer("g m-2 d-1"))
-        cons = register("dm_cons", _consumer("kg"))
-        dr = _build(prod, cons)
+    def test_variable_off_skips_both_checks(self, register, monkeypatch):
+        monkeypatch.setenv("XARRAY_ANNOTATED_ENABLED", "false")
+        dr = self._dr(register)
+        check_dag_contracts(dr)
+        check_input_contracts(dr, {"gpp_weekly": xr.DataArray([1.0])})
+
+    def test_variable_unset_checks(self, register, monkeypatch):
+        monkeypatch.delenv("XARRAY_ANNOTATED_ENABLED")
+        with pytest.raises(CatenaValueError, match="incompatible"):
+            check_dag_contracts(self._dr(register))
+
+    def test_block_off_beats_variable_on(self, register, monkeypatch):
+        monkeypatch.setenv("XARRAY_ANNOTATED_ENABLED", "true")
+        dr = self._dr(register)
+        with xra.enabled(False):
+            check_dag_contracts(dr)
+            check_input_contracts(dr, {"gpp_weekly": xr.DataArray([1.0])})
+
+    def test_block_on_beats_variable_off(self, register, monkeypatch):
+        monkeypatch.setenv("XARRAY_ANNOTATED_ENABLED", "false")
+        dr = self._dr(register)
+        with xra.enabled(True), pytest.raises(CatenaValueError, match="incompatible"):
+            check_dag_contracts(dr)
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="incompatible"),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="no 'units' attribute"),
         ):
-            check_dag_contracts(dr)
-
-    def test_off_global_skips(self, register):
-        prod = register("dm2_prod", _producer("g m-2 d-1"))
-        cons = register("dm2_cons", _consumer("kg"))
-        dr = _build(prod, cons)
-        with policy(enabled=False), warnings.catch_warnings():
-            warnings.simplefilter("error")
-            check_dag_contracts(dr)
-
-    def test_on_inexact_resolves_from_global(self, register):
-        prod = register("de_prod", _producer("Pa"))
-        cons = register("de_cons", _consumer("hPa"))
-        dr = _build(prod, cons)
-        with (
-            policy(enabled=True, on_inexact="error"),
-            pytest.raises(ValueError, match="exact match required"),
-        ):
-            check_dag_contracts(dr)
+            check_input_contracts(dr, {"gpp_weekly": xr.DataArray([1.0])})
 
 
 class TestConsistent:
-    def test_matching_units_pass_even_under_exact(self, register):
+    def test_matching_units_pass(self, register):
         prod = register("uk_prod", _producer("Pa"))
         cons = register("uk_cons", _consumer("Pa"))
         dr = _build(prod, cons)
         with (
-            policy(enabled=True, on_inexact="error"),
-            warnings.catch_warnings(),
+            xra.enabled(True),
         ):
-            warnings.simplefilter("error")
             check_dag_contracts(dr)
 
     def test_producer_consumer_same_unit_clean(self, register):
         register("clean_prod", _producer("g m-2 d-1"))
         register("clean_cons", _consumer("g m-2 d-1"))
-        with policy(enabled=True, on_inexact="error"):
+        with xra.enabled(True):
             dr = build_driver(["clean_prod", "clean_cons"], {})
             check_dag_contracts(dr)
 
 
 # ---------------------------------------------------------------------------
-# build_driver invokes the check (gated by the global policy)
+# build_driver invokes the check (gated by the switch)
 # ---------------------------------------------------------------------------
 
 
@@ -353,7 +357,7 @@ class TestBuildDriverIntegration:
         register("ub_prod", _producer("g m-2 d-1"))
         register("ub_cons", _consumer("kg"))
         with (
-            policy(enabled=True, on_inexact="error"),
+            xra.enabled(True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
             build_driver(["ub_prod", "ub_cons"], {})
@@ -361,7 +365,7 @@ class TestBuildDriverIntegration:
     def test_build_driver_skips_when_disabled(self, register):
         register("ub2_prod", _producer("g m-2 d-1"))
         register("ub2_cons", _consumer("kg"))
-        with policy(enabled=False):
+        with xra.enabled(False):
             build_driver(["ub2_prod", "ub2_cons"], {})
 
 
@@ -372,7 +376,7 @@ class TestBuildDriverIntegration:
 
 def _resample_node_specs(*specs):
     """Desugar ResampleSpecs into fan-out passthrough node specs (as config does)."""
-    from conduit.config import expand_node_entries, resample_to_node_entry
+    from catena.config import expand_node_entries, resample_to_node_entry
 
     entries = [resample_to_node_entry(s) for s in specs]
     return [NodeSpec.from_config(e) for e in expand_node_entries(entries)]
@@ -393,14 +397,40 @@ class TestResamplePropagation:
 
     def test_incompatible_consumer_of_resampled_var_raises(self, register):
         with (
-            policy(enabled=True),
+            xra.enabled(True),
             pytest.raises(ValueError, match="gpp_monthly"),
         ):
             self._build(register, "kg")
 
     def test_compatible_consumer_of_resampled_var_passes(self, register):
-        with policy(enabled=True):
+        with xra.enabled(True):
             self._build(register, "g m-2 d-1")
+
+    def test_conflict_names_where_the_resample_got_its_unit(self, register):
+        with (
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"units from gpp_weekly"),
+        ):
+            self._build(register, "kg")
+
+    def test_passthrough_declaring_nothing_propagates_the_unit(self, register):
+        register("pt_prod", _producer("g m-2 d-1"))
+        register("pt_cons", _consumer("kg", in_name="gpp_copy"))
+        specs = [
+            NodeSpec.from_config(
+                {
+                    "name": "gpp_copy",
+                    "inputs": ["gpp_weekly"],
+                    "expression": "gpp_weekly",
+                    "passthrough": True,
+                }
+            )
+        ]
+        with (
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"output of passthrough of gpp_weekly"),
+        ):
+            build_driver(["pt_prod", "node", "pt_cons"], {}, node_specs=specs)
 
     def test_chained_resample_propagates_through_multiple_hops(self, register):
         """The unit must propagate across a *chain* of resamples
@@ -408,10 +438,10 @@ class TestResamplePropagation:
         consumer of the twice-resampled variable is still checked."""
 
         class _P(TypedDict):
-            gpp_daily: Annotated[xr.DataArray, "g m-2 d-1"]
+            gpp_daily: Annotated[xr.DataArray, xra.Unit("g m-2 d-1")]
 
         @extract_fields()
-        @declare_units
+        @xra.enforce
         def prod() -> _P:  # type: ignore[valid-type]
             return {"gpp_daily": _da()}
 
@@ -422,7 +452,7 @@ class TestResamplePropagation:
             ResampleSpec(vars=["gpp"], source="weekly", target="monthly", freq="1ME"),
         )
         with (
-            policy(enabled=True),
+            xra.enabled(True),
             pytest.raises(ValueError, match="gpp_monthly"),
         ):
             build_driver(["crp_prod", "node", "crp_cons"], {}, node_specs=specs)
@@ -450,55 +480,46 @@ class TestNodePropagation:
 
     def test_incompatible_consumer_of_node_var_raises(self, register):
         with (
-            policy(enabled=True),
+            xra.enabled(True),
             pytest.raises(ValueError, match="flux"),
         ):
             self._build(register, "kg")
 
     def test_compatible_consumer_of_node_var_passes(self, register):
-        with policy(enabled=True):
+        with xra.enabled(True):
             self._build(register, "g m-2 d-1")
 
 
 # ---------------------------------------------------------------------------
-# UnitsWarning: runtime decorator path includes node qualname in message
+# Runtime: a failing input names the node it was declared on
 # ---------------------------------------------------------------------------
 
 
-class TestUnitsWarningQualname:
-    """The node function's qualname appears in UnitsWarning messages emitted by
-    the @declare_units runtime wrapper, making the source of the warning clear
-    without requiring the user to inspect the conduit call stack."""
-
-    def test_missing_units_warning_includes_qualname(self):
-        from typing import Annotated
-
-        from xarray_annotated.units import UnitsWarning
-
-        @declare_units
-        def my_model_node(vpd: Annotated[xr.DataArray, "Pa"]) -> xr.DataArray:
+class TestRuntimeQualname:
+    def test_missing_units_error_includes_qualname(self):
+        @xra.enforce
+        def my_model_node(vpd: Annotated[xr.DataArray, xra.Unit("Pa")]) -> xr.DataArray:
             return vpd
 
-        da = xr.DataArray([1.0])  # no 'units' attr
         with (
-            policy(enabled=True, on_missing="warn"),
-            pytest.warns(UnitsWarning, match=r"\[.*my_model_node\].*unvalidated"),
+            xra.enabled(True),
+            pytest.raises(
+                xra.units.UnitError, match=r"\[.*my_model_node\].*no 'units'"
+            ),
         ):
-            my_model_node(vpd=da)
+            my_model_node(vpd=xr.DataArray([1.0]))
 
-    def test_unparseable_units_warning_includes_qualname(self):
-        from typing import Annotated
-
-        from xarray_annotated.units import UnitsWarning
-
-        @declare_units
-        def another_node(vpd: Annotated[xr.DataArray, "Pa"]) -> xr.DataArray:
+    def test_unparseable_units_error_includes_qualname(self):
+        @xra.enforce
+        def another_node(vpd: Annotated[xr.DataArray, xra.Unit("Pa")]) -> xr.DataArray:
             return vpd
 
         da = xr.DataArray([1.0], attrs={"units": "fraction"})
         with (
-            policy(enabled=True, on_missing="warn"),
-            pytest.warns(UnitsWarning, match=r"\[.*another_node\].*unparseable"),
+            xra.enabled(True),
+            pytest.raises(
+                xra.units.UnitError, match=r"\[.*another_node\].*unparseable"
+            ),
         ):
             another_node(vpd=da)
 
@@ -565,8 +586,8 @@ class TestAllPairsEdgeCheck:
         )
         dr = _build(mod)
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="dims incompatible") as exc,
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"dims: .* are incompatible") as exc,
         ):
             check_dag_contracts(dr)
         # The conflicting *pair* is named, not just the mismatch with the base.
@@ -582,8 +603,7 @@ class TestAllPairsEdgeCheck:
             _named_schema_consumer("d3", Dims("time", "x", ordered=True)),
         )
         dr = _build(mod)
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_dag_contracts(dr)
 
 
@@ -598,7 +618,10 @@ class TestSchemaDagCheck:
 
     def test_dim_sets_differ_raises(self, register):
         dr = self._dr(register, [Dims("time", "x")], [Dims("time", "y")])
-        with policy(enabled=True), pytest.raises(ValueError, match="dims incompatible"):
+        with (
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"dims: .* are incompatible"),
+        ):
             check_dag_contracts(dr)
 
     def test_dim_order_differ_raises_when_both_ordered(self, register):
@@ -607,40 +630,47 @@ class TestSchemaDagCheck:
             [Dims("time", "x", ordered=True)],
             [Dims("x", "time", ordered=True)],
         )
-        with policy(enabled=True), pytest.raises(ValueError, match="dims incompatible"):
+        with (
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"dims: .* are incompatible"),
+        ):
             check_dag_contracts(dr)
 
     def test_same_dim_set_any_order_passes(self, register):
         dr = self._dr(register, [Dims("time", "x")], [Dims("x", "time")])
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_dag_contracts(dr)
 
     def test_dtype_kinds_differ_raises(self, register):
         dr = self._dr(register, [Dtype("float64")], [Dtype("int32")])
         with (
-            policy(enabled=True),
-            pytest.raises(ValueError, match="dtypes incompatible"),
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"dtype: .* are incompatible"),
         ):
             check_dag_contracts(dr)
 
-    def test_same_dtype_kind_passes(self, register):
+    def test_different_widths_raise(self, register):
         dr = self._dr(register, [Dtype("float64")], [Dtype("float32")])
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with (
+            xra.enabled(True),
+            pytest.raises(ValueError, match=r"dtype: .* are incompatible"),
+        ):
+            check_dag_contracts(dr)
+
+    def test_kind_matches_any_width(self, register):
+        dr = self._dr(register, [Dtype("float")], [Dtype("float32")])
+        with xra.enabled(True):
             check_dag_contracts(dr)
 
     def test_coords_are_not_checked_at_edges(self, register):
         # Coords are lower bounds, so mismatched coord declarations never raise.
         dr = self._dr(register, [Coords("time")], [Coords("time", "lat")])
-        with policy(enabled=True), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(True):
             check_dag_contracts(dr)
 
     def test_disabled_skips_schema(self, register):
         dr = self._dr(register, [Dims("time", "x")], [Dims("time", "y")])
-        with policy(enabled=False), warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with xra.enabled(False):
             check_dag_contracts(dr)
 
 
@@ -655,20 +685,121 @@ class TestSchemaInputCheck:
     def test_dim_mismatch_raises(self, register):
         dr = self._dr(register, Dims("time", "x"))
         bad = xr.DataArray(np.zeros((2, 3)), dims=("time", "y"))
-        with policy(enabled=True), pytest.raises(SchemaError, match="dims"):
+        with xra.enabled(True), pytest.raises(CatenaValueError, match="dims"):
             check_input_contracts(dr, {"arr": bad})
 
     def test_dim_match_passes(self, register):
         dr = self._dr(register, Dims("time", "x"))
         good = xr.DataArray(np.zeros((2, 3)), dims=("time", "x"))
-        with policy(enabled=True):
+        with xra.enabled(True):
             check_input_contracts(dr, {"arr": good})
 
     def test_dtype_kind_mismatch_raises(self, register):
         dr = self._dr(register, Dtype("float64"))
         bad = xr.DataArray(np.zeros((3,), dtype="int64"), dims=("x",))
-        with policy(enabled=True), pytest.raises(SchemaError, match="dtype"):
+        with xra.enabled(True), pytest.raises(CatenaValueError, match="dtype"):
             check_input_contracts(dr, {"arr": bad})
+
+    def test_every_failing_input_is_reported_at_once(self, register):
+        consumers = register(
+            "sci_many",
+            _named_schema_consumer("e1", Dims("x"), in_name="first"),
+            _named_schema_consumer("e2", Dtype("float64"), in_name="second"),
+        )
+        dr = _build(consumers)
+        inputs = {
+            "first": xr.DataArray([1.0], dims="y"),
+            "second": xr.DataArray(np.zeros(1, dtype="int64"), dims="x"),
+        }
+        with xra.enabled(True), pytest.raises(CatenaValueError) as exc:
+            check_input_contracts(dr, inputs)
+        message = str(exc.value)
+        assert "'first' dims mismatch" in message
+        assert "'second' dtype mismatch" in message
+
+    def test_every_failing_facet_of_one_input_is_reported(self, register):
+        def consumer(
+            x: Annotated[xr.DataArray, xra.Unit("Pa"), Dims("x")],
+        ) -> xr.DataArray:
+            return x
+
+        dr = _build(register("sci_two_facets", consumer))
+        wrong = xr.DataArray([1.0], dims="y", attrs={"units": "K"})
+        with xra.enabled(True), pytest.raises(CatenaValueError) as exc:
+            check_input_contracts(dr, {"x": wrong})
+        message = str(exc.value)
+        assert "input 'x'" in message
+        assert "'x' dims mismatch" in message
+
+    def test_none_passes_where_the_hint_allows_it(self, register):
+        def consumer(
+            x: Annotated[xr.DataArray, xra.Unit("Pa")] | None = None,
+        ) -> xr.DataArray:
+            return xr.DataArray(0.0) if x is None else x
+
+        dr = _build(register("sci_optional", consumer))
+        with xra.enabled(True):
+            check_input_contracts(dr, {"x": None})
+
+    def test_none_raises_if_another_consumer_forbids_it(self, register):
+        def allows(
+            x: Annotated[xr.DataArray, xra.Unit("Pa")] | None = None,
+        ) -> xr.DataArray:
+            return xr.DataArray(0.0) if x is None else x
+
+        def forbids(x: Annotated[xr.DataArray, xra.Unit("Pa")]) -> xr.DataArray:
+            return x
+
+        dr = _build(register("sci_mixed_optional", allows, forbids))
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="declared a DataArray, got None"),
+        ):
+            check_input_contracts(dr, {"x": None})
+
+    def test_malformed_marker_on_an_edge_is_a_catena_error(self, register):
+        def first(x: Annotated[xr.DataArray, xra.Unit("not_a_unit")]) -> xr.DataArray:
+            return x
+
+        def second(x: Annotated[xr.DataArray, xra.Unit("Pa")]) -> xr.DataArray:
+            return x
+
+        dr = _build(register("sci_malformed", first, second))
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="malformed contract declaration"),
+        ):
+            check_dag_contracts(dr)
+
+    @pytest.mark.parametrize(
+        "marker",
+        [xra.Unit("not_a_unit"), xra.Dtype("not_a_dtype"), xra.Freq("not_a_freq")],
+        ids=["unit", "dtype", "freq"],
+    )
+    @pytest.mark.parametrize(
+        "check",
+        [check_dag_contracts, lambda dr: check_input_contracts(dr, {"x": _DAILY})],
+        ids=["edge", "input"],
+    )
+    def test_malformed_marker_on_a_lone_declaration(self, register, marker, check):
+        def consumer(x: Annotated[xr.DataArray, marker]) -> xr.DataArray:
+            return x
+
+        dr = _build(register(f"sci_lone_{type(marker).__name__}", consumer))
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="malformed contract declaration"),
+        ):
+            check(dr)
+
+    def test_dimensionality_failure_names_the_input_once(self, register):
+        def consumer(x: Annotated[xr.DataArray, xra.Unit("kg")]) -> xr.DataArray:
+            return x
+
+        dr = _build(register("sci_named_once", consumer))
+        with xra.enabled(True), pytest.raises(CatenaValueError) as exc:
+            check_input_contracts(dr, {"x": _DAILY})
+        assert str(exc.value).count("'x'") == 1
 
 
 class TestParameterizedNodes:
@@ -687,15 +818,15 @@ class TestParameterizedNodes:
         from hamilton.function_modifiers import parameterize_sources
 
         @parameterize_sources(mass_nee={"flux": "nee"})
-        @declare_units
-        def to_mass(flux: Annotated[xr.DataArray, "kg"]) -> xr.DataArray:
+        @xra.enforce
+        def to_mass(flux: Annotated[xr.DataArray, xra.Unit("kg")]) -> xr.DataArray:
             return flux
 
         prod = register("ps_prod", _bare_producer("umol m-2 s-1", name="nee"))
         cons = register("ps_cons", to_mass)
         dr = _build(prod, cons)
         with (
-            policy(enabled=True),
+            xra.enabled(True),
             pytest.raises(ValueError, match="dimensionally incompatible"),
         ):
             check_dag_contracts(dr)
@@ -705,13 +836,17 @@ class TestParameterizedNodes:
         from hamilton.function_modifiers import parameterize_sources
 
         @parameterize_sources(mass_a={"flux": "a"})
-        @declare_units
-        def as_mass(flux: Annotated[xr.DataArray, "g m-2 d-1"]) -> xr.DataArray:
+        @xra.enforce
+        def as_mass(
+            flux: Annotated[xr.DataArray, xra.Unit("g m-2 d-1")],
+        ) -> xr.DataArray:
             return flux
 
         @parameterize_sources(molar_b={"flux": "b"})
-        @declare_units
-        def as_molar(flux: Annotated[xr.DataArray, "umol m-2 s-1"]) -> xr.DataArray:
+        @xra.enforce
+        def as_molar(
+            flux: Annotated[xr.DataArray, xra.Unit("umol m-2 s-1")],
+        ) -> xr.DataArray:
             return flux
 
         prods = register(
@@ -721,5 +856,5 @@ class TestParameterizedNodes:
         )
         cons = register("ps_cons2", as_mass, as_molar)
         dr = _build(prods, cons)
-        with policy(enabled=True):
+        with xra.enabled(True):
             check_dag_contracts(dr)

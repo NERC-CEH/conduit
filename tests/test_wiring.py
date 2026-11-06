@@ -1,4 +1,4 @@
-"""Tests for the before-compute wiring check (`conduit.wiring_check`)."""
+"""Tests for the before-compute wiring check (`catena.wiring_check`)."""
 
 import sys
 import types
@@ -8,7 +8,8 @@ import xarray as xr
 from hamilton import driver
 from hamilton.settings import ENABLE_POWER_USER_MODE
 
-from conduit.wiring_check import WiringWarning, check_wiring
+import catena
+from catena.wiring_check import WiringWarning, check_wiring
 
 
 def _da():
@@ -72,6 +73,52 @@ class TestUnbound:
         dr = _build(register("wire_opt", out))
         # y is not loaded, but it has a default, so this must not raise.
         check_wiring(dr, ["out"], {"x": _da()})
+
+    def test_config_value_binds_a_required_input(self, register):
+        def out(x: xr.DataArray, scale: float) -> xr.DataArray:
+            return x * scale
+
+        mod = register("wire_cfg", out)
+        dr = driver.Builder().with_modules(mod).with_config({"scale": 3.0}).build()
+        check_wiring(dr, ["out"], {"x": _da()})
+
+    def test_config_scalar_reaches_a_node_expression(self, tmp_path):
+        """A `[[node]]` may consume a scalar set in a module section (issue #7)."""
+        xr.Dataset(
+            {"source": ("time", [1.0, 1.0, 1.0])}, coords={"time": [0, 1, 2]}
+        ).to_netcdf(tmp_path / "in.nc")
+        (tmp_path / "mymodel.py").write_text(
+            "import xarray as xr\n\n\n"
+            "def doubled(source: xr.DataArray) -> xr.DataArray:\n"
+            "    return source * 2\n"
+        )
+        config = tmp_path / "config.toml"
+        config.write_text(
+            """\
+[mymodel]
+_import_path = "mymodel.py"
+scale = 3.0
+
+[inputs.daily]
+path = "in.nc"
+vars = ["source"]
+suffix = ""
+
+[[node]]
+name = "scaled"
+inputs = ["doubled", "scale"]
+expression = "doubled * scale"
+units = "1"
+
+[outputs.daily]
+path = "out.nc"
+vars = ["scaled"]
+suffix = ""
+"""
+        )
+        catena.dry_run(config)
+        report = catena.run(config)
+        assert report.outputs["daily"]["scaled"].values.tolist() == [6.0, 6.0, 6.0]
 
 
 class TestUnused:

@@ -1,33 +1,33 @@
-"""Tests for the :func:`conduit.dry_run` pre-flight and its building blocks.
+"""Tests for the :func:`catena.dry_run` pre-flight and its building blocks.
 
 Three layers:
 
-- direct tests of :func:`conduit.contract_check.check_input_contracts` (the runtime,
+- direct tests of :func:`catena.contract_check.check_input_contracts` (the runtime,
   data-dependent unit check), built on tiny Hamilton drivers so the inputs' ``units``
   attributes and the active mode are fully under test control;
-- direct tests of :func:`conduit.io.assert_output_paths_writable`;
+- direct tests of :func:`catena.io.assert_output_paths_writable`;
 - tests of the broader pre-flight (config / inputs / DAG plan / output paths) against
-  the :class:`conduit.DryRunReport` that ``dry_run`` returns, plus a thin layer
-  checking that ``conduit run --dry-run`` renders every stage of it.
+  the :class:`catena.DryRunReport` that ``dry_run`` returns, plus a thin layer
+  checking that ``catena run --dry-run`` renders every stage of it.
 """
 
-import pathlib
+import os
 import sys
 import types
 
-import pint
 import pytest
 import xarray as xr
+import xarray_annotated as xra
 from typer.testing import CliRunner
-from xarray_annotated.units import UnitsWarning, policy
 
-from conduit import dry_run
-from conduit.build import build_driver
-from conduit.cli.app import app
-from conduit.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
-from conduit.contract_check import check_input_contracts
-from conduit.input_checks import InputCheckError
-from conduit.io import assert_output_paths_writable
+from catena import dry_run
+from catena.build import build_driver
+from catena.cli.app import app
+from catena.config import IOSpec, NodeSpec, ResampleSpec, SubsetSpec, load_config
+from catena.contract_check import check_input_contracts
+from catena.errors import CatenaValueError
+from catena.input_checks import InputCheckError
+from catena.io import assert_output_paths_writable
 
 runner = CliRunner()
 
@@ -64,12 +64,12 @@ def _consumer(unit: str, name: str = "consumer", in_name: str = "vpd_weekly"):
         "from typing import Annotated, TypedDict\n"
         "import xarray as xr\n"
         "from hamilton.function_modifiers import extract_fields\n"
-        "from xarray_annotated.units import declare_units\n"
+        "import xarray_annotated as xra\n"
         "class _Out(TypedDict):\n"
-        f"    {name}_out: Annotated[xr.DataArray, 't ha-1']\n"
+        f"    {name}_out: Annotated[xr.DataArray, xra.Unit('t ha-1')]\n"
         "@extract_fields()\n"
-        "@declare_units\n"
-        f"def {name}({in_name}: Annotated[xr.DataArray, {unit!r}]) -> _Out:\n"
+        "@xra.enforce\n"
+        f"def {name}({in_name}: Annotated[xr.DataArray, xra.Unit({unit!r})]) -> _Out:\n"
         f"    return {{{name + '_out'!r}: {in_name}}}\n"
     )
     ns: dict = {}
@@ -97,66 +97,60 @@ class TestCheckInputUnitsDirect:
         return build_driver(["vpd_cons"], {})
 
     def test_matching_units_pass(self, dr):
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"vpd_weekly": _input("Pa")})
 
-    def test_compatible_units_convert_without_error(self, dr):
-        with policy(enabled=True, on_missing="error"):
-            check_input_contracts(dr, {"vpd_weekly": _input("hPa")})
+    def test_different_spelling_passes(self, dr):
+        with xra.enabled(True):
+            check_input_contracts(dr, {"vpd_weekly": _input("pascal")})
 
-    def test_exact_match_rejects_compatible_but_different(self, dr):
+    def test_compatible_but_unequal_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="error", on_inexact="error"),
-            pytest.raises(ValueError, match="on_inexact"),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="differs from declared"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input("hPa")})
 
     def test_incompatible_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(pint.DimensionalityError),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="input 'vpd_weekly'"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input("kg")})
 
-    def test_missing_units_strict_raises(self, dr):
+    def test_missing_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(ValueError, match="no 'units' attribute"),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="no 'units' attribute"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input(None)})
 
-    def test_missing_units_warn_warns(self, dr):
+    def test_unparseable_units_raise(self, dr):
         with (
-            policy(enabled=True, on_missing="warn"),
-            pytest.warns(UnitsWarning, match="unvalidated"),
-        ):
-            check_input_contracts(dr, {"vpd_weekly": _input(None)})
-
-    def test_unparseable_units_strict_raises(self, dr):
-        with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(ValueError, match="unparseable"),
-        ):
-            check_input_contracts(dr, {"vpd_weekly": _input("fraction")})
-
-    def test_unparseable_units_warn_warns(self, dr):
-        with (
-            policy(enabled=True, on_missing="warn"),
-            pytest.warns(UnitsWarning, match="unparseable"),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="unparseable"),
         ):
             check_input_contracts(dr, {"vpd_weekly": _input("fraction")})
 
     def test_off_mode_skips_everything(self, dr):
-        with policy(enabled=False):
+        with xra.enabled(False):
             check_input_contracts(dr, {"vpd_weekly": _input("kg")})
 
     def test_input_without_declared_consumer_ignored(self, dr):
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"some_other_var": _input("kg")})
 
-    def test_non_dataarray_inputs_ignored(self, dr):
-        with policy(enabled=True, on_missing="error"):
+    def test_non_dataarray_on_a_declared_input_raises(self, dr):
+        # enforce would raise TypeError when the node runs, so the pre-flight does too.
+        with (
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="declared a DataArray, got float"),
+        ):
             check_input_contracts(dr, {"vpd_weekly": 3.0})
+
+    def test_non_dataarray_without_a_declared_consumer_ignored(self, dr):
+        with xra.enabled(True):
+            check_input_contracts(dr, {"some_other_var": 3.0})
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +161,7 @@ class TestCheckInputUnitsDirect:
 class TestCheckInputUnitsPropagation:
     def _resample_driver(self, register):
         """External ``gpp_weekly`` -> passthrough resample -> ``gpp_monthly`` (rate)."""
-        from conduit.config import expand_node_entries, resample_to_node_entry
+        from catena.config import expand_node_entries, resample_to_node_entry
 
         register("rs_cons", _consumer("g m-2 d-1", in_name="gpp_monthly"))
         entry = resample_to_node_entry(
@@ -179,20 +173,20 @@ class TestCheckInputUnitsPropagation:
     def test_resample_routed_input_is_validated(self, register):
         dr = self._resample_driver(register)
         with (
-            policy(enabled=True, on_missing="error"),
-            pytest.raises(pint.DimensionalityError),
+            xra.enabled(True),
+            pytest.raises(CatenaValueError, match="gpp_weekly"),
         ):
             check_input_contracts(dr, {"gpp_weekly": _input("kg")})
 
     def test_resample_routed_input_passes_when_correct(self, register):
         dr = self._resample_driver(register)
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"gpp_weekly": _input("g m-2 d-1")})
 
     def test_derive_routed_input_not_validated(self, register):
         """Documented limitation: an input feeding a [[node]] module before a
         declaring consumer is not validated, since a node can change units."""
-        from conduit.config import NodeSpec
+        from catena.config import NodeSpec
 
         register("dv_cons", _consumer("g m-2 d-1", in_name="flux"))
         specs = [
@@ -206,7 +200,7 @@ class TestCheckInputUnitsPropagation:
             )
         ]
         dr = build_driver(["node", "dv_cons"], {}, node_specs=specs)
-        with policy(enabled=True, on_missing="error"):
+        with xra.enabled(True):
             check_input_contracts(dr, {"a": _input("kg"), "b": _input("kg")})
 
 
@@ -225,21 +219,31 @@ class TestAssertOutputPathsWritable:
         with pytest.raises(ValueError, match="Unsupported file extension"):
             assert_output_paths_writable(specs)
 
-    def test_missing_parent_dir_raises(self, tmp_path):
-        specs = {"daily": IOSpec(path=str(tmp_path / "nope" / "out.nc"), vars=["gpp"])}
-        with pytest.raises(FileNotFoundError, match="parent directory"):
+    def test_missing_parent_dir_passes_without_being_created(self, tmp_path):
+        missing = tmp_path / "nope" / "nested"
+        specs = {"daily": IOSpec(path=str(missing / "out.nc"), vars=["gpp"])}
+        assert_output_paths_writable(specs)
+        assert not (tmp_path / "nope").exists()
+
+    def test_file_in_the_way_raises(self, tmp_path):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        specs = {"daily": IOSpec(path=str(blocker / "sub" / "out.nc"), vars=["gpp"])}
+        with pytest.raises(FileNotFoundError, match="not a directory"):
+            assert_output_paths_writable(specs)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+    def test_missing_parent_under_readonly_dir_raises(self, tmp_path):
+        readonly = tmp_path / "readonly"
+        readonly.mkdir(mode=0o500)
+        specs = {"daily": IOSpec(path=str(readonly / "sub" / "out.nc"), vars=["gpp"])}
+        with pytest.raises(PermissionError, match="not writable"):
             assert_output_paths_writable(specs)
 
     def test_subset_zarr_without_store_raises(self, tmp_path):
         specs = {"daily": IOSpec(path=str(tmp_path / "store.zarr"), vars=["gpp"])}
-        subset = SubsetSpec(start=0, stop=10)
+        subset = SubsetSpec(start=0, stop=10, dim="pixel")
         with pytest.raises(FileNotFoundError, match="does not exist"):
-            assert_output_paths_writable(specs, subset)
-
-    def test_subset_csv_unsupported_raises(self, tmp_path):
-        specs = {"daily": IOSpec(path=str(tmp_path / "out.csv"), vars=["gpp"])}
-        subset = SubsetSpec(start=0, stop=10)
-        with pytest.raises(ValueError, match=r"\[subset\] is only supported"):
             assert_output_paths_writable(specs, subset)
 
 
@@ -266,6 +270,19 @@ vars = ["temperature"]
     return str(p)
 
 
+@pytest.mark.parametrize(
+    "section",
+    [
+        '[blocking]\nblock_size = 2\ndim = "locaton"\n',
+        '[subset]\nstart = 0\nstop = 2\ndim = "locaton"\n',
+    ],
+)
+def test_dry_run_rejects_a_dim_on_no_input(tmp_path, synthetic_data_dir, section):
+    config = _config(tmp_path, synthetic_data_dir, outputs=section)
+    with pytest.raises(CatenaValueError, match="dim 'locaton'"):
+        dry_run(config)
+
+
 def _stage(report, name: str):
     """The named stage of a report, so a test names what it asserts on."""
     return next(stage for stage in report.stages if stage.name == name)
@@ -290,19 +307,21 @@ class TestDryRunReport:
         # The dry run must not execute or save anything.
         assert not out.exists()
 
-    def test_missing_output_dir_raises(self, tmp_path, synthetic_data_dir):
-        out = tmp_path / "missing" / "out.nc"
+    def test_output_blocked_by_a_file_raises(self, tmp_path, synthetic_data_dir):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        out = blocker / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
         cfg = _config(tmp_path, synthetic_data_dir, outputs)
         with pytest.raises(FileNotFoundError):
             dry_run(cfg)
 
-    def test_missing_input_file_is_a_conduit_error(self, tmp_path):
-        """The CLI shows a ConduitError without a traceback, so this must be one."""
-        from conduit.errors import ConduitFileNotFoundError
+    def test_missing_input_file_is_a_catena_error(self, tmp_path):
+        """The CLI shows a CatenaError without a traceback, so this must be one."""
+        from catena.errors import CatenaFileNotFoundError
 
         cfg = _config(tmp_path, tmp_path / "no_such_dir")
-        with pytest.raises(ConduitFileNotFoundError, match=r"\[inputs\.daily\]"):
+        with pytest.raises(CatenaFileNotFoundError, match=r"\[inputs\.daily\]"):
             dry_run(cfg)
 
     def test_unreachable_output_var_raises(self, tmp_path, synthetic_data_dir):
@@ -335,41 +354,37 @@ class TestDryRunReport:
         assert any("consumed by no node" in f for f in findings)
 
 
-class TestPolicyReport:
-    """The dry run reports the active contract policy grouped by policy object.
+class TestSwitchedOff:
+    """A dry run says so when contract checking is off, rather than claiming a pass."""
 
-    The three axes come from three separate ``get_policy()`` calls in
-    ``xarray_annotated``; the report groups them that way so no line the CLI
-    composes is long enough to wrap.  Captured CLI output carries no escape
-    codes, because ``typer.echo`` strips them when stdout is not a terminal.
+    def test_contract_stages_say_they_did_not_check(self, tmp_path, synthetic_data_dir):
+        with xra.enabled(False):
+            report = dry_run(_config(tmp_path, synthetic_data_dir))
+        assert _stage(report, "contracts").status == "skipped"
+        assert "switched off" in _stage(report, "dag").detail
+
+    def test_contract_stages_report_a_check(self, tmp_path, synthetic_data_dir):
+        with xra.enabled(True):
+            report = dry_run(_config(tmp_path, synthetic_data_dir))
+        assert _stage(report, "contracts").status == "ok"
+        assert "passed" in _stage(report, "dag").detail
+
+
+class TestDryRunRendering:
+    """Captured CLI output carries no escape codes, because ``typer.echo`` strips them
+    when stdout is not a terminal.
     """
 
-    def test_all_three_axes_reported(self, tmp_path, synthetic_data_dir):
-        report = dry_run(_config(tmp_path, synthetic_data_dir))
-        assert set(report.policy) == {"units", "schema", "temporal"}
-        assert "on_inexact=" in report.policy["units"]
-        assert "on_mismatch=" in report.policy["schema"]
-        assert "on_uninferable=" in report.policy["temporal"]
-
-    def test_reports_the_configured_policy(self, tmp_path, synthetic_data_dir):
-        cfg = _config(tmp_path, synthetic_data_dir)
-        text = pathlib.Path(cfg).read_text()
-        pathlib.Path(cfg).write_text(text + '\n[annotations]\non_inexact = "warn"\n')
-        report = dry_run(cfg)
-        assert "on_inexact=warn" in report.policy["units"]
-
     def test_no_line_wraps_at_eighty_columns(self, tmp_path, synthetic_data_dir):
-        """The old single-line form ran past 110 characters.  Keep it short.
-
-        The recipe pages capture this output verbatim at documentation-build
+        """The recipe pages capture this output verbatim at documentation-build
         time, so a line long enough to wrap would wrap differently depending on
         the terminal width wherever the build ran.
         """
         cfg = _config(tmp_path, synthetic_data_dir)
         result = runner.invoke(app, ["run", cfg, "--dry-run"])
         assert result.exit_code == 0, result.output
-        # The header echoes the config path, whose length conduit does not
-        # control; every line conduit composes itself is indented.
+        # The header echoes the config path, whose length catena does not
+        # control; every line catena composes itself is indented.
         too_long = [
             line
             for line in result.output.splitlines()
@@ -397,7 +412,9 @@ class TestDryRunCLI:
             assert stage.detail in result.output
 
     def test_hard_failure_exits_non_zero(self, tmp_path, synthetic_data_dir):
-        out = tmp_path / "missing" / "out.nc"
+        blocker = tmp_path / "blocker"
+        blocker.write_text("")
+        out = blocker / "out.nc"
         outputs = f'[outputs.daily]\npath = "{out}"\nvars = ["temperature"]\n'
         cfg = _config(tmp_path, synthetic_data_dir, outputs)
         result = runner.invoke(app, ["run", cfg, "--dry-run"])
@@ -405,7 +422,7 @@ class TestDryRunCLI:
 
 
 # ---------------------------------------------------------------------------
-# [validation] input checks (conduit.input_checks) through the dry run
+# [validation] input checks (catena.input_checks) through the dry run
 # ---------------------------------------------------------------------------
 
 

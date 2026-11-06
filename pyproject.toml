@@ -3,8 +3,8 @@ requires = ["uv_build>=0.8.10,<0.9.0"]
 build-backend = "uv_build"
 
 [project]
-name = "conduit"
-version = "0.3.0"
+name = "ukceh-catena"
+version = "0.4.0"
 description = "A unit-safe, scalable foundation for building configurable xarray data pipelines and forward models."
 authors = [
     { name = "jmarshrossney", email = "17361029+jmarshrossney@users.noreply.github.com" }
@@ -18,30 +18,29 @@ dependencies = [
     "dask>=2025.1.0",
     "netcdf4>=1.7.4",
     "numpy>=2.4.2",
-    "pyarrow>=10.0",
     "tomli-w>=1.2.0",
     "xarray>=2026.2.0",
-    "xarray-annotated[cf]>=0.5.2",
+    "xarray-annotated[cf]>=0.8.0",
     "zarr>=3.2.1",
 ]
 
 [project.optional-dependencies]
-# The `conduit` command-line interface. The Python API (conduit.run, conduit.dry_run,
-# conduit.build_graph) needs none of this: typer is confined to `conduit.cli`.
+# The `catena` command-line interface. The Python API (catena.run, catena.dry_run,
+# catena.build_graph) needs none of this: typer is confined to `catena.cli`.
 cli = ["typer>=0.24.1"]
 viz = ["apache-hamilton[visualization]>=1.90.0"]
 # Geospatial inputs (CRS-aware (y, x) -> pixel stacking and lat/lon reprojection).
-# Only needed when inputs carry CRS metadata; imported lazily by conduit.gridded.
+# Only needed when inputs carry CRS metadata; imported lazily by catena.gridded.
 geo = ["pyproj>=3.7.2", "rioxarray>=0.22.0"]
-all = ["conduit[cli,viz,geo]"]
+all = ["ukceh-catena[cli,viz,geo]"]
 
 [project.scripts]
-conduit = "conduit.cli:main"
+catena = "catena.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/NERC-CEH/conduit"
-Repository = "https://github.com/NERC-CEH/conduit"
-Documentation = "https://github.com/NERC-CEH/conduit"
+Homepage = "https://github.com/NERC-CEH/catena"
+Repository = "https://github.com/NERC-CEH/catena"
+Documentation = "https://github.com/NERC-CEH/catena"
 
 [dependency-groups]
 dev = [
@@ -54,19 +53,19 @@ dev = [
 ]
 docs = [
     {include-group = "recipes"},
-    "conduit[cli,viz]",
+    "ukceh-catena[cli,viz]",
     "marimo>=0.23.0",
     "marimo-md-export>=0.5.2",
     "markdown-exec>=1.11.0",
     "mkdocs-typer2[termynal]>=0.4.1",
     "mkdocstrings-python>=2.0.3",
-    "zensical>=0.0.24",
+    "zensical>=0.0.24,<0.0.74",
 ]
 recipes = [
     "matplotlib>=3.10.8",
 ]
 test = [
-    "conduit[cli,viz,geo]",
+    "ukceh-catena[cli,viz,geo]",
     "coverage>=7.13.5",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
@@ -111,7 +110,7 @@ select = [
 "tests/**" = ["D", "E501"]
 "scripts/**" = ["D"]
 # Typer CLI modules use typer.Option() in function signatures as standard practice.
-"src/conduit/cli/**" = ["B008"]
+"src/catena/cli/**" = ["B008"]
 # Marimo notebooks use bare expressions for display output (B018),
 # contain prose that naturally exceeds 88 chars (E501),
 # include academic citations with en dashes (RUF001),
@@ -126,3 +125,6 @@ convention = "numpy"
 [tool.uv]
 exclude-newer = "1 week"
 exclude-newer-package = { marimo-md-export = false , xarray-annotated = false }
+
+[tool.uv.build-backend]
+module-name = "catena"

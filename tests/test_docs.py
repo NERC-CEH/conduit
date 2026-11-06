@@ -25,10 +25,10 @@ class TestPythonApiPage:
 
     @pytest.mark.parametrize("name", OVERVIEW_NAMES)
     def test_every_name_in_the_overview_exists(self, name):
-        import conduit
-        import conduit.config
+        import catena
+        import catena.config
 
-        assert hasattr(conduit, name) or hasattr(conduit.config, name)
+        assert hasattr(catena, name) or hasattr(catena.config, name)
 
     def test_every_module_page_is_mapped(self):
         pages = sorted(
@@ -43,14 +43,14 @@ class TestPythonApiPage:
 
         AGENTS.md requires every top-level module to be listed under
         ``docs/reference/modules/``. Only the forward direction was checked, so
-        `conduit.errors` -- the exception types a downstream package catches --
+        `catena.errors` -- the exception types a downstream package catches --
         went undocumented.
         """
-        import conduit
+        import catena
 
-        src = pathlib.Path(conduit.__file__).parent
+        src = pathlib.Path(catena.__file__).parent
         modules = {
-            f"conduit.{p.stem}" for p in src.glob("*.py") if not p.stem.startswith("_")
+            f"catena.{p.stem}" for p in src.glob("*.py") if not p.stem.startswith("_")
         }
         missing = {
             name for name in modules if not (MODULES_DIR / f"{name}.md").exists()
@@ -76,18 +76,18 @@ class TestPythonApiPage:
 
     def test_every_mapped_module_is_importable(self):
         modules = sorted(
-            set(re.findall(r"\| \[`(conduit[\w.]*)`\]", API_PAGE.read_text()))
+            set(re.findall(r"\| \[`(catena[\w.]*)`\]", API_PAGE.read_text()))
         )
         assert modules
         for name in modules:
             importlib.import_module(name)
 
-    def test_nothing_is_rendered_from_the_conduit_root(self):
-        """A ``::: conduit`` block would re-render symbols the module pages own.
+    def test_nothing_is_rendered_from_the_catena_root(self):
+        """A ``::: catena`` block would re-render symbols the module pages own.
 
         Two renderings of one object produce two pages carrying the same anchor,
         so cross-references and search results land on an arbitrary one of them.
         The page links to the module pages instead.
         """
         blocks = re.findall(r"^::: (\S+)", API_PAGE.read_text(), flags=re.MULTILINE)
-        assert not [b for b in blocks if b == "conduit" or b.startswith("conduit.")]
+        assert not [b for b in blocks if b == "catena" or b.startswith("catena.")]

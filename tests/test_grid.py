@@ -3,15 +3,15 @@ Tests for grid (lat/lon) computation in load_inputs().
 
 The grid computation previously lived in pipeline/grid.py as Hamilton nodes.
 It now lives inside load_inputs() as plain function calls, using
-_compute_lat_lon() and _check_common_grid() from conduit.io.
+_compute_lat_lon() and _check_common_grid() from catena.io.
 """
 
 import numpy as np
 import pytest
 
-from conduit.config import IOSpec
-from conduit.gridded.io import MisalignedGridError, _check_common_grid
-from conduit.io import load_inputs
+from catena.config import IOSpec
+from catena.gridded.io import MisalignedGridError, _check_common_grid
+from catena.io import load_inputs
 
 
 class TestCheckCommonGrid:
@@ -140,14 +140,15 @@ class TestLoadInputsNoGrid:
 
     def test_no_grid_without_crs(self, tmp_path):
         import pandas as pd
+        import xarray as xr
 
         times = pd.date_range("2020-01-01", periods=5, freq="D")
-        df = pd.DataFrame({"temp": [1.0, 2.0, 3.0, 4.0, 5.0]}, index=times)
-        df.index.name = "time"
-        csv_path = tmp_path / "daily.csv"
-        df.to_csv(csv_path)
+        path = tmp_path / "daily.nc"
+        xr.Dataset(
+            {"temp": ("time", [1.0, 2.0, 3.0, 4.0, 5.0])}, coords={"time": times}
+        ).to_netcdf(path)
 
-        specs = {"daily": IOSpec(path=str(csv_path), vars=["temp"])}
+        specs = {"daily": IOSpec(path=str(path), vars=["temp"])}
         inputs = load_inputs(specs)
 
         assert "latitude" not in inputs

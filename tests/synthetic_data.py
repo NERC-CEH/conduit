@@ -1,22 +1,22 @@
 """Synthetic input-data generation for the test suite.
 
-A small, self-contained replacement for the old ``conduit.setup_utils``
+A small, self-contained replacement for the old ``catena.setup_utils``
 generator. It writes four gridded NetCDF files (daily / weekly / monthly /
 static) on a regular lat/lon grid, using a domain-neutral geophysical
 vocabulary and a handful of explicit value shapes (gaussian, non-negative,
 bounded [0, 1], integer).
 
 Unlike the generator it replaces, this builds the datasets with plain
-numpy/xarray rather than routing through the Hamilton DAG. The only conduit
+numpy/xarray rather than routing through the Hamilton DAG. The only catena
 code it reuses is ``unstack_if_gridded`` from the IO layer, so the on-disk
-grid/CRS layout matches exactly what ``conduit.io.load_inputs`` reads back.
+grid/CRS layout matches exactly what ``catena.io.load_inputs`` reads back.
 """
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from conduit.gridded.io import unstack_if_gridded
+from catena.gridded.io import unstack_if_gridded
 
 # Value "kinds" and how they map to noise. These reproduce the value contracts
 # the old name-heuristic generator provided, but assigned explicitly per var.

@@ -1,7 +1,7 @@
 """Tests for the resample transform and the [[resample]] preset pipeline.
 
 ``[[resample]]`` is now a preset that desugars to fan-out passthrough ``[[node]]``
-entries applying `conduit.transforms.resample`; there is no dedicated DAG module.
+entries applying `catena.transforms.resample`; there is no dedicated DAG module.
 These tests cover the transform directly and end-to-end via a built driver.
 """
 
@@ -9,10 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from xarray_annotated.temporal import Freq, check_freq
 
-from conduit.build import build_driver
-from conduit.config import Config
-from conduit.transforms import resample
+from catena.build import build_driver
+from catena.config import Config
+from catena.errors import CatenaValueError
+from catena.transforms import resample
 
 
 def _daily_da(n_days: int = 14, n_pixel: int = 1, seed: int = 0) -> xr.DataArray:
@@ -28,7 +30,18 @@ def _daily_da(n_days: int = 14, n_pixel: int = 1, seed: int = 0) -> xr.DataArray
 
 
 class TestResampleTransform:
-    """The plain transform function `conduit.transforms.resample`."""
+    """The plain transform function `catena.transforms.resample`."""
+
+    @pytest.mark.parametrize("aggfunc", ["mean", "sum"])
+    def test_holes_become_nan_bins_on_a_regular_axis(self, aggfunc):
+        times = pd.date_range("2025-01-01", periods=31, freq="D").append(
+            pd.date_range("2026-01-01", periods=31, freq="D")
+        )
+        da = xr.DataArray(np.ones(62), dims=("time",), coords={"time": times})
+        out = resample(da, freq="1ME", aggfunc=aggfunc)
+        assert out.sizes["time"] == 13
+        assert int(out.isnull().sum()) == 11
+        check_freq(out, Freq("1ME"), "out")
 
     def test_mean_values(self):
         da = _daily_da(14, 1)
@@ -56,9 +69,7 @@ class TestResampleTransform:
     def test_monthly_frequency(self):
         out = resample(_daily_da(365, 1), freq="1ME")
         assert out.sizes["time"] == 12
-        inferred = pd.infer_freq(out.coords["time"].values)
-        assert inferred is not None
-        assert inferred.startswith(("ME", "MS"))
+        assert pd.infer_freq(out.coords["time"].values) in ("ME", "MS")
 
 
 class TestResampleTimeDim:
@@ -165,7 +176,7 @@ class TestResampleSpecValidation:
     """ResampleSpec.from_config validation."""
 
     def test_default_aggfunc_is_mean(self):
-        from conduit.config import ResampleSpec
+        from catena.config import ResampleSpec
 
         spec = ResampleSpec.from_config(
             {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "7D"}
@@ -173,7 +184,7 @@ class TestResampleSpecValidation:
         assert spec.aggfunc == "mean"
 
     def test_unsupported_aggfunc_raises(self):
-        from conduit.config import ResampleSpec
+        from catena.config import ResampleSpec
 
         with pytest.raises(ValueError, match="Unsupported aggfunc"):
             ResampleSpec.from_config(
@@ -188,7 +199,7 @@ class TestResampleSpecValidation:
 
     @pytest.mark.parametrize("missing", ["vars", "from", "to", "freq"])
     def test_missing_required_key_raises(self, missing):
-        from conduit.config import ResampleSpec
+        from catena.config import ResampleSpec
 
         entry = {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "7D"}
         del entry[missing]
@@ -198,7 +209,7 @@ class TestResampleSpecValidation:
     def test_any_direction_is_allowed_given_a_freq(self):
         # There is no table of "supported directions" any more: the labels are
         # arbitrary and ``freq`` says what actually happens.
-        from conduit.config import ResampleSpec
+        from catena.config import ResampleSpec
 
         spec = ResampleSpec.from_config(
             {"vars": ["x"], "from": "monthly", "to": "seasonal", "freq": "QE"}
@@ -206,9 +217,9 @@ class TestResampleSpecValidation:
         assert (spec.source, spec.target, spec.freq) == ("monthly", "seasonal", "QE")
 
     def test_invalid_freq_raises(self):
-        from conduit.config import ResampleSpec
+        from catena.config import ResampleSpec
 
-        with pytest.raises(ValueError, match="invalid frequency 'banana'"):
+        with pytest.raises(CatenaValueError, match="invalid frequency 'banana'"):
             ResampleSpec.from_config(
                 {"vars": ["x"], "from": "daily", "to": "weekly", "freq": "banana"}
             )

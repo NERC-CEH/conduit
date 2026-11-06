@@ -5,6 +5,7 @@ so these tests fail if a recipe drifts away from the library.
 """
 
 import importlib.util
+import os
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -13,8 +14,9 @@ from pathlib import Path
 
 import pytest
 import xarray as xr
+import xarray_annotated as xra
 
-import conduit
+import catena
 
 RECIPES = Path(__file__).parents[1] / "recipes"
 
@@ -23,6 +25,8 @@ RECIPES = Path(__file__).parents[1] / "recipes"
 def executed_recipe(name: str, tmp_path: Path) -> Iterator[Path]:
     """Run a recipe's notebook, yielding its directory, then clean up after it."""
     recipe = RECIPES / name
+    # conftest switches checks off for the session, and a subprocess inherits that.
+    env = {k: v for k, v in os.environ.items() if k != "XARRAY_ANNOTATED_ENABLED"}
     try:
         subprocess.run(
             [
@@ -36,6 +40,7 @@ def executed_recipe(name: str, tmp_path: Path) -> Iterator[Path]:
                 str(tmp_path / f"{name}.html"),
             ],
             cwd=RECIPES.parent,
+            env=env,
             check=True,
             capture_output=True,
             text=True,
@@ -59,7 +64,7 @@ def test_pipeline_101_notebook_executes(tmp_path: Path) -> None:
         assert {"temperature_anomaly", "anomaly_range"} <= set(result)
         assert result.temperature_anomaly.attrs["units"] == "degC"
         assert result.anomaly_range.attrs["units"] == "degC"
-        assert "conduit_config_sha256" in result.attrs
+        assert "catena_config_sha256" in result.attrs
 
 
 def test_flux_notebook_executes(tmp_path: Path) -> None:
@@ -97,10 +102,11 @@ def test_recipe_config_dry_runs(name: str) -> None:
     """Every recipe's config passes a dry run against freshly generated inputs."""
     recipe = RECIPES / name
     try:
-        (recipe / "results").mkdir(exist_ok=True)
         _write_inputs(recipe)
-        report = conduit.dry_run(recipe / "config.toml")
+        with xra.enabled(True):
+            report = catena.dry_run(recipe / "config.toml")
         assert [stage for stage in report.stages if stage.status == "failed"] == []
+        assert next(s for s in report.stages if s.name == "contracts").status == "ok"
     finally:
         for path in (recipe / "data").glob("*"):
             path.unlink(missing_ok=True)

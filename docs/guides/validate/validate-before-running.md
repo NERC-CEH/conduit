@@ -11,7 +11,7 @@ Loading inputs and building the DAG is cheap; computing the pipeline may not be.
 ## The `--dry-run` pre-flight
 
 ```sh
-conduit run config.toml --dry-run
+catena run config.toml --dry-run
 ```
 
 It checks, in order, and prints a summary per stage:
@@ -26,11 +26,12 @@ It checks, in order, and prints a summary per stage:
 6. **Wiring** — required inputs are all bound; unused inputs are reported ([below](#the-wiring-check)).
 7. **Input contracts** — each loaded input's metadata (units, dims, coords, dtype) is checked against what its consuming node declares.
    A normal run defers this to when the node is called, so this stage is how you catch a file with wrong or missing `units` without running the pipeline.
-8. **Output paths** — every destination would accept a write (supported extension, writable parent directory, and — for subset runs — a pre-created Zarr store).
+8. **Output paths** — every destination would accept a write (supported extension, a parent directory that is writable or can be created, and — for subset runs — a pre-created Zarr store).
 
 A clean pre-flight exits `0`.
 A problem with the config, inputs, DAG plan, wiring or output paths always fails.
-Contract problems follow the [`[annotations]`](../../reference/configuration.md#annotations) policy: reported under `warn`, a non-zero exit under `strict`.
+A contract problem fails too, and every failing input is reported at once.
+If checks are [switched off](../nodes/contracts.md#turning-the-checks-off), the contract stages say so.
 
 ## Input compatibility checks
 
@@ -46,14 +47,14 @@ checks = [
 ```
 
 Each entry runs a named check over the listed `[inputs.*]` sections; `["*"]` means all of them.
-The checks run on every `conduit run`, and a failure aborts before any node executes, listing every check that failed and why.
+The checks run on every `catena run`, and a failure aborts before any node executes, listing every check that failed and why.
 They are opt-in because differing inputs are normal — a daily forcing beside a monthly boundary condition — so only you know which relationships must hold.
 The available checks and their arguments are in the [configuration reference](../../reference/configuration.md#validation).
 
 ## The wiring check
 
 The wiring check asks whether every node gets fed.
-On every run, before compute, conduit compares the inputs the DAG requires with the ones the config loaded:
+On every run, before compute, catena compares the inputs the DAG requires with the ones the config loaded:
 
 - **Unbound input → error.** A node needs `temperature_daily` but nothing produces it.
   Usually a rename that did not propagate across file, config and function signature, or a missing `[inputs.*]` entry.
@@ -77,13 +78,13 @@ python recipes/flux_pipeline/make_data.py > /dev/null
 ```
 
 ```bash exec="true" source="block" result="text" returncode="1"
-conduit run --dry-run recipes/flux_pipeline/broken.toml
+catena run --dry-run recipes/flux_pipeline/broken.toml
 ```
 
 The failure names both ends of the edge, and comes during DAG construction, before any input is read.
 
 To fix it, correct whichever annotation is wrong.
-Had the units merely differed in scale, `umol m-2 s-1` against `nmol m-2 s-1` say, conduit would have converted them and there would be nothing to fix.
-The check flags an edge only when the two declarations cannot be reconciled, so a partly annotated pipeline can adopt it without a wave of false positives.
+Units that merely differ in scale, `umol m-2 s-1` against `nmol m-2 s-1` say, fail the same way, since nothing [converts](../nodes/contracts.md#converting-units) them between nodes.
+The check flags an edge only when both ends declare a contract, so a partly annotated pipeline can adopt it without a wave of false positives.
 
 To run this from a test or CI, see [Test your pipeline](test-your-pipeline.md); for specific error messages, see [Troubleshooting](../troubleshooting.md).

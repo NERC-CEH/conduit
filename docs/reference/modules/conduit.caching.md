@@ -1,3 +1,0 @@
-# `caching`
-
-::: conduit.caching

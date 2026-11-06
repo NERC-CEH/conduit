@@ -1,3 +1,0 @@
-# `graph`
-
-::: conduit.graph

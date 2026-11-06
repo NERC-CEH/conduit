@@ -1,0 +1,3 @@
+# `blocking`
+
+::: catena.blocking

@@ -5,7 +5,7 @@ icon: lucide/timer
 
 # Resampling & units
 
-A resample keeps the input's units whether it takes a `mean` or a `sum`: conduit copies the attributes, CF `units` included, straight to the result.
+A resample keeps the input's units whether it takes a `mean` or a `sum`: catena copies the attributes, CF `units` included, straight to the result.
 This matches `pint-xarray`, which does not multiply by the timestep on a sum either.
 
 !!! warning "Unit validation cannot catch a wrong `aggfunc`"
@@ -55,8 +55,13 @@ If you genuinely want the weekly *amount* from a daily *rate*, do the multiplica
 [[node]]
 name = "gpp_weekly_total"
 inputs = ["gpp_weekly"]
-expression = "gpp_weekly * 7.0"
+expression = "(gpp_weekly * 7.0).assign_attrs(units='g C m-2')"
 units = "g C m-2"
 ```
 
 Now the declared units say what the number is, and the contract check has something to check against.
+
+## Resampling an axis with holes
+
+A resample returns a regular axis, with NaN in the empty bins, for `mean` and `sum` alike.
+Two Januaries of daily values at `freq = "1ME"` give 13 bins, 11 of them NaN, and those pass the node's declared `Freq("1ME")`.
