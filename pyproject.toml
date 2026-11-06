@@ -21,7 +21,7 @@ dependencies = [
     "pint>=0.24",
     "tomli-w>=1.2.0",
     "xarray>=2026.2.0",
-    "xarray-annotated[cf]>=0.7.0",
+    "xarray-annotated[cf]>=0.8.0",
     "zarr>=3.2.1",
 ]
 
