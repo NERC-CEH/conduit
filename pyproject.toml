@@ -59,7 +59,7 @@ docs = [
     "markdown-exec>=1.11.0",
     "mkdocs-typer2[termynal]>=0.4.1",
     "mkdocstrings-python>=2.0.3",
-    "zensical>=0.0.24",
+    "zensical>=0.0.24,<0.0.74",
 ]
 recipes = [
     "matplotlib>=3.10.8",
